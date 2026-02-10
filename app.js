@@ -9,6 +9,10 @@ const app = express();
 const PORT = process.env.PORT || 7860;
 const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
+// Ollama 公网配置
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://116.62.36.98:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:latest';
+
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -101,14 +105,16 @@ app.post('/ai-query', async (req, res) => {
       contextInfo += `\n省份：${xuankeContext.province || '未填'}`;
     }
 
-    // 调用本地 Ollama API（如果可用）
+    // 调用阿里云 Ollama API
     try {
       const fetch = (await import('node-fetch')).default;
-      const response = await fetch('http://localhost:11434/api/generate', {
+      console.log(`正在调用 Ollama: ${OLLAMA_HOST}/api/generate`);
+      
+      const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'qwen2.5:latest',
+          model: OLLAMA_MODEL,
           prompt: `你是一位专业的高考志愿填报顾问。
 
 ${contextInfo}
@@ -117,20 +123,22 @@ ${contextInfo}
 
 请给出详细、专业的回答：`,
           stream: false
-        }),
-        timeout: 30000
+        })
       });
 
       if (response.ok) {
         const result = await response.json();
+        console.log("Ollama 调用成功");
         res.send({ 
           code: 200, 
           data: result.response || "AI 未能生成回复"
         });
         return;
+      } else {
+        console.error(`Ollama API 错误: ${response.status}`);
       }
     } catch (ollamaError) {
-      console.log("Ollama 服务不可用，使用本地模拟回复");
+      console.error("Ollama 调用失败:", ollamaError.message);
     }
 
     // 如果 Ollama 不可用，使用本地模拟回复
