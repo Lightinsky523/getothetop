@@ -1,4 +1,4 @@
 express
-mysql2
+sqlite3
 cors
 node-fetch
