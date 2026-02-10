@@ -1,3 +1,4 @@
 express
 mysql2
 cors
+node-fetch

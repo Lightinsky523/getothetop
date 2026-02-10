@@ -1218,27 +1218,54 @@ ${hasShare ? "3" : "2"}. **志愿搭配建议**
 
         setAiLoading(true);
         aiOutput.innerHTML =
-          '<div class="ai-output-empty">正在整理结果…</div>';
+          '<div class="ai-output-empty">正在连接 AI 服务…</div>';
 
         const profileSummary = getProfileSummary();
         const ctxShareEntries = [...shareEntries];
         const isXuanke = queryMode === "xuanke";
         const xuankeContext = isXuanke ? getXuankeContext() : null;
 
-        setTimeout(() => {
-          const markdown = fakeAiResponse(
-            content,
-            profileSummary,
-            ctxShareEntries,
-            isXuanke,
-            xuankeContext
-          );
-          const html = markdown
-            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-            .replace(/\n/g, "<br />");
-          aiOutput.innerHTML = `<div>${html}</div>`;
-          setAiLoading(false);
-        }, 1200);
+        // 调用后端 AI 接口
+        fetch(API_BASE + "/ai-query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: content,
+            profileSummary: profileSummary,
+            shareEntries: ctxShareEntries,
+            isXuanke: isXuanke,
+            xuankeContext: xuankeContext
+          })
+        })
+          .then((res) => res.json())
+          .then((result) => {
+            if (result.code === 200) {
+              const html = result.data
+                .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/\n/g, "<br />");
+              aiOutput.innerHTML = `<div>${html}</div>`;
+            } else {
+              aiOutput.innerHTML = `<div class="ai-output-empty">AI 查询失败：${result.msg || "请稍后重试"}</div>`;
+            }
+          })
+          .catch((err) => {
+            console.error("AI 查询请求失败:", err);
+            // 如果后端 AI 服务不可用，降级使用本地模拟回复
+            const markdown = fakeAiResponse(
+              content,
+              profileSummary,
+              ctxShareEntries,
+              isXuanke,
+              xuankeContext
+            );
+            const html = markdown
+              .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+              .replace(/\n/g, "<br />");
+            aiOutput.innerHTML = `<div>${html}<br/><br/><small style="color:#999">（当前使用本地模拟回复，AI 服务暂时不可用）</small></div>`;
+          })
+          .finally(() => {
+            setAiLoading(false);
+          });
       });
 
       // 信息上传 + 本地存储
