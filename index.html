@@ -32,15 +32,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 24px 16px;
+        padding: 32px 24px;
       }
 
       .app-shell {
         width: 100%;
-        max-width: 960px;
+        max-width: 1400px;
         background: #fffef9;
         border-radius: var(--radius-lg);
-        padding: 28px 24px;
+        padding: 36px 32px;
         border: 1px solid var(--border-subtle);
         box-shadow: var(--shadow);
         position: relative;
@@ -59,8 +59,8 @@
         position: relative;
         z-index: 1;
         display: grid;
-        grid-template-columns: minmax(0, 3fr) minmax(0, 2.4fr);
-        gap: 24px;
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+        gap: 32px;
       }
 
       @media (max-width: 900px) {
@@ -88,8 +88,8 @@
       }
 
       .logo {
-        width: 36px;
-        height: 36px;
+        width: 42px;
+        height: 42px;
         border-radius: var(--radius);
         background: var(--accent);
         display: flex;
@@ -97,19 +97,19 @@
         justify-content: center;
         color: #fffef9;
         font-weight: 600;
-        font-size: 16px;
+        font-size: 18px;
       }
 
       .title-block h1 {
         margin: 0;
-        font-size: 20px;
+        font-size: 24px;
         font-weight: 600;
         letter-spacing: 0.02em;
       }
 
       .title-block p {
-        margin: 2px 0 0;
-        font-size: 12px;
+        margin: 4px 0 0;
+        font-size: 14px;
         color: var(--text-soft);
       }
 
@@ -176,7 +176,7 @@
       .column {
         background: #fffef9;
         border-radius: var(--radius-lg);
-        padding: 20px;
+        padding: 24px;
         border: 1px solid var(--border-subtle);
         position: relative;
         overflow: hidden;
@@ -198,7 +198,7 @@
       }
 
       .section-title {
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 600;
         display: flex;
         align-items: center;
@@ -206,34 +206,34 @@
       }
 
       .section-title span.icon-pill {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
         border-radius: 4px;
         background: var(--accent);
         color: #fffef9;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .section-desc {
-        margin: 2px 0 0;
-        font-size: 12px;
+        margin: 4px 0 0;
+        font-size: 13px;
         color: var(--text-soft);
       }
 
       .field-label {
-        font-size: 12px;
+        font-size: 14px;
         color: var(--text-soft);
-        margin-bottom: 6px;
+        margin-bottom: 8px;
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
 
       .field-label span.tip {
-        font-size: 11px;
+        font-size: 12px;
         color: rgba(148, 163, 184, 0.85);
       }
 
@@ -244,15 +244,15 @@
         border-radius: var(--radius);
         border: 1px solid var(--border-subtle);
         background: #fff;
-        padding: 9px 10px;
+        padding: 11px 12px;
         color: var(--text);
-        font-size: 13px;
+        font-size: 14px;
         outline: none;
         resize: none;
         transition: border-color 0.15s;
       }
 
-      .textarea { min-height: 100px; line-height: 1.6; }
+      .textarea { min-height: 120px; line-height: 1.6; }
 
       .input::placeholder,
       .textarea::placeholder { color: #9ca3af; }
