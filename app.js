@@ -11,7 +11,7 @@ const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
 // Ollama 公网配置
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://116.62.36.98:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:latest';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:0.5b';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
