@@ -110,6 +110,7 @@ app.post('/ai-query', async (req, res) => {
     try {
       const fetch = (await import('node-fetch')).default;
       console.log(`正在调用 AnythingLLM API: ${AI_API_URL}`);
+      console.log(`API Key 是否配置: ${AI_API_KEY ? '已配置' : '未配置'}`);
       
       if (!AI_API_KEY) {
         console.error("AI_KEY 环境变量未设置");
@@ -128,26 +129,41 @@ app.post('/ai-query', async (req, res) => {
         })
       });
 
+      console.log(`API 响应状态: ${response.status}`);
+      
       if (response.ok) {
         const result = await response.json();
-        console.log("AnythingLLM API 调用成功");
-        const aiResponse = result.textResponse || result.response || "AI 未能生成回复";
-        res.send({ 
-          code: 200, 
-          data: aiResponse
-        });
-        return;
+        console.log("AnythingLLM API 调用成功，响应内容:", JSON.stringify(result).substring(0, 200));
+        
+        // 尝试多种可能的响应格式
+        let aiResponse = result.textResponse || 
+                        result.response || 
+                        (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) ||
+                        result.content ||
+                        result.message;
+        
+        if (aiResponse) {
+          res.send({ 
+            code: 200, 
+            data: aiResponse
+          });
+          return;
+        } else {
+          console.error("API 返回成功但无法解析响应内容:", result);
+          res.send({ code: 500, msg: "AI 响应格式错误，请联系管理员检查日志" });
+          return;
+        }
       } else {
         const errorText = await response.text();
         console.error(`AnythingLLM API 错误: ${response.status}`, errorText);
+        res.send({ code: 500, msg: `AI 服务错误 (${response.status}): ${errorText}` });
+        return;
       }
     } catch (aiError) {
       console.error("AnythingLLM API 调用失败:", aiError.message);
+      res.send({ code: 500, msg: "AI 服务调用失败: " + aiError.message });
+      return;
     }
-
-    // 如果 Ollama 不可用，使用本地模拟回复
-    const mockResponse = generateMockResponse(prompt, profileSummary, shareEntries, isXuanke, xuankeContext);
-    res.send({ code: 200, data: mockResponse });
     
   } catch (error) {
     console.error("AI 查询失败:", error);
