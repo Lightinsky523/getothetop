@@ -11,8 +11,8 @@ const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
 // AI API 配置 - 从环境变量读取 API Key
 const AI_API_KEY = process.env.AI_KEY;
-const AI_API_URL = process.env.AI_API_URL || 'https://api.siliconflow.cn/v1/chat/completions';
-const AI_MODEL = process.env.AI_MODEL || 'deepseek-ai/DeepSeek-V3';
+const AI_API_URL = process.env.AI_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+const AI_MODEL = process.env.AI_MODEL || 'deepseek-chat';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
