@@ -117,6 +117,10 @@ app.post('/ai-query', async (req, res) => {
         throw new Error("AI_KEY 未配置");
       }
       
+      // 生成新的 sessionId，确保每次查询都是新对话
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      console.log(`使用新会话 ID: ${sessionId}`);
+      
       const response = await fetch(AI_API_URL, {
         method: 'POST',
         headers: { 
@@ -125,7 +129,8 @@ app.post('/ai-query', async (req, res) => {
         },
         body: JSON.stringify({
           message: `${contextInfo}\n\n用户问题：${prompt}\n\n请给出详细、专业的回答：`,
-          mode: "chat"
+          mode: "chat",
+          sessionId: sessionId
         })
       });
 

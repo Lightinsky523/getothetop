@@ -1004,6 +1004,7 @@
                             <th>城市</th>
                             <th>专业</th>
                             <th>高考年份</th>
+                            <th>真实体验</th>
                             <th>关键词</th>
                           </tr>
                         </thead>
@@ -1558,11 +1559,17 @@ ${hasShare ? "3" : "2"}. **志愿搭配建议**
         visible.forEach((item) => {
           const tr = document.createElement("tr");
           const tagsText = Array.isArray(item.tags) ? item.tags.join("，") : item.tags || "";
+          const experienceText = item.experience || "—";
+          // 截断过长的体验文本，鼠标悬停显示完整内容
+          const experienceDisplay = experienceText.length > 50 
+            ? experienceText.substring(0, 50) + "…" 
+            : experienceText;
           tr.innerHTML = `
             <td>${item.school || "-"}</td>
             <td>${item.city || "-"}</td>
             <td>${item.major || "-"}</td>
             <td>${item.year || "—"}</td>
+            <td title="${experienceText.replace(/"/g, '&quot;')}">${experienceDisplay}</td>
             <td>${tagsText || "—"}</td>
           `;
           shareListBody.appendChild(tr);
