@@ -11,7 +11,7 @@ const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
 // AI API 配置 - 从环境变量读取 API Key
 const AI_API_KEY = process.env.AI_KEY;
-const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/default/chat';
+const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
 const AI_MODEL = process.env.AI_MODEL || 'default';
 
 // 确保数据目录存在
