@@ -11,8 +11,8 @@ const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
 // AI API 配置 - 从环境变量读取 API Key
 const AI_API_KEY = process.env.AI_KEY;
-const AI_API_URL = process.env.AI_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-const AI_MODEL = process.env.AI_MODEL || 'deepseek-chat';
+const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/default/chat';
+const AI_MODEL = process.env.AI_MODEL || 'default';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -106,10 +106,10 @@ app.post('/ai-query', async (req, res) => {
       contextInfo += `\n省份：${xuankeContext.province || '未填'}`;
     }
 
-    // 调用 AI API
+    // 调用 AnythingLLM API
     try {
       const fetch = (await import('node-fetch')).default;
-      console.log(`正在调用 AI API: ${AI_API_URL}`);
+      console.log(`正在调用 AnythingLLM API: ${AI_API_URL}`);
       
       if (!AI_API_KEY) {
         console.error("AI_KEY 环境变量未设置");
@@ -123,27 +123,15 @@ app.post('/ai-query', async (req, res) => {
           'Authorization': `Bearer ${AI_API_KEY}`
         },
         body: JSON.stringify({
-          model: AI_MODEL,
-          messages: [
-            {
-              role: "system",
-              content: "你是一位专业的高考志愿填报顾问，请基于提供的信息给出详细、专业的回答。"
-            },
-            {
-              role: "user",
-              content: `${contextInfo}\n\n用户问题：${prompt}\n\n请给出详细、专业的回答：`
-            }
-          ],
-          stream: false
+          message: `${contextInfo}\n\n用户问题：${prompt}\n\n请给出详细、专业的回答：`,
+          mode: "chat"
         })
       });
 
       if (response.ok) {
         const result = await response.json();
-        console.log("AI API 调用成功");
-        const aiResponse = result.choices && result.choices[0] && result.choices[0].message 
-          ? result.choices[0].message.content 
-          : (result.response || "AI 未能生成回复");
+        console.log("AnythingLLM API 调用成功");
+        const aiResponse = result.textResponse || result.response || "AI 未能生成回复";
         res.send({ 
           code: 200, 
           data: aiResponse
@@ -151,10 +139,10 @@ app.post('/ai-query', async (req, res) => {
         return;
       } else {
         const errorText = await response.text();
-        console.error(`AI API 错误: ${response.status}`, errorText);
+        console.error(`AnythingLLM API 错误: ${response.status}`, errorText);
       }
     } catch (aiError) {
-      console.error("AI API 调用失败:", aiError.message);
+      console.error("AnythingLLM API 调用失败:", aiError.message);
     }
 
     // 如果 Ollama 不可用，使用本地模拟回复
