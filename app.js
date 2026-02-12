@@ -9,9 +9,10 @@ const app = express();
 const PORT = process.env.PORT || 7860;
 const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
 
-// Ollama 公网配置
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://116.62.36.98:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:0.5b';
+// AI API 配置 - 从环境变量读取 API Key
+const AI_API_KEY = process.env.AI_KEY;
+const AI_API_URL = process.env.AI_API_URL || 'https://api.siliconflow.cn/v1/chat/completions';
+const AI_MODEL = process.env.AI_MODEL || 'deepseek-ai/DeepSeek-V3';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -105,40 +106,55 @@ app.post('/ai-query', async (req, res) => {
       contextInfo += `\n省份：${xuankeContext.province || '未填'}`;
     }
 
-    // 调用阿里云 Ollama API
+    // 调用 AI API
     try {
       const fetch = (await import('node-fetch')).default;
-      console.log(`正在调用 Ollama: ${OLLAMA_HOST}/api/generate`);
+      console.log(`正在调用 AI API: ${AI_API_URL}`);
       
-      const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
+      if (!AI_API_KEY) {
+        console.error("AI_KEY 环境变量未设置");
+        throw new Error("AI_KEY 未配置");
+      }
+      
+      const response = await fetch(AI_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AI_API_KEY}`
+        },
         body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          prompt: `你是一位专业的高考志愿填报顾问。
-
-${contextInfo}
-
-用户问题：${prompt}
-
-请给出详细、专业的回答：`,
+          model: AI_MODEL,
+          messages: [
+            {
+              role: "system",
+              content: "你是一位专业的高考志愿填报顾问，请基于提供的信息给出详细、专业的回答。"
+            },
+            {
+              role: "user",
+              content: `${contextInfo}\n\n用户问题：${prompt}\n\n请给出详细、专业的回答：`
+            }
+          ],
           stream: false
         })
       });
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Ollama 调用成功");
+        console.log("AI API 调用成功");
+        const aiResponse = result.choices && result.choices[0] && result.choices[0].message 
+          ? result.choices[0].message.content 
+          : (result.response || "AI 未能生成回复");
         res.send({ 
           code: 200, 
-          data: result.response || "AI 未能生成回复"
+          data: aiResponse
         });
         return;
       } else {
-        console.error(`Ollama API 错误: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`AI API 错误: ${response.status}`, errorText);
       }
-    } catch (ollamaError) {
-      console.error("Ollama 调用失败:", ollamaError.message);
+    } catch (aiError) {
+      console.error("AI API 调用失败:", aiError.message);
     }
 
     // 如果 Ollama 不可用，使用本地模拟回复
