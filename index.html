@@ -47,6 +47,44 @@
         overflow: hidden;
       }
 
+      /* 全局导航栏 */
+      .global-nav {
+        background: #f0ede8;
+        border-radius: var(--radius);
+        padding: 4px;
+        margin-bottom: 20px;
+      }
+
+      .global-nav-inner {
+        display: flex;
+        gap: 2px;
+      }
+
+      .global-nav-item {
+        flex: 1;
+        text-align: center;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: var(--text-soft);
+        text-decoration: none;
+        transition: all 0.15s;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .global-nav-item:hover {
+        color: var(--text);
+      }
+
+      .global-nav-item.active {
+        background: #fffef9;
+        color: var(--text);
+        box-shadow: var(--shadow);
+        font-weight: 500;
+      }
+
       .app-shell::before,
       .app-shell::after {
         content: "";
@@ -634,6 +672,16 @@
   </head>
   <body>
     <div class="app-shell">
+      <!-- 全局导航栏 -->
+      <nav class="global-nav">
+        <div class="global-nav-inner">
+          <a href="index.html" class="global-nav-item active">志愿填报</a>
+          <a href="major-overview.html" class="global-nav-item">专业概览</a>
+          <a href="major-schools.html" class="global-nav-item">开设院校</a>
+          <a href="major-students.html" class="global-nav-item">学生分享</a>
+        </div>
+      </nav>
+
       <div class="app-inner">
         <!-- 左侧：综合查询 -->
         <section class="column" id="ai-column">
@@ -655,9 +703,6 @@
                   <button class="tab active" data-tab="ai">查询</button>
                   <button class="tab" data-tab="upload">我的信息</button>
                   <button class="tab" data-tab="share">在读分享</button>
-                </div>
-                <div style="margin-top: 8px; text-align: right;">
-                  <a href="major-overview.html" style="font-size: 12px; color: var(--text-soft); text-decoration: none; margin-right: 12px;">专业探索 →</a>
                 </div>
               </div>
             </header>

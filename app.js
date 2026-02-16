@@ -37,7 +37,8 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     console.error("数据库连接失败：", err);
   } else {
     console.log("✅ SQLite 数据库连接成功！");
-    // 创建表（如果不存在）
+    
+    // 创建在读分享表（如果不存在）
     db.run(`CREATE TABLE IF NOT EXISTS user_uploads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school TEXT,
@@ -49,9 +50,28 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       upload_time DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) {
-        console.error("创建表失败：", err);
+        console.error("创建在读分享表失败：", err);
       } else {
-        console.log("✅ 数据表初始化成功！");
+        console.log("✅ 在读分享表初始化成功！");
+      }
+    });
+
+    // 创建学生分享表（如果不存在）- 用于长篇分享
+    db.run(`CREATE TABLE IF NOT EXISTS student_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      school TEXT,
+      major TEXT,
+      grade TEXT,
+      title TEXT,
+      content TEXT,
+      tags TEXT,
+      status TEXT DEFAULT 'pending',
+      upload_time DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) {
+        console.error("创建学生分享表失败：", err);
+      } else {
+        console.log("✅ 学生分享表初始化成功！");
       }
     });
   }
@@ -237,6 +257,39 @@ ${hasShare ? "3" : "2"}. **志愿搭配建议**
 
   return base + body;
 }
+
+// ********** 功能4：保存学生长篇分享（匿名）**********
+app.post('/save-student-share', (req, res) => {
+  const { school, major, grade, title, content, tags } = req.body;
+  
+  if (!school || !major || !title || !content) {
+    res.send({ code: 400, msg: "请填写完整信息" });
+    return;
+  }
+  
+  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, status) VALUES (?, ?, ?, ?, ?, ?, 'approved')`;
+  db.run(sql, [school, major, grade || '未知年级', title, content, tags || ''], function(err) {
+    if (err) {
+      console.error("保存学生分享失败:", err);
+      res.send({ code: 500, msg: "保存失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "分享提交成功！", id: this.lastID });
+  });
+});
+
+// ********** 功能5：获取学生长篇分享列表**********
+app.get('/get-student-shares', (req, res) => {
+  const sql = `SELECT * FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("获取学生分享失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
 
 // 启动服务，监听 0.0.0.0:7860
 app.listen(PORT, '0.0.0.0', () => {
