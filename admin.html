@@ -408,6 +408,7 @@
       <div class="tabs">
         <button class="tab active" onclick="switchTab('majors')">专业概览管理</button>
         <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
+        <button class="tab" onclick="switchTab('news')">专业动态管理</button>
       </div>
 
       <!-- 专业管理 -->
@@ -445,7 +446,7 @@
           <select class="input" id="programMajorSelect" style="max-width: 300px;" onchange="loadPrograms()">
             <option value="">请选择专业</option>
           </select>
-          <button class="btn btn-primary" onclick="openProgramModal()" id="addProgramBtn" disabled>+ 添加开设院校</button>
+          <button class="btn btn-primary" onclick="openProgramModal()" id="addProgramBtn">+ 添加开设院校</button>
         </div>
         <div class="table-wrapper">
           <table>
@@ -464,6 +465,33 @@
         </div>
         <div class="empty-state" id="programsEmpty" style="display: none;">
           <p>请选择专业或添加开设院校</p>
+        </div>
+      </div>
+
+      <!-- 专业动态管理 -->
+      <div class="tab-content" id="newsTab">
+        <div class="toolbar">
+          <select class="input" id="newsMajorSelect" style="max-width: 300px;" onchange="loadNews()">
+            <option value="">请选择专业</option>
+          </select>
+          <button class="btn btn-primary" onclick="openNewsModal()" id="addNewsBtn">+ 添加动态趣闻</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>标题</th>
+                <th>来源</th>
+                <th>发布日期</th>
+                <th>热门</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="newsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="newsEmpty" style="display: none;">
+          <p>请选择专业或添加动态趣闻</p>
         </div>
       </div>
     </div>
@@ -609,6 +637,48 @@
     </div>
   </div>
 
+  <!-- 专业动态编辑弹窗 -->
+  <div class="modal" id="newsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="newsModalTitle">添加动态趣闻</h3>
+        <button class="close-btn" onclick="closeModal('newsModal')">&times;</button>
+      </div>
+      <form id="newsForm">
+        <input type="hidden" id="newsId" />
+        <input type="hidden" id="newsMajorId" />
+        <div class="form-group">
+          <label>标题 *</label>
+          <input type="text" id="newsTitle" placeholder="如：计算机专业2024年就业报告发布" required />
+        </div>
+        <div class="form-group">
+          <label>内容</label>
+          <textarea id="newsContent" placeholder="请输入动态详细内容..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>来源</label>
+            <input type="text" id="newsSource" placeholder="如：教育部官网" />
+          </div>
+          <div class="form-group">
+            <label>发布日期</label>
+            <input type="date" id="newsDate" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="newsIsHot" style="width: auto; margin-right: 8px;" />
+            标记为热门
+          </label>
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('newsModal')">取消</button>
+        <button class="btn btn-primary" onclick="saveNews()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -640,6 +710,8 @@
       
       if (tab === 'programs') {
         loadMajorSelect();
+      } else if (tab === 'news') {
+        loadNewsMajorSelect();
       }
     }
 
@@ -969,6 +1041,185 @@
         if (result.code === 200) {
           showToast('删除成功', 'success');
           loadPrograms();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('删除失败', 'error');
+      }
+    }
+
+    // ========== 专业动态管理 ==========
+    let currentNewsMajorId = null;
+
+    // 加载专业下拉框（动态管理用）
+    async function loadNewsMajorSelect() {
+      const select = document.getElementById('newsMajorSelect');
+      select.innerHTML = '<option value="">请选择专业</option>';
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors');
+        const data = await res.json();
+        if (data.code === 200) {
+          data.data.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m.id;
+            option.textContent = m.major_name;
+            select.appendChild(option);
+          });
+        }
+      } catch (err) {
+        showToast('加载专业列表失败', 'error');
+      }
+    }
+
+    // 加载专业动态列表
+    async function loadNews() {
+      const majorId = document.getElementById('newsMajorSelect').value;
+      currentNewsMajorId = majorId;
+      
+      if (!majorId) {
+        document.getElementById('newsTableBody').innerHTML = '';
+        document.getElementById('newsEmpty').style.display = 'block';
+        return;
+      }
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + majorId + '/news');
+        const data = await res.json();
+        if (data.code === 200) {
+          renderNews(data.data);
+        }
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    // 渲染动态列表
+    function renderNews(list) {
+      const tbody = document.getElementById('newsTableBody');
+      const empty = document.getElementById('newsEmpty');
+      
+      if (list.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      
+      empty.style.display = 'none';
+      tbody.innerHTML = list.map(n => `
+        <tr>
+          <td>${n.title}</td>
+          <td>${n.source || '-'}</td>
+          <td>${n.publish_date || '-'}</td>
+          <td>${n.is_hot ? '<span class="badge" style="background: #fef3c7; color: #92400e;">热门</span>' : '-'}</td>
+          <td class="actions-cell">
+            <button class="btn-small btn-secondary" onclick="editNews(${n.id})">编辑</button>
+            <button class="btn-small btn-danger" onclick="deleteNews(${n.id})">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // 打开动态弹窗
+    function openNewsModal() {
+      if (!currentNewsMajorId) {
+        showToast('请先选择专业', 'error');
+        return;
+      }
+      document.getElementById('newsModalTitle').textContent = '添加动态趣闻';
+      document.getElementById('newsForm').reset();
+      document.getElementById('newsId').value = '';
+      document.getElementById('newsMajorId').value = currentNewsMajorId;
+      document.getElementById('newsModal').classList.add('active');
+    }
+
+    // 编辑动态
+    async function editNews(id) {
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + currentNewsMajorId + '/news');
+        const data = await res.json();
+        if (data.code !== 200) return;
+        
+        const news = data.data.find(n => n.id === id);
+        if (!news) return;
+        
+        document.getElementById('newsModalTitle').textContent = '编辑动态趣闻';
+        document.getElementById('newsId').value = news.id;
+        document.getElementById('newsMajorId').value = currentNewsMajorId;
+        document.getElementById('newsTitle').value = news.title;
+        document.getElementById('newsContent').value = news.content || '';
+        document.getElementById('newsSource').value = news.source || '';
+        document.getElementById('newsDate').value = news.publish_date || '';
+        document.getElementById('newsIsHot').checked = news.is_hot === 1;
+        
+        document.getElementById('newsModal').classList.add('active');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    // 保存动态
+    async function saveNews() {
+      const id = document.getElementById('newsId').value;
+      const data = {
+        password: adminPassword,
+        major_id: parseInt(document.getElementById('newsMajorId').value),
+        title: document.getElementById('newsTitle').value,
+        content: document.getElementById('newsContent').value,
+        source: document.getElementById('newsSource').value,
+        publish_date: document.getElementById('newsDate').value,
+        is_hot: document.getElementById('newsIsHot').checked
+      };
+      
+      if (!data.title) {
+        showToast('请输入标题', 'error');
+        return;
+      }
+      
+      try {
+        const url = id ? API_BASE + '/admin/news/' + id : API_BASE + '/admin/news';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast(id ? '更新成功' : '添加成功', 'success');
+          closeModal('newsModal');
+          loadNews();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('操作失败', 'error');
+      }
+    }
+
+    // 删除动态
+    async function deleteNews(id) {
+      if (!confirm('确定要删除这条动态吗？')) return;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/news/' + id, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast('删除成功', 'success');
+          loadNews();
         } else if (result.code === 403) {
           showToast('密码错误，请重新登录', 'error');
           location.reload();
