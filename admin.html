@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理后台 - 志愿填报参考</title>
+  <style>
+    :root {
+      --bg: #f8f7f4;
+      --bg-elevated: #ffffff;
+      --accent: #1a1a1a;
+      --accent-muted: #4a5568;
+      --text: #1a1a1a;
+      --text-soft: #5f6b7a;
+      --border-subtle: #e2e4e8;
+      --error: #c53030;
+      --success: #38a169;
+      --warning: #d69e2e;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+      color: var(--text);
+      background: #f0ede8;
+      padding: 32px 24px;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fffef9;
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fffef9;
+      font-weight: 600;
+      font-size: 18px;
+      text-decoration: none;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .title-block p {
+      margin: 4px 0 0;
+      font-size: 14px;
+      color: var(--text-soft);
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      background: #f0ede8;
+      border-radius: var(--radius);
+    }
+
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-soft);
+      text-decoration: none;
+      transition: all 0.15s;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+    }
+
+    .nav-tab:hover { color: var(--text); }
+
+    .nav-tab.active {
+      background: #fffef9;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      font-weight: 500;
+    }
+
+    .login-panel {
+      max-width: 400px;
+      margin: 60px auto;
+      text-align: center;
+    }
+
+    .login-panel h2 {
+      margin-bottom: 24px;
+      font-size: 20px;
+    }
+
+    .input {
+      width: 100%;
+      border-radius: var(--radius);
+      border: 1px solid var(--border-subtle);
+      background: #fff;
+      padding: 12px 16px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fffef9;
+    }
+
+    .btn-secondary {
+      background: #f0ede8;
+      color: var(--text);
+    }
+
+    .btn-danger {
+      background: var(--error);
+      color: #fff;
+    }
+
+    .btn:hover { opacity: 0.9; }
+
+    .admin-panel { display: none; }
+
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      background: #f0ede8;
+      border-radius: var(--radius);
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-soft);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+    }
+
+    .tab.active {
+      background: #fffef9;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      font-weight: 500;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 12px;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      max-width: 400px;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    th {
+      background: #f5f4f0;
+      font-weight: 600;
+      color: var(--text-soft);
+      font-size: 13px;
+    }
+
+    tr:hover { background: #faf9f5; }
+
+    .actions-cell {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 4px 12px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active { display: flex; }
+
+    .modal-content {
+      background: #fffef9;
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      width: 90%;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h3 { margin: 0; }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-soft);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: var(--text-soft);
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-soft);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      background: #f0ede8;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      color: #fff;
+      font-size: 14px;
+      z-index: 2000;
+      display: none;
+    }
+
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--error); }
+    .toast.show { display: block; }
+
+    .back-link {
+      color: var(--text-soft);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .back-link:hover { color: var(--text); }
+
+    @media (max-width: 768px) {
+      .app-shell { padding: 20px 16px; }
+      .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .nav-tabs { width: 100%; overflow-x: auto; }
+      .form-row { grid-template-columns: 1fr; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .search-box { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="header">
+      <div class="brand">
+        <a href="index.html" class="logo">志</a>
+        <div class="title-block">
+          <h1>管理后台</h1>
+          <p>专业概览与开设院校数据管理</p>
+        </div>
+      </div>
+      <nav class="nav-tabs">
+        <a href="index.html" class="nav-tab">志愿填报</a>
+        <a href="major-overview.html" class="nav-tab">专业概览</a>
+        <a href="major-schools.html" class="nav-tab">开设院校</a>
+        <a href="major-students.html" class="nav-tab">学生分享</a>
+      </nav>
+    </header>
+
+    <!-- 登录面板 -->
+    <div class="login-panel" id="loginPanel">
+      <h2>管理员登录</h2>
+      <input type="password" class="input" id="passwordInput" placeholder="请输入管理员密码" />
+      <button class="btn btn-primary" onclick="login()">登录</button>
+    </div>
+
+    <!-- 管理面板 -->
+    <div class="admin-panel" id="adminPanel">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('majors')">专业概览管理</button>
+        <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
+      </div>
+
+      <!-- 专业管理 -->
+      <div class="tab-content active" id="majorsTab">
+        <div class="toolbar">
+          <div class="search-box">
+            <input type="text" class="input" id="majorSearch" placeholder="搜索专业名称或类别..." />
+            <button class="btn btn-secondary" onclick="searchMajors()">搜索</button>
+          </div>
+          <button class="btn btn-primary" onclick="openMajorModal()">+ 添加专业</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>专业代码</th>
+                <th>专业名称</th>
+                <th>所属类别</th>
+                <th>学位类型</th>
+                <th>学制</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="majorsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="majorsEmpty" style="display: none;">
+          <p>暂无专业数据，点击上方按钮添加</p>
+        </div>
+      </div>
+
+      <!-- 院校项目管理 -->
+      <div class="tab-content" id="programsTab">
+        <div class="toolbar">
+          <select class="input" id="programMajorSelect" style="max-width: 300px;" onchange="loadPrograms()">
+            <option value="">请选择专业</option>
+          </select>
+          <button class="btn btn-primary" onclick="openProgramModal()" id="addProgramBtn" disabled>+ 添加开设院校</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>院校名称</th>
+                <th>院校层次</th>
+                <th>所在地区</th>
+                <th>专业特色</th>
+                <th>学费</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="programsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="programsEmpty" style="display: none;">
+          <p>请选择专业或添加开设院校</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 专业编辑弹窗 -->
+  <div class="modal" id="majorModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="majorModalTitle">添加专业</h3>
+        <button class="close-btn" onclick="closeModal('majorModal')">&times;</button>
+      </div>
+      <form id="majorForm">
+        <input type="hidden" id="majorId" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>专业代码</label>
+            <input type="text" id="majorCode" placeholder="如：080901" />
+          </div>
+          <div class="form-group">
+            <label>专业名称 *</label>
+            <input type="text" id="majorName" placeholder="如：计算机科学与技术" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>所属类别</label>
+            <select id="majorCategory">
+              <option value="">请选择</option>
+              <option value="工学">工学</option>
+              <option value="理学">理学</option>
+              <option value="文学">文学</option>
+              <option value="经济学">经济学</option>
+              <option value="管理学">管理学</option>
+              <option value="法学">法学</option>
+              <option value="教育学">教育学</option>
+              <option value="医学">医学</option>
+              <option value="农学">农学</option>
+              <option value="艺术学">艺术学</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>学位类型</label>
+            <select id="degreeType">
+              <option value="">请选择</option>
+              <option value="学士">学士</option>
+              <option value="硕士">硕士</option>
+              <option value="博士">博士</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>学制</label>
+          <input type="text" id="duration" placeholder="如：四年" />
+        </div>
+        <div class="form-group">
+          <label>专业简介</label>
+          <textarea id="description" placeholder="请输入专业简介..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>核心课程</label>
+          <textarea id="coreCourses" placeholder="请输入核心课程，用逗号分隔..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>就业前景</label>
+          <textarea id="careerProspects" placeholder="请输入就业前景描述..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>相关专业</label>
+          <input type="text" id="relatedMajors" placeholder="如：软件工程、网络工程，用逗号分隔" />
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('majorModal')">取消</button>
+        <button class="btn btn-primary" onclick="saveMajor()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 院校项目编辑弹窗 -->
+  <div class="modal" id="programModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="programModalTitle">添加开设院校</h3>
+        <button class="close-btn" onclick="closeModal('programModal')">&times;</button>
+      </div>
+      <form id="programForm">
+        <input type="hidden" id="programId" />
+        <input type="hidden" id="programMajorId" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>院校名称 *</label>
+            <input type="text" id="schoolName" placeholder="如：北京大学" required />
+          </div>
+          <div class="form-group">
+            <label>院校层次</label>
+            <select id="schoolLevel">
+              <option value="">请选择</option>
+              <option value="985/211">985/211</option>
+              <option value="211">211</option>
+              <option value="双一流">双一流</option>
+              <option value="省属重点">省属重点</option>
+              <option value="普通本科">普通本科</option>
+              <option value="高职高专">高职高专</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>所在地区</label>
+          <input type="text" id="location" placeholder="如：北京市海淀区" />
+        </div>
+        <div class="form-group">
+          <label>专业特色</label>
+          <textarea id="programFeatures" placeholder="请输入该院校该专业的特色..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>开设课程</label>
+          <textarea id="courses" placeholder="请输入该院校开设的特色课程..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>招生要求</label>
+          <textarea id="admissionRequirements" placeholder="请输入招生要求、选科要求等..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>学费</label>
+            <input type="text" id="tuitionFee" placeholder="如：5000元/年" />
+          </div>
+          <div class="form-group">
+            <label>奖学金</label>
+            <input type="text" id="scholarships" placeholder="如：国家奖学金、校级奖学金" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>联系方式</label>
+          <input type="text" id="contactInfo" placeholder="如：招生办电话、官网链接" />
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('programModal')">取消</button>
+        <button class="btn btn-primary" onclick="saveProgram()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_BASE = '';
+    let adminPassword = '';
+    let majors = [];
+    let currentMajorId = null;
+
+    // 登录
+    function login() {
+      const password = document.getElementById('passwordInput').value;
+      if (!password) {
+        showToast('请输入密码', 'error');
+        return;
+      }
+      adminPassword = password;
+      document.getElementById('loginPanel').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadMajors();
+    }
+
+    // 切换标签页
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+      
+      if (tab === 'programs') {
+        loadMajorSelect();
+      }
+    }
+
+    // 加载专业列表
+    async function loadMajors() {
+      try {
+        const res = await fetch(API_BASE + '/admin/majors');
+        const data = await res.json();
+        if (data.code === 200) {
+          majors = data.data;
+          renderMajors(majors);
+        }
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    // 渲染专业列表
+    function renderMajors(list) {
+      const tbody = document.getElementById('majorsTableBody');
+      const empty = document.getElementById('majorsEmpty');
+      
+      if (list.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      
+      empty.style.display = 'none';
+      tbody.innerHTML = list.map(m => `
+        <tr>
+          <td>${m.major_code || '-'}</td>
+          <td>${m.major_name}</td>
+          <td><span class="badge">${m.category || '-'}</span></td>
+          <td>${m.degree_type || '-'}</td>
+          <td>${m.duration || '-'}</td>
+          <td class="actions-cell">
+            <button class="btn-small btn-secondary" onclick="editMajor(${m.id})">编辑</button>
+            <button class="btn-small btn-danger" onclick="deleteMajor(${m.id})">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // 搜索专业
+    function searchMajors() {
+      const keyword = document.getElementById('majorSearch').value.toLowerCase();
+      const filtered = majors.filter(m => 
+        m.major_name.toLowerCase().includes(keyword) ||
+        (m.category && m.category.toLowerCase().includes(keyword))
+      );
+      renderMajors(filtered);
+    }
+
+    // 打开专业弹窗
+    function openMajorModal() {
+      document.getElementById('majorModalTitle').textContent = '添加专业';
+      document.getElementById('majorForm').reset();
+      document.getElementById('majorId').value = '';
+      document.getElementById('majorModal').classList.add('active');
+    }
+
+    // 编辑专业
+    function editMajor(id) {
+      const major = majors.find(m => m.id === id);
+      if (!major) return;
+      
+      document.getElementById('majorModalTitle').textContent = '编辑专业';
+      document.getElementById('majorId').value = major.id;
+      document.getElementById('majorCode').value = major.major_code || '';
+      document.getElementById('majorName').value = major.major_name;
+      document.getElementById('majorCategory').value = major.category || '';
+      document.getElementById('degreeType').value = major.degree_type || '';
+      document.getElementById('duration').value = major.duration || '';
+      document.getElementById('description').value = major.description || '';
+      document.getElementById('coreCourses').value = major.core_courses || '';
+      document.getElementById('careerProspects').value = major.career_prospects || '';
+      document.getElementById('relatedMajors').value = major.related_majors || '';
+      
+      document.getElementById('majorModal').classList.add('active');
+    }
+
+    // 保存专业
+    async function saveMajor() {
+      const id = document.getElementById('majorId').value;
+      const data = {
+        password: adminPassword,
+        major_code: document.getElementById('majorCode').value,
+        major_name: document.getElementById('majorName').value,
+        category: document.getElementById('majorCategory').value,
+        degree_type: document.getElementById('degreeType').value,
+        duration: document.getElementById('duration').value,
+        description: document.getElementById('description').value,
+        core_courses: document.getElementById('coreCourses').value,
+        career_prospects: document.getElementById('careerProspects').value,
+        related_majors: document.getElementById('relatedMajors').value
+      };
+      
+      if (!data.major_name) {
+        showToast('请输入专业名称', 'error');
+        return;
+      }
+      
+      try {
+        const url = id ? API_BASE + '/admin/majors/' + id : API_BASE + '/admin/majors';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast(id ? '更新成功' : '添加成功', 'success');
+          closeModal('majorModal');
+          loadMajors();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('操作失败', 'error');
+      }
+    }
+
+    // 删除专业
+    async function deleteMajor(id) {
+      if (!confirm('确定要删除这个专业吗？相关的开设院校也会被删除。')) return;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + id, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast('删除成功', 'success');
+          loadMajors();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('删除失败', 'error');
+      }
+    }
+
+    // 加载专业下拉框
+    async function loadMajorSelect() {
+      const select = document.getElementById('programMajorSelect');
+      select.innerHTML = '<option value="">请选择专业</option>';
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors');
+        const data = await res.json();
+        if (data.code === 200) {
+          data.data.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m.id;
+            option.textContent = m.major_name;
+            select.appendChild(option);
+          });
+        }
+      } catch (err) {
+        showToast('加载专业列表失败', 'error');
+      }
+    }
+
+    // 加载开设院校列表
+    async function loadPrograms() {
+      const majorId = document.getElementById('programMajorSelect').value;
+      currentMajorId = majorId;
+      document.getElementById('addProgramBtn').disabled = !majorId;
+      
+      if (!majorId) {
+        document.getElementById('programsTableBody').innerHTML = '';
+        document.getElementById('programsEmpty').style.display = 'block';
+        return;
+      }
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + majorId + '/programs');
+        const data = await res.json();
+        if (data.code === 200) {
+          renderPrograms(data.data);
+        }
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    // 渲染开设院校列表
+    function renderPrograms(list) {
+      const tbody = document.getElementById('programsTableBody');
+      const empty = document.getElementById('programsEmpty');
+      
+      if (list.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      
+      empty.style.display = 'none';
+      tbody.innerHTML = list.map(p => `
+        <tr>
+          <td>${p.school_name}</td>
+          <td><span class="badge">${p.school_level || '-'}</span></td>
+          <td>${p.location || '-'}</td>
+          <td>${p.program_features ? p.program_features.substring(0, 30) + '...' : '-'}</td>
+          <td>${p.tuition_fee || '-'}</td>
+          <td class="actions-cell">
+            <button class="btn-small btn-secondary" onclick="editProgram(${p.id})">编辑</button>
+            <button class="btn-small btn-danger" onclick="deleteProgram(${p.id})">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // 打开院校弹窗
+    function openProgramModal() {
+      if (!currentMajorId) {
+        showToast('请先选择专业', 'error');
+        return;
+      }
+      document.getElementById('programModalTitle').textContent = '添加开设院校';
+      document.getElementById('programForm').reset();
+      document.getElementById('programId').value = '';
+      document.getElementById('programMajorId').value = currentMajorId;
+      document.getElementById('programModal').classList.add('active');
+    }
+
+    // 编辑院校项目
+    async function editProgram(id) {
+      try {
+        const res = await fetch(API_BASE + '/api/majors/' + currentMajorId);
+        const data = await res.json();
+        if (data.code !== 200) return;
+        
+        const program = data.data.programs.find(p => p.id === id);
+        if (!program) return;
+        
+        document.getElementById('programModalTitle').textContent = '编辑开设院校';
+        document.getElementById('programId').value = program.id;
+        document.getElementById('programMajorId').value = currentMajorId;
+        document.getElementById('schoolName').value = program.school_name;
+        document.getElementById('schoolLevel').value = program.school_level || '';
+        document.getElementById('location').value = program.location || '';
+        document.getElementById('programFeatures').value = program.program_features || '';
+        document.getElementById('courses').value = program.courses || '';
+        document.getElementById('admissionRequirements').value = program.admission_requirements || '';
+        document.getElementById('tuitionFee').value = program.tuition_fee || '';
+        document.getElementById('scholarships').value = program.scholarships || '';
+        document.getElementById('contactInfo').value = program.contact_info || '';
+        
+        document.getElementById('programModal').classList.add('active');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    // 保存院校项目
+    async function saveProgram() {
+      const id = document.getElementById('programId').value;
+      const data = {
+        password: adminPassword,
+        major_id: parseInt(document.getElementById('programMajorId').value),
+        school_name: document.getElementById('schoolName').value,
+        school_level: document.getElementById('schoolLevel').value,
+        location: document.getElementById('location').value,
+        program_features: document.getElementById('programFeatures').value,
+        courses: document.getElementById('courses').value,
+        admission_requirements: document.getElementById('admissionRequirements').value,
+        tuition_fee: document.getElementById('tuitionFee').value,
+        scholarships: document.getElementById('scholarships').value,
+        contact_info: document.getElementById('contactInfo').value
+      };
+      
+      if (!data.school_name) {
+        showToast('请输入院校名称', 'error');
+        return;
+      }
+      
+      try {
+        const url = id ? API_BASE + '/admin/programs/' + id : API_BASE + '/admin/programs';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast(id ? '更新成功' : '添加成功', 'success');
+          closeModal('programModal');
+          loadPrograms();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('操作失败', 'error');
+      }
+    }
+
+    // 删除院校项目
+    async function deleteProgram(id) {
+      if (!confirm('确定要删除这个开设院校吗？')) return;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/programs/' + id, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast('删除成功', 'success');
+          loadPrograms();
+        } else if (result.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(result.msg || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('删除失败', 'error');
+      }
+    }
+
+    // 关闭弹窗
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    // 显示提示
+    function showToast(msg, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast ' + type + ' show';
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // 点击弹窗外部关闭
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.remove('active');
+      });
+    });
+
+    // 回车登录
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>

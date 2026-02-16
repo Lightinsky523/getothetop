@@ -267,6 +267,13 @@
         margin-top: 4px;
       }
 
+      .loading {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-soft);
+        grid-column: 1 / -1;
+      }
+
       @media (max-width: 900px) {
         .app-shell {
           border-radius: 24px;
@@ -316,65 +323,7 @@
           </div>
 
           <div class="major-grid" id="major-grid">
-            <div class="major-card" onclick="showMajorDetail('计算机科学与技术')">
-              <h3>计算机科学与技术</h3>
-              <p>研究计算机系统、软件设计与开发，涵盖人工智能、大数据、网络安全等前沿领域。</p>
-              <div class="major-tags">
-                <span class="tag">热门</span>
-                <span class="tag">高薪</span>
-                <span class="tag">创新</span>
-              </div>
-            </div>
-
-            <div class="major-card" onclick="showMajorDetail('临床医学')">
-              <h3>临床医学</h3>
-              <p>培养具备基础医学和临床医学知识的医疗人才，从事疾病诊断、治疗和预防工作。</p>
-              <div class="major-tags">
-                <span class="tag">稳定</span>
-                <span class="tag">社会需求大</span>
-                <span class="tag">长学制</span>
-              </div>
-            </div>
-
-            <div class="major-card" onclick="showMajorDetail('金融学')">
-              <h3>金融学</h3>
-              <p>研究资金融通、投资决策和风险管理，涵盖银行、证券、保险等金融领域。</p>
-              <div class="major-tags">
-                <span class="tag">商科</span>
-                <span class="tag">城市导向</span>
-                <span class="tag">竞争激烈</span>
-              </div>
-            </div>
-
-            <div class="major-card" onclick="showMajorDetail('电子信息工程')">
-              <h3>电子信息工程</h3>
-              <p>研究电子系统、通信技术和信息处理，涉及芯片设计、物联网、5G通信等。</p>
-              <div class="major-tags">
-                <span class="tag">工科</span>
-                <span class="tag">技术驱动</span>
-                <span class="tag">产业需求</span>
-              </div>
-            </div>
-
-            <div class="major-card" onclick="showMajorDetail('法学')">
-              <h3>法学</h3>
-              <p>培养法律专业人才，从事律师、法官、检察官、企业法务等法律相关工作。</p>
-              <div class="major-tags">
-                <span class="tag">文科</span>
-                <span class="tag">考证导向</span>
-                <span class="tag">逻辑思维</span>
-              </div>
-            </div>
-
-            <div class="major-card" onclick="showMajorDetail('机械工程')">
-              <h3>机械工程</h3>
-              <p>研究机械设计、制造和自动化，涉及智能制造、机器人、汽车工程等方向。</p>
-              <div class="major-tags">
-                <span class="tag">传统工科</span>
-                <span class="tag">制造业</span>
-                <span class="tag">实践性强</span>
-              </div>
-            </div>
+            <div class="loading" id="loading">正在加载专业数据...</div>
           </div>
 
           <div class="news-section">
@@ -403,21 +352,100 @@
     </div>
 
     <script>
-      function searchMajor() {
-        const keyword = document.getElementById('major-search').value.trim();
-        if (keyword) {
-          alert('搜索功能演示：搜索 "' + keyword + '"\n\n实际应用中将连接后端数据库进行搜索。');
+      const API_BASE = '';
+      let allMajors = [];
+
+      // 加载专业列表
+      async function loadMajors() {
+        try {
+          const res = await fetch(API_BASE + '/api/majors');
+          const data = await res.json();
+          if (data.code === 200) {
+            allMajors = data.data;
+            renderMajors(allMajors);
+          } else {
+            document.getElementById('major-grid').innerHTML = '<div class="loading">暂无专业数据，请前往管理后台添加</div>';
+          }
+        } catch (err) {
+          document.getElementById('major-grid').innerHTML = '<div class="loading">加载失败，请稍后重试</div>';
         }
       }
 
-      function showMajorDetail(majorName) {
-        alert('查看专业详情：' + majorName + '\n\n实际应用中将显示该专业的详细介绍、课程设置、就业前景等信息。');
+      // 渲染专业列表
+      function renderMajors(majors) {
+        const grid = document.getElementById('major-grid');
+        if (majors.length === 0) {
+          grid.innerHTML = '<div class="loading">暂无专业数据，请前往管理后台添加</div>';
+          return;
+        }
+        
+        grid.innerHTML = majors.map(m => `
+          <div class="major-card" onclick="showMajorDetail(${m.id})">
+            <h3>${m.major_name}</h3>
+            <p>${m.description ? m.description.substring(0, 80) + '...' : '暂无简介'}</p>
+            <div class="major-tags">
+              ${m.category ? `<span class="tag">${m.category}</span>` : ''}
+              ${m.degree_type ? `<span class="tag">${m.degree_type}</span>` : ''}
+              ${m.duration ? `<span class="tag">${m.duration}</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function searchMajor() {
+        const keyword = document.getElementById('major-search').value.trim().toLowerCase();
+        if (!keyword) {
+          renderMajors(allMajors);
+          return;
+        }
+        
+        const filtered = allMajors.filter(m => 
+          m.major_name.toLowerCase().includes(keyword) ||
+          (m.category && m.category.toLowerCase().includes(keyword))
+        );
+        renderMajors(filtered);
+      }
+
+      async function showMajorDetail(majorId) {
+        try {
+          const res = await fetch(API_BASE + '/api/majors/' + majorId);
+          const data = await res.json();
+          if (data.code === 200) {
+            const m = data.data;
+            const programs = m.programs || [];
+            let programsInfo = '';
+            if (programs.length > 0) {
+              programsInfo = '\n\n开设院校：\n' + programs.slice(0, 5).map(p => `• ${p.school_name} (${p.school_level || '普通本科'})`).join('\n');
+            }
+            
+            alert(`专业详情：${m.major_name}
+
+专业代码：${m.major_code || '暂无'}
+所属类别：${m.category || '暂无'}
+学位类型：${m.degree_type || '暂无'}
+学制：${m.duration || '暂无'}
+
+专业简介：
+${m.description || '暂无简介'}
+
+核心课程：
+${m.core_courses || '暂无'}
+
+就业前景：
+${m.career_prospects || '暂无'}${programsInfo}`);
+          }
+        } catch (err) {
+          alert('加载详情失败');
+        }
       }
 
       // 回车搜索
       document.getElementById('major-search').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') searchMajor();
       });
+
+      // 页面加载时获取数据
+      loadMajors();
     </script>
   </body>
 </html>

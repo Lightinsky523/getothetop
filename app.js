@@ -291,6 +291,233 @@ app.get('/get-student-shares', (req, res) => {
   });
 });
 
+// ********** 专业概览管理功能 **********
+
+// 创建专业概览表
+db.run(`CREATE TABLE IF NOT EXISTS major_overviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  major_code TEXT UNIQUE,
+  major_name TEXT NOT NULL,
+  category TEXT,
+  degree_type TEXT,
+  duration TEXT,
+  description TEXT,
+  core_courses TEXT,
+  career_prospects TEXT,
+  related_majors TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`, (err) => {
+  if (err) {
+    console.error("创建专业概览表失败:", err);
+  } else {
+    console.log("✅ 专业概览表初始化成功！");
+  }
+});
+
+// 创建开设院校表
+db.run(`CREATE TABLE IF NOT EXISTS school_programs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  major_id INTEGER,
+  school_name TEXT NOT NULL,
+  school_level TEXT,
+  location TEXT,
+  program_features TEXT,
+  courses TEXT,
+  admission_requirements TEXT,
+  tuition_fee TEXT,
+  scholarships TEXT,
+  contact_info TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (major_id) REFERENCES major_overviews(id)
+)`, (err) => {
+  if (err) {
+    console.error("创建开设院校表失败:", err);
+  } else {
+    console.log("✅ 开设院校表初始化成功！");
+  }
+});
+
+// 管理员验证中间件
+const ADMIN_PASSWORD = 'a~a~ycyzword+';
+function verifyAdmin(req, res, next) {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    res.send({ code: 403, msg: "密码错误，无权限访问" });
+    return;
+  }
+  next();
+}
+
+// 获取所有专业概览
+app.get('/admin/majors', (req, res) => {
+  const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("获取专业列表失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 添加专业
+app.post('/admin/majors', verifyAdmin, (req, res) => {
+  const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
+  
+  const sql = `INSERT INTO major_overviews (major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors], function(err) {
+    if (err) {
+      console.error("添加专业失败:", err);
+      res.send({ code: 500, msg: "添加失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "添加成功", id: this.lastID });
+  });
+});
+
+// 更新专业
+app.put('/admin/majors/:id', verifyAdmin, (req, res) => {
+  const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
+  const id = req.params.id;
+  
+  const sql = `UPDATE major_overviews SET major_code = ?, major_name = ?, category = ?, degree_type = ?, duration = ?, description = ?, core_courses = ?, career_prospects = ?, related_majors = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  db.run(sql, [major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors, id], function(err) {
+    if (err) {
+      console.error("更新专业失败:", err);
+      res.send({ code: 500, msg: "更新失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "更新成功" });
+  });
+});
+
+// 删除专业
+app.delete('/admin/majors/:id', verifyAdmin, (req, res) => {
+  const { password } = req.body;
+  const id = req.params.id;
+  
+  const sql = `DELETE FROM major_overviews WHERE id = ?`;
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error("删除专业失败:", err);
+      res.send({ code: 500, msg: "删除失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "删除成功" });
+  });
+});
+
+// 获取某专业的开设院校
+app.get('/admin/majors/:id/programs', (req, res) => {
+  const majorId = req.params.id;
+  const sql = `SELECT * FROM school_programs WHERE major_id = ? ORDER BY school_name`;
+  db.all(sql, [majorId], (err, rows) => {
+    if (err) {
+      console.error("获取开设院校失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 添加开设院校
+app.post('/admin/programs', verifyAdmin, (req, res) => {
+  const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
+  
+  const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info], function(err) {
+    if (err) {
+      console.error("添加开设院校失败:", err);
+      res.send({ code: 500, msg: "添加失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "添加成功", id: this.lastID });
+  });
+});
+
+// 更新开设院校
+app.put('/admin/programs/:id', verifyAdmin, (req, res) => {
+  const { password, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
+  const id = req.params.id;
+  
+  const sql = `UPDATE school_programs SET school_name = ?, school_level = ?, location = ?, program_features = ?, courses = ?, admission_requirements = ?, tuition_fee = ?, scholarships = ?, contact_info = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  db.run(sql, [school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info, id], function(err) {
+    if (err) {
+      console.error("更新开设院校失败:", err);
+      res.send({ code: 500, msg: "更新失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "更新成功" });
+  });
+});
+
+// 删除开设院校
+app.delete('/admin/programs/:id', verifyAdmin, (req, res) => {
+  const { password } = req.body;
+  const id = req.params.id;
+  
+  const sql = `DELETE FROM school_programs WHERE id = ?`;
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error("删除开设院校失败:", err);
+      res.send({ code: 500, msg: "删除失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "删除成功" });
+  });
+});
+
+// 公开API：获取所有专业概览（用于前端展示）
+app.get('/api/majors', (req, res) => {
+  const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("获取专业列表失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 公开API：获取某专业详情及开设院校
+app.get('/api/majors/:id', (req, res) => {
+  const majorId = req.params.id;
+  
+  db.get(`SELECT * FROM major_overviews WHERE id = ?`, [majorId], (err, major) => {
+    if (err || !major) {
+      res.send({ code: 404, msg: "专业不存在" });
+      return;
+    }
+    
+    db.all(`SELECT * FROM school_programs WHERE major_id = ? ORDER BY school_name`, [majorId], (err, programs) => {
+      if (err) {
+        res.send({ code: 500, msg: "获取失败" });
+        return;
+      }
+      res.send({ code: 200, data: { ...major, programs } });
+    });
+  });
+});
+
+// 公开API：按专业搜索
+app.get('/api/majors/search', (req, res) => {
+  const { keyword } = req.query;
+  const sql = `SELECT * FROM major_overviews WHERE major_name LIKE ? OR category LIKE ? ORDER BY major_name`;
+  db.all(sql, [`%${keyword}%`, `%${keyword}%`], (err, rows) => {
+    if (err) {
+      console.error("搜索专业失败:", err);
+      res.send({ code: 500, msg: "搜索失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
 // 启动服务，监听 0.0.0.0:7860
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);

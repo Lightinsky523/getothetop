@@ -284,6 +284,12 @@
         color: var(--text);
       }
 
+      .loading {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-soft);
+      }
+
       @media (max-width: 900px) {
         .app-shell {
           border-radius: 24px;
@@ -350,144 +356,133 @@
             <button class="primary-btn" onclick="searchSchools()">搜索</button>
           </div>
 
+          <div class="major-select-section" style="margin-bottom: 20px;">
+            <label style="font-size: 14px; color: var(--text-soft); margin-bottom: 8px; display: block;">选择专业查看开设院校</label>
+            <select class="select" id="major-select" style="width: 100%; max-width: 400px;" onchange="loadPrograms()">
+              <option value="">请先选择专业</option>
+            </select>
+          </div>
+
           <div class="school-list" id="school-list">
-            <div class="school-card">
-              <div class="school-header">
-                <h3 class="school-name">清华大学 - 计算机科学与技术</h3>
-                <div class="school-tags">
-                  <span class="tag highlight">985</span>
-                  <span class="tag">双一流</span>
-                </div>
-              </div>
-              <div class="school-info">
-                北京市 | 工科试验班（信息类）招生 | 学制4年
-              </div>
-              <div class="curriculum-section">
-                <div class="curriculum-title">核心课程</div>
-                <div class="course-list">
-                  <span class="course-tag">数据结构与算法</span>
-                  <span class="course-tag">计算机组成原理</span>
-                  <span class="course-tag">操作系统</span>
-                  <span class="course-tag">计算机网络</span>
-                  <span class="course-tag">人工智能导论</span>
-                  <span class="course-tag">机器学习</span>
-                  <span class="course-tag">软件工程</span>
-                  <span class="course-tag">数据库系统</span>
-                </div>
-              </div>
-              <div class="divider"></div>
-              <div class="stream-info">
-                <strong>大类分流：</strong>大一统一学习信息类基础课程，大二根据兴趣分流至计算机、软件工程、自动化等专业方向。
-              </div>
-            </div>
-
-            <div class="school-card">
-              <div class="school-header">
-                <h3 class="school-name">北京大学 - 临床医学（八年制）</h3>
-                <div class="school-tags">
-                  <span class="tag highlight">985</span>
-                  <span class="tag">本博连读</span>
-                </div>
-              </div>
-              <div class="school-info">
-                北京市 | 医学部招生 | 学制8年
-              </div>
-              <div class="curriculum-section">
-                <div class="curriculum-title">培养阶段</div>
-                <div class="course-list">
-                  <span class="course-tag">基础医学（2年）</span>
-                  <span class="course-tag">临床医学（3年）</span>
-                  <span class="course-tag">临床实习（2年）</span>
-                  <span class="course-tag">科研训练（1年）</span>
-                </div>
-              </div>
-              <div class="divider"></div>
-              <div class="stream-info">
-                <strong>专业方向：</strong>内科、外科、妇产科、儿科、神经内科、神经外科等，第6年根据兴趣选择专科方向。
-              </div>
-            </div>
-
-            <div class="school-card">
-              <div class="school-header">
-                <h3 class="school-name">浙江大学 - 金融学</h3>
-                <div class="school-tags">
-                  <span class="tag highlight">985</span>
-                  <span class="tag">双一流</span>
-                  <span class="tag">C9</span>
-                </div>
-              </div>
-              <div class="school-info">
-                浙江省杭州市 | 社会科学试验班招生 | 学制4年
-              </div>
-              <div class="curriculum-section">
-                <div class="curriculum-title">核心课程</div>
-                <div class="course-list">
-                  <span class="course-tag">微观经济学</span>
-                  <span class="course-tag">宏观经济学</span>
-                  <span class="course-tag">货币银行学</span>
-                  <span class="course-tag">国际金融</span>
-                  <span class="course-tag">投资学</span>
-                  <span class="course-tag">公司金融</span>
-                  <span class="course-tag">金融工程</span>
-                  <span class="course-tag">计量经济学</span>
-                </div>
-              </div>
-              <div class="divider"></div>
-              <div class="stream-info">
-                <strong>专业分流：</strong>大一社会科学试验班统一培养，大二分流至经济学、金融学、财政学、国际经济与贸易等专业。
-              </div>
-            </div>
-
-            <div class="school-card">
-              <div class="school-header">
-                <h3 class="school-name">华中科技大学 - 机械工程</h3>
-                <div class="school-tags">
-                  <span class="tag highlight">985</span>
-                  <span class="tag">双一流</span>
-                  <span class="tag">A+学科</span>
-                </div>
-              </div>
-              <div class="school-info">
-                湖北省武汉市 | 机械类招生 | 学制4年
-              </div>
-              <div class="curriculum-section">
-                <div class="curriculum-title">核心课程</div>
-                <div class="course-list">
-                  <span class="course-tag">机械原理</span>
-                  <span class="course-tag">机械设计</span>
-                  <span class="course-tag">控制工程基础</span>
-                  <span class="course-tag">制造技术基础</span>
-                  <span class="course-tag">CAD/CAM</span>
-                  <span class="course-tag">机器人技术</span>
-                  <span class="course-tag">智能制造</span>
-                </div>
-              </div>
-              <div class="divider"></div>
-              <div class="stream-info">
-                <strong>专业方向：</strong>机械设计制造及其自动化、机械电子工程、智能制造工程、工业工程等方向。
-              </div>
-            </div>
+            <div class="loading" id="loading">请选择专业查看开设院校</div>
           </div>
         </div>
       </div>
     </div>
 
     <script>
+      const API_BASE = '';
+
+      // 加载专业列表到下拉框
+      async function loadMajorOptions() {
+        try {
+          const res = await fetch(API_BASE + '/api/majors');
+          const data = await res.json();
+          if (data.code === 200) {
+            const select = document.getElementById('major-select');
+            data.data.forEach(m => {
+              const option = document.createElement('option');
+              option.value = m.id;
+              option.textContent = m.major_name;
+              select.appendChild(option);
+            });
+          }
+        } catch (err) {
+          console.error('加载专业列表失败:', err);
+        }
+      }
+
+      // 加载选中专业的开设院校
+      async function loadPrograms() {
+        const majorId = document.getElementById('major-select').value;
+        const list = document.getElementById('school-list');
+        
+        if (!majorId) {
+          list.innerHTML = '<div class="loading">请选择专业查看开设院校</div>';
+          return;
+        }
+        
+        list.innerHTML = '<div class="loading">正在加载...</div>';
+        
+        try {
+          const res = await fetch(API_BASE + '/api/majors/' + majorId);
+          const data = await res.json();
+          if (data.code === 200) {
+            const major = data.data;
+            const programs = major.programs || [];
+            
+            if (programs.length === 0) {
+              list.innerHTML = '<div class="loading">该专业暂无开设院校数据，请前往管理后台添加</div>';
+              return;
+            }
+            
+            list.innerHTML = programs.map(p => `
+              <div class="school-card">
+                <div class="school-header">
+                  <h3 class="school-name">${p.school_name} - ${major.major_name}</h3>
+                  <div class="school-tags">
+                    ${p.school_level ? `<span class="tag highlight">${p.school_level}</span>` : ''}
+                  </div>
+                </div>
+                <div class="school-info">
+                  ${p.location || '暂无位置信息'} | ${p.tuition_fee || '学费信息暂无'}
+                </div>
+                ${p.program_features ? `
+                <div class="curriculum-section">
+                  <div class="curriculum-title">专业特色</div>
+                  <p style="margin: 0; font-size: 13px; color: var(--text-soft);">${p.program_features}</p>
+                </div>
+                ` : ''}
+                ${p.courses ? `
+                <div class="curriculum-section">
+                  <div class="curriculum-title">开设课程</div>
+                  <div class="course-list">
+                    ${p.courses.split(/[,，]/).map(c => `<span class="course-tag">${c.trim()}</span>`).join('')}
+                  </div>
+                </div>
+                ` : ''}
+                ${p.admission_requirements ? `
+                <div class="divider"></div>
+                <div class="stream-info">
+                  <strong>招生要求：</strong>${p.admission_requirements}
+                </div>
+                ` : ''}
+                ${p.scholarships ? `
+                <div class="stream-info">
+                  <strong>奖学金：</strong>${p.scholarships}
+                </div>
+                ` : ''}
+                ${p.contact_info ? `
+                <div class="stream-info">
+                  <strong>联系方式：</strong>${p.contact_info}
+                </div>
+                ` : ''}
+              </div>
+            `).join('');
+          }
+        } catch (err) {
+          list.innerHTML = '<div class="loading">加载失败，请稍后重试</div>';
+        }
+      }
+
       function searchSchools() {
         const keyword = document.getElementById('school-search').value.trim();
         const major = document.getElementById('major-filter').value;
         const level = document.getElementById('level-filter').value;
         
-        alert('搜索条件：\n关键词：' + (keyword || '无') + 
+        alert('搜索功能：\n关键词：' + (keyword || '无') + 
               '\n专业：' + (major || '全部') + 
               '\n层次：' + (level || '全部') + 
-              '\n\n实际应用中将根据条件筛选院校。');
+              '\n\n请使用上方"选择专业"下拉框查看具体专业的开设院校。');
       }
 
       // 回车搜索
       document.getElementById('school-search').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') searchSchools();
       });
+
+      // 页面加载时获取专业列表
+      loadMajorOptions();
     </script>
   </body>
 </html>

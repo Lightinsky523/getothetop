@@ -47,44 +47,6 @@
         overflow: hidden;
       }
 
-      /* 全局导航栏 */
-      .global-nav {
-        background: #f0ede8;
-        border-radius: var(--radius);
-        padding: 4px;
-        margin-bottom: 20px;
-      }
-
-      .global-nav-inner {
-        display: flex;
-        gap: 2px;
-      }
-
-      .global-nav-item {
-        flex: 1;
-        text-align: center;
-        padding: 10px 16px;
-        border-radius: 6px;
-        font-size: 14px;
-        color: var(--text-soft);
-        text-decoration: none;
-        transition: all 0.15s;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-      }
-
-      .global-nav-item:hover {
-        color: var(--text);
-      }
-
-      .global-nav-item.active {
-        background: #fffef9;
-        color: var(--text);
-        box-shadow: var(--shadow);
-        font-weight: 500;
-      }
-
       .app-shell::before,
       .app-shell::after {
         content: "";
@@ -109,6 +71,21 @@
         .app-inner {
           grid-template-columns: minmax(0, 1fr);
         }
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .nav-tabs {
+          width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .nav-tab {
+          white-space: nowrap;
+          padding: 8px 12px;
+          font-size: 13px;
+        }
       }
 
       .header {
@@ -117,6 +94,34 @@
         justify-content: space-between;
         margin-bottom: 20px;
         gap: 16px;
+      }
+
+      .nav-tabs {
+        display: flex;
+        gap: 2px;
+        padding: 4px;
+        background: #f0ede8;
+        border-radius: var(--radius);
+      }
+
+      .nav-tab {
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        color: var(--text-soft);
+        text-decoration: none;
+        transition: all 0.15s;
+      }
+
+      .nav-tab:hover {
+        color: var(--text);
+      }
+
+      .nav-tab.active {
+        background: #fffef9;
+        color: var(--text);
+        box-shadow: var(--shadow);
+        font-weight: 500;
       }
 
       .brand {
@@ -149,66 +154,6 @@
         margin: 4px 0 0;
         font-size: 14px;
         color: var(--text-soft);
-      }
-
-      .badge,
-      .badge-secondary {
-        padding: 4px 8px;
-        border-radius: 4px;
-        border: 1px solid var(--border-subtle);
-        background: #f5f4f0;
-        color: var(--text-soft);
-        font-size: 11px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        white-space: nowrap;
-      }
-
-      .badge-secondary {
-        padding: 3px 7px;
-        font-size: 10px;
-        border-style: dashed;
-        background: #faf9f5;
-      }
-
-      .dot {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--text-soft);
-      }
-
-      .tabs {
-        display: inline-flex;
-        gap: 2px;
-        padding: 2px;
-        background: #f0ede8;
-        border-radius: var(--radius);
-      }
-
-      .tab {
-        border: none;
-        background: transparent;
-        color: var(--text-soft);
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-size: 12px;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: background 0.15s;
-      }
-
-      .tab span.icon { display: none; }
-
-      .tab:hover { color: var(--text); }
-
-      .tab.active {
-        background: #fffef9;
-        color: var(--text);
-        box-shadow: var(--shadow);
       }
 
       .column {
@@ -672,39 +617,24 @@
   </head>
   <body>
     <div class="app-shell">
-      <!-- 全局导航栏 -->
-      <nav class="global-nav">
-        <div class="global-nav-inner">
-          <a href="index.html" class="global-nav-item active">志愿填报</a>
-          <a href="major-overview.html" class="global-nav-item">专业概览</a>
-          <a href="major-schools.html" class="global-nav-item">开设院校</a>
-          <a href="major-students.html" class="global-nav-item">学生分享</a>
-        </div>
-      </nav>
-
       <div class="app-inner">
         <!-- 左侧：综合查询 -->
         <section class="column" id="ai-column">
           <div class="column-inner">
             <header class="header">
               <div class="brand">
-                <div class="logo">志</div>
+                <a href="index.html" class="logo" style="text-decoration: none;">志</a>
                 <div class="title-block">
                   <h1>志愿填报参考</h1>
                   <p>招生信息 + 在读分享，一站式查</p>
                 </div>
               </div>
-              <div>
-                <div class="badge">
-                  <span class="dot"></span>
-                  试用
-                </div>
-                <div class="tabs" aria-label="切换">
-                  <button class="tab active" data-tab="ai">查询</button>
-                  <button class="tab" data-tab="upload">我的信息</button>
-                  <button class="tab" data-tab="share">在读分享</button>
-                </div>
-              </div>
+              <nav class="nav-tabs">
+                <a href="index.html" class="nav-tab active">志愿填报</a>
+                <a href="major-overview.html" class="nav-tab">专业概览</a>
+                <a href="major-schools.html" class="nav-tab">开设院校</a>
+                <a href="major-students.html" class="nav-tab">学生分享</a>
+              </nav>
             </header>
 
             <div id="ai-panel">
@@ -1072,28 +1002,6 @@
     <script>
       // 后端 API 地址：使用相对路径，自动适配当前域名和端口
       const API_BASE = "";
-
-      // Tab 切换（左侧只是视觉模式切换，功能本身都在）
-      const tabButtons = document.querySelectorAll(".tab");
-      const aiPanel = document.getElementById("ai-panel");
-      const aiColumn = document.getElementById("ai-column");
-
-      tabButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          tabButtons.forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-
-          const tab = btn.getAttribute("data-tab");
-          if (tab === "ai") {
-            aiColumn.scrollIntoView({ behavior: "smooth", block: "start" });
-          } else {
-            // 滚动到右侧信息上传区域
-            document
-              .querySelectorAll(".column")[1]
-              .scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        });
-      });
 
       // 查询模块：综合查询 + 选科查询
       const aiInput = document.getElementById("ai-input");
