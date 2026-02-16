@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>开设院校 - 志愿填报参考</title>
+    <style>
+      :root {
+        --bg: #f8f7f4;
+        --bg-elevated: #ffffff;
+        --accent: #1a1a1a;
+        --accent-muted: #4a5568;
+        --text: #1a1a1a;
+        --text-soft: #5f6b7a;
+        --border-subtle: #e2e4e8;
+        --error: #c53030;
+        --radius: 8px;
+        --radius-lg: 12px;
+        --shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+        color: var(--text);
+        background: #f0ede8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+      }
+
+      .app-shell {
+        width: 100%;
+        max-width: 1400px;
+        background: #fffef9;
+        border-radius: var(--radius-lg);
+        padding: 36px 32px;
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .app-inner {
+        position: relative;
+        z-index: 1;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .logo {
+        width: 42px;
+        height: 42px;
+        border-radius: var(--radius);
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fffef9;
+        font-weight: 600;
+        font-size: 18px;
+        text-decoration: none;
+      }
+
+      .title-block h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .title-block p {
+        margin: 4px 0 0;
+        font-size: 14px;
+        color: var(--text-soft);
+      }
+
+      .nav-tabs {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        background: #f0ede8;
+        border-radius: var(--radius);
+      }
+
+      .nav-tab {
+        border: none;
+        background: transparent;
+        color: var(--text-soft);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+
+      .nav-tab:hover { color: var(--text); }
+
+      .nav-tab.active {
+        background: #fffef9;
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+
+      .main-content {
+        background: #fffef9;
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        border: 1px solid var(--border-subtle);
+      }
+
+      .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .section-title .icon-pill {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        background: var(--accent);
+        color: #fffef9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+      }
+
+      .section-desc {
+        margin: 4px 0 20px;
+        font-size: 13px;
+        color: var(--text-soft);
+      }
+
+      .search-filters {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      .input, .select {
+        border-radius: var(--radius);
+        border: 1px solid var(--border-subtle);
+        background: #fff;
+        padding: 11px 12px;
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+      }
+
+      .input:focus, .select:focus { border-color: var(--accent); }
+
+      .input { flex: 1; min-width: 200px; }
+      .select { min-width: 150px; }
+
+      .primary-btn {
+        border: 1px solid var(--accent);
+        border-radius: var(--radius);
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fffef9;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .school-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .school-card {
+        background: #f8f7f4;
+        border-radius: var(--radius);
+        padding: 20px;
+        border: 1px solid var(--border-subtle);
+      }
+
+      .school-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+      }
+
+      .school-name {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .school-tags {
+        display: flex;
+        gap: 6px;
+      }
+
+      .tag {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--border-subtle);
+        color: var(--text-soft);
+        background: #fff;
+      }
+
+      .tag.highlight {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+
+      .school-info {
+        font-size: 13px;
+        color: var(--text-soft);
+        margin-bottom: 16px;
+      }
+
+      .curriculum-section {
+        background: #fff;
+        border-radius: var(--radius);
+        padding: 12px;
+        margin-top: 12px;
+      }
+
+      .curriculum-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+      }
+
+      .course-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .course-tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #f0ede8;
+        color: var(--text-soft);
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--border-subtle);
+        margin: 12px 0;
+      }
+
+      .stream-info {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .stream-info strong {
+        color: var(--text);
+      }
+
+      @media (max-width: 900px) {
+        .app-shell {
+          border-radius: 24px;
+          padding: 20px 16px;
+        }
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .search-filters {
+          flex-direction: column;
+        }
+        .input, .select {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="app-inner">
+        <header class="header">
+          <div class="brand">
+            <a href="index.html" class="logo">志</a>
+            <div class="title-block">
+              <h1>开设院校</h1>
+              <p>院校培养计划与课程设置</p>
+            </div>
+          </div>
+          <nav class="nav-tabs">
+            <a href="index.html" class="nav-tab">志愿填报</a>
+            <a href="major-overview.html" class="nav-tab">专业概览</a>
+            <a href="major-schools.html" class="nav-tab active">开设院校</a>
+            <a href="major-students.html" class="nav-tab">学生分享</a>
+          </nav>
+        </header>
+
+        <div class="main-content">
+          <div class="section-title">
+            <span class="icon-pill">校</span>
+            开设院校教学信息
+          </div>
+          <p class="section-desc">
+            了解各院校的专业培养计划、课程设置和大类分流情况，帮助你做出更明智的选择。
+          </p>
+
+          <div class="search-filters">
+            <input type="text" class="input" id="school-search" placeholder="搜索院校或专业..." />
+            <select class="select" id="major-filter">
+              <option value="">全部专业</option>
+              <option value="cs">计算机类</option>
+              <option value="medicine">医学类</option>
+              <option value="finance">金融经济类</option>
+              <option value="engineering">工科类</option>
+              <option value="arts">人文社科类</option>
+            </select>
+            <select class="select" id="level-filter">
+              <option value="">全部层次</option>
+              <option value="985">985高校</option>
+              <option value="211">211高校</option>
+              <option value="double-first">双一流</option>
+              <option value="province">省属重点</option>
+            </select>
+            <button class="primary-btn" onclick="searchSchools()">搜索</button>
+          </div>
+
+          <div class="school-list" id="school-list">
+            <div class="school-card">
+              <div class="school-header">
+                <h3 class="school-name">清华大学 - 计算机科学与技术</h3>
+                <div class="school-tags">
+                  <span class="tag highlight">985</span>
+                  <span class="tag">双一流</span>
+                </div>
+              </div>
+              <div class="school-info">
+                北京市 | 工科试验班（信息类）招生 | 学制4年
+              </div>
+              <div class="curriculum-section">
+                <div class="curriculum-title">核心课程</div>
+                <div class="course-list">
+                  <span class="course-tag">数据结构与算法</span>
+                  <span class="course-tag">计算机组成原理</span>
+                  <span class="course-tag">操作系统</span>
+                  <span class="course-tag">计算机网络</span>
+                  <span class="course-tag">人工智能导论</span>
+                  <span class="course-tag">机器学习</span>
+                  <span class="course-tag">软件工程</span>
+                  <span class="course-tag">数据库系统</span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="stream-info">
+                <strong>大类分流：</strong>大一统一学习信息类基础课程，大二根据兴趣分流至计算机、软件工程、自动化等专业方向。
+              </div>
+            </div>
+
+            <div class="school-card">
+              <div class="school-header">
+                <h3 class="school-name">北京大学 - 临床医学（八年制）</h3>
+                <div class="school-tags">
+                  <span class="tag highlight">985</span>
+                  <span class="tag">本博连读</span>
+                </div>
+              </div>
+              <div class="school-info">
+                北京市 | 医学部招生 | 学制8年
+              </div>
+              <div class="curriculum-section">
+                <div class="curriculum-title">培养阶段</div>
+                <div class="course-list">
+                  <span class="course-tag">基础医学（2年）</span>
+                  <span class="course-tag">临床医学（3年）</span>
+                  <span class="course-tag">临床实习（2年）</span>
+                  <span class="course-tag">科研训练（1年）</span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="stream-info">
+                <strong>专业方向：</strong>内科、外科、妇产科、儿科、神经内科、神经外科等，第6年根据兴趣选择专科方向。
+              </div>
+            </div>
+
+            <div class="school-card">
+              <div class="school-header">
+                <h3 class="school-name">浙江大学 - 金融学</h3>
+                <div class="school-tags">
+                  <span class="tag highlight">985</span>
+                  <span class="tag">双一流</span>
+                  <span class="tag">C9</span>
+                </div>
+              </div>
+              <div class="school-info">
+                浙江省杭州市 | 社会科学试验班招生 | 学制4年
+              </div>
+              <div class="curriculum-section">
+                <div class="curriculum-title">核心课程</div>
+                <div class="course-list">
+                  <span class="course-tag">微观经济学</span>
+                  <span class="course-tag">宏观经济学</span>
+                  <span class="course-tag">货币银行学</span>
+                  <span class="course-tag">国际金融</span>
+                  <span class="course-tag">投资学</span>
+                  <span class="course-tag">公司金融</span>
+                  <span class="course-tag">金融工程</span>
+                  <span class="course-tag">计量经济学</span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="stream-info">
+                <strong>专业分流：</strong>大一社会科学试验班统一培养，大二分流至经济学、金融学、财政学、国际经济与贸易等专业。
+              </div>
+            </div>
+
+            <div class="school-card">
+              <div class="school-header">
+                <h3 class="school-name">华中科技大学 - 机械工程</h3>
+                <div class="school-tags">
+                  <span class="tag highlight">985</span>
+                  <span class="tag">双一流</span>
+                  <span class="tag">A+学科</span>
+                </div>
+              </div>
+              <div class="school-info">
+                湖北省武汉市 | 机械类招生 | 学制4年
+              </div>
+              <div class="curriculum-section">
+                <div class="curriculum-title">核心课程</div>
+                <div class="course-list">
+                  <span class="course-tag">机械原理</span>
+                  <span class="course-tag">机械设计</span>
+                  <span class="course-tag">控制工程基础</span>
+                  <span class="course-tag">制造技术基础</span>
+                  <span class="course-tag">CAD/CAM</span>
+                  <span class="course-tag">机器人技术</span>
+                  <span class="course-tag">智能制造</span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="stream-info">
+                <strong>专业方向：</strong>机械设计制造及其自动化、机械电子工程、智能制造工程、工业工程等方向。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function searchSchools() {
+        const keyword = document.getElementById('school-search').value.trim();
+        const major = document.getElementById('major-filter').value;
+        const level = document.getElementById('level-filter').value;
+        
+        alert('搜索条件：\n关键词：' + (keyword || '无') + 
+              '\n专业：' + (major || '全部') + 
+              '\n层次：' + (level || '全部') + 
+              '\n\n实际应用中将根据条件筛选院校。');
+      }
+
+      // 回车搜索
+      document.getElementById('school-search').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') searchSchools();
+      });
+    </script>
+  </body>
+</html>

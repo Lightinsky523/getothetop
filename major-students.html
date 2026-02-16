@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>学生分享 - 志愿填报参考</title>
+    <style>
+      :root {
+        --bg: #f8f7f4;
+        --bg-elevated: #ffffff;
+        --accent: #1a1a1a;
+        --accent-muted: #4a5568;
+        --text: #1a1a1a;
+        --text-soft: #5f6b7a;
+        --border-subtle: #e2e4e8;
+        --error: #c53030;
+        --radius: 8px;
+        --radius-lg: 12px;
+        --shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+        color: var(--text);
+        background: #f0ede8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+      }
+
+      .app-shell {
+        width: 100%;
+        max-width: 1400px;
+        background: #fffef9;
+        border-radius: var(--radius-lg);
+        padding: 36px 32px;
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .app-inner {
+        position: relative;
+        z-index: 1;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .logo {
+        width: 42px;
+        height: 42px;
+        border-radius: var(--radius);
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fffef9;
+        font-weight: 600;
+        font-size: 18px;
+        text-decoration: none;
+      }
+
+      .title-block h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .title-block p {
+        margin: 4px 0 0;
+        font-size: 14px;
+        color: var(--text-soft);
+      }
+
+      .nav-tabs {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        background: #f0ede8;
+        border-radius: var(--radius);
+      }
+
+      .nav-tab {
+        border: none;
+        background: transparent;
+        color: var(--text-soft);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+
+      .nav-tab:hover { color: var(--text); }
+
+      .nav-tab.active {
+        background: #fffef9;
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+
+      .main-content {
+        background: #fffef9;
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        border: 1px solid var(--border-subtle);
+      }
+
+      .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .section-title .icon-pill {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        background: var(--accent);
+        color: #fffef9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+      }
+
+      .section-desc {
+        margin: 4px 0 20px;
+        font-size: 13px;
+        color: var(--text-soft);
+      }
+
+      .filter-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      .input, .select {
+        border-radius: var(--radius);
+        border: 1px solid var(--border-subtle);
+        background: #fff;
+        padding: 11px 12px;
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+      }
+
+      .input:focus, .select:focus { border-color: var(--accent); }
+
+      .input { flex: 1; min-width: 200px; }
+      .select { min-width: 150px; }
+
+      .primary-btn {
+        border: 1px solid var(--accent);
+        border-radius: var(--radius);
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fffef9;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .share-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 20px;
+      }
+
+      .share-card {
+        background: #f8f7f4;
+        border-radius: var(--radius);
+        padding: 20px;
+        border: 1px solid var(--border-subtle);
+        transition: all 0.2s;
+      }
+
+      .share-card:hover {
+        border-color: var(--accent);
+        box-shadow: var(--shadow);
+      }
+
+      .share-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+      }
+
+      .author-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .author-meta h4 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .author-meta p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .achievement-badge {
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .share-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0 0 10px 0;
+        color: var(--text);
+      }
+
+      .share-content {
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--text-soft);
+        margin-bottom: 12px;
+      }
+
+      .share-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .tag {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--border-subtle);
+        color: var(--text-soft);
+        background: #fff;
+      }
+
+      .share-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .achievements-section {
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 2px solid var(--border-subtle);
+      }
+
+      .achievement-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .achievement-card {
+        background: linear-gradient(135deg, #fef9e7 0%, #fff 100%);
+        border-radius: var(--radius);
+        padding: 16px;
+        border: 1px solid #fcd34d;
+      }
+
+      .achievement-card h4 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .achievement-card p {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .achievement-card .author {
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--text-soft);
+      }
+
+      @media (max-width: 900px) {
+        .app-shell {
+          border-radius: 24px;
+          padding: 20px 16px;
+        }
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .share-grid {
+          grid-template-columns: 1fr;
+        }
+        .filter-bar {
+          flex-direction: column;
+        }
+        .input, .select {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="app-inner">
+        <header class="header">
+          <div class="brand">
+            <a href="index.html" class="logo">志</a>
+            <div class="title-block">
+              <h1>学生分享</h1>
+              <p>学长学姐的真实经历</p>
+            </div>
+          </div>
+          <nav class="nav-tabs">
+            <a href="index.html" class="nav-tab">志愿填报</a>
+            <a href="major-overview.html" class="nav-tab">专业概览</a>
+            <a href="major-schools.html" class="nav-tab">开设院校</a>
+            <a href="major-students.html" class="nav-tab active">学生分享</a>
+          </nav>
+        </header>
+
+        <div class="main-content">
+          <div class="section-title">
+            <span class="icon-pill">享</span>
+            学生分享
+          </div>
+          <p class="section-desc">
+            阅读在读学生的长篇分享，了解他们的学习经历、成长故事和取得的成就。
+          </p>
+
+          <div class="filter-bar">
+            <input type="text" class="input" id="share-search" placeholder="搜索专业、学校或关键词..." />
+            <select class="select" id="major-filter">
+              <option value="">全部专业</option>
+              <option value="cs">计算机类</option>
+              <option value="medicine">医学类</option>
+              <option value="finance">金融类</option>
+              <option value="engineering">工程类</option>
+            </select>
+            <button class="primary-btn" onclick="searchShares()">筛选</button>
+          </div>
+
+          <div class="share-grid" id="share-grid">
+            <div class="share-card">
+              <div class="share-header">
+                <div class="author-info">
+                  <div class="avatar">李</div>
+                  <div class="author-meta">
+                    <h4>李明</h4>
+                    <p>清华大学 · 计算机系 · 研二</p>
+                  </div>
+                </div>
+                <span class="achievement-badge">ACM金牌</span>
+              </div>
+              <h3 class="share-title">从编程小白到ACM金牌：我的计算机学习之路</h3>
+              <div class="share-content">
+                大一入学时我连Hello World都写不明白，但通过系统的学习和不懈的努力，我逐渐找到了编程的乐趣。大一下学期加入ACM集训队，经历了无数个刷题的日夜...
+              </div>
+              <div class="share-tags">
+                <span class="tag">竞赛经历</span>
+                <span class="tag">学习方法</span>
+                <span class="tag">成长心得</span>
+              </div>
+              <div class="share-footer">
+                <span>阅读全文</span>
+                <span>2024-12-10</span>
+              </div>
+            </div>
+
+            <div class="share-card">
+              <div class="share-header">
+                <div class="author-info">
+                  <div class="avatar">王</div>
+                  <div class="author-meta">
+                    <h4>王芳</h4>
+                    <p>北京大学 · 临床医学 · 博一</p>
+                  </div>
+                </div>
+                <span class="achievement-badge">国家奖学金</span>
+              </div>
+              <h3 class="share-title">八年制医学生的成长：从迷茫到坚定的选择</h3>
+              <div class="share-content">
+                选择医学是一个漫长的过程。大一大二的基础医学课程让我一度怀疑自己是否适合这个专业，直到进入临床实习，第一次独立问诊，那种帮助患者的成就感让我坚定了从医的决心...
+              </div>
+              <div class="share-tags">
+                <span class="tag">医学生活</span>
+                <span class="tag">心路历程</span>
+                <span class="tag">临床实习</span>
+              </div>
+              <div class="share-footer">
+                <span>阅读全文</span>
+                <span>2024-12-08</span>
+              </div>
+            </div>
+
+            <div class="share-card">
+              <div class="share-header">
+                <div class="author-info">
+                  <div class="avatar">张</div>
+                  <div class="author-meta">
+                    <h4>张伟</h4>
+                    <p>浙江大学 · 金融学 · 大四</p>
+                  </div>
+                </div>
+                <span class="achievement-badge">投行实习</span>
+              </div>
+              <h3 class="share-title">金融专业的四年：从课堂到华尔街的实习经历</h3>
+              <div class="share-content">
+                金融专业不只是学理论，更重要的是实践。我从大二开始就在券商实习，经历了行研、投行等多个岗位，最终拿到了心仪的外资投行offer。想分享一些实习申请和职业准备的经验...
+              </div>
+              <div class="share-tags">
+                <span class="tag">实习经验</span>
+                <span class="tag">职业规划</span>
+                <span class="tag">求职技巧</span>
+              </div>
+              <div class="share-footer">
+                <span>阅读全文</span>
+                <span>2024-12-05</span>
+              </div>
+            </div>
+
+            <div class="share-card">
+              <div class="share-header">
+                <div class="author-info">
+                  <div class="avatar">陈</div>
+                  <div class="author-meta">
+                    <h4>陈静</h4>
+                    <p>中国美院 · 视觉传达 · 大三</p>
+                  </div>
+                </div>
+                <span class="achievement-badge">红点奖</span>
+              </div>
+              <h3 class="share-title">设计之路：从临摹到原创，我如何获得红点设计奖</h3>
+              <div class="share-content">
+                设计专业需要大量的练习和积累。我从大一开始每天坚持 sketch，参加各种设计比赛锻炼自己。大二时的一个课程作业被导师推荐参加红点奖评选，没想到真的获奖了...
+              </div>
+              <div class="share-tags">
+                <span class="tag">设计创作</span>
+                <span class="tag">获奖经历</span>
+                <span class="tag">作品集</span>
+              </div>
+              <div class="share-footer">
+                <span>阅读全文</span>
+                <span>2024-12-01</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="achievements-section">
+            <div class="section-title">
+              <span class="icon-pill">荣</span>
+              学生成就展示
+            </div>
+            <div class="achievement-grid">
+              <div class="achievement-card">
+                <h4>国际数学建模竞赛特等奖</h4>
+                <p>团队开发的疫情预测模型获得国际认可，论文被SCI期刊收录。</p>
+                <div class="author">—— 刘洋，复旦大学数学系</div>
+              </div>
+              <div class="achievement-card">
+                <h4>全国大学生创业大赛金奖</h4>
+                <p>创立的校园二手书平台获得百万天使投资，服务超过50所高校。</p>
+                <div class="author">—— 赵雪，浙江大学管理学院</div>
+              </div>
+              <div class="achievement-card">
+                <h4>国际基因工程机器大赛金牌</h4>
+                <p>合成生物学项目获得iGEM金牌，研究成果应用于环境治理。</p>
+                <div class="author">—— 孙涛，清华大学生命学院</div>
+              </div>
+              <div class="achievement-card">
+                <h4>全国大学生机器人大赛冠军</h4>
+                <p>自主研发的格斗机器人在全国大赛中击败强敌，获得冠军。</p>
+                <div class="author">—— 周杰，哈工大机电工程学院</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function searchShares() {
+        const keyword = document.getElementById('share-search').value.trim();
+        const major = document.getElementById('major-filter').value;
+        
+        alert('筛选条件：\n关键词：' + (keyword || '无') + 
+              '\n专业：' + (major || '全部') + 
+              '\n\n实际应用中将根据条件筛选分享内容。');
+      }
+
+      // 回车搜索
+      document.getElementById('share-search').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') searchShares();
+      });
+    </script>
+  </body>
+</html>
