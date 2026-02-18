@@ -288,14 +288,67 @@
     }
 
     .news-item {
-      padding: 12px 0; border-bottom: 1px solid var(--border-subtle);
+      padding: 16px; border-bottom: 1px solid var(--border-subtle);
+      background: #fff; border-radius: var(--radius);
+      margin-bottom: 12px; cursor: pointer;
+      transition: all 0.2s; border: 1px solid var(--border-subtle);
     }
 
-    .news-item:last-child { border-bottom: none; }
+    .news-item:hover {
+      border-color: var(--accent);
+      box-shadow: var(--shadow);
+    }
 
-    .news-item h4 { margin: 0 0 6px 0; font-size: 14px; font-weight: 500; }
-    .news-item p { margin: 0; font-size: 12px; color: var(--text-soft); }
-    .news-date { font-size: 11px; color: var(--text-soft); margin-top: 4px; }
+    .news-item:last-child { border-bottom: 1px solid var(--border-subtle); }
+
+    .news-item h4 { margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: var(--text); }
+    .news-item p { margin: 0; font-size: 13px; color: var(--text-soft); line-height: 1.6; }
+    .news-date { font-size: 11px; color: var(--text-soft); margin-top: 8px; }
+    .news-source { font-size: 11px; color: var(--accent-muted); margin-top: 4px; }
+
+    /* 新闻详情弹窗 */
+    .news-modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center;
+    }
+
+    .news-modal.show { display: flex; }
+
+    .news-modal-content {
+      background: #fffef9; border-radius: var(--radius-lg);
+      padding: 28px; width: 90%; max-width: 600px;
+      max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .news-modal-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 16px; padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .news-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
+
+    .news-modal-close {
+      background: none; border: none; font-size: 24px; cursor: pointer;
+      color: var(--text-soft); padding: 0; width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .news-modal-close:hover { color: var(--text); }
+
+    .news-modal-body {
+      font-size: 14px; line-height: 1.8; color: var(--text-soft);
+    }
+
+    .news-modal-body p { margin-bottom: 12px; }
+
+    .news-modal-footer {
+      margin-top: 20px; padding-top: 16px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 12px; color: var(--text-soft);
+      display: flex; justify-content: space-between;
+    }
 
     .loading {
       text-align: center; padding: 60px 20px; color: var(--text-soft);
@@ -453,23 +506,26 @@
             专业动态与趣闻
           </div>
           <div id="news-list">
-            <div class="news-item">
-              <h4>人工智能专业持续火热，多所高校新增相关学院</h4>
-              <p>随着AI技术的快速发展，越来越多的高校设立人工智能学院，培养AI领域专业人才。</p>
-              <div class="news-date">2024-12-15</div>
-            </div>
-            <div class="news-item">
-              <h4>新能源科学与工程专业受关注，碳中和目标推动人才需求</h4>
-              <p>在双碳目标背景下，新能源相关专业成为新宠，就业市场前景广阔。</p>
-              <div class="news-date">2024-12-10</div>
-            </div>
-            <div class="news-item">
-              <h4>交叉学科兴起：生物信息学、计算神经科学等新兴专业</h4>
-              <p>学科交叉融合成为趋势，新兴交叉学科培养复合型人才。</p>
-              <div class="news-date">2024-12-05</div>
-            </div>
+            <!-- 动态加载 -->
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新闻详情弹窗 -->
+  <div class="news-modal" id="news-modal" onclick="closeNewsModal(event)">
+    <div class="news-modal-content" onclick="event.stopPropagation()">
+      <div class="news-modal-header">
+        <h3 id="news-modal-title">新闻标题</h3>
+        <button class="news-modal-close" onclick="closeNewsModal()">&times;</button>
+      </div>
+      <div class="news-modal-body" id="news-modal-body">
+        <!-- 动态内容 -->
+      </div>
+      <div class="news-modal-footer">
+        <span id="news-modal-source">来源：教育部</span>
+        <span id="news-modal-date">2024-12-15</span>
       </div>
     </div>
   </div>
@@ -764,10 +820,98 @@
       document.getElementById('major-overview').style.display = 'none';
     }
 
+    // ========== 专业动态与趣闻功能 ==========
+    let newsData = [];
+
+    // 加载新闻列表
+    async function loadNews() {
+      try {
+        const res = await fetch(API_BASE + '/api/news');
+        const data = await res.json();
+        
+        if (data.code === 200 && data.data.length > 0) {
+          newsData = data.data;
+        } else {
+          // 使用默认新闻数据
+          newsData = [
+            {
+              id: 1,
+              title: '人工智能专业持续火热，多所高校新增相关学院',
+              summary: '随着AI技术的快速发展，越来越多的高校设立人工智能学院，培养AI领域专业人才。',
+              content: '<p>随着AI技术的快速发展，越来越多的高校设立人工智能学院，培养AI领域专业人才。</p><p>近年来，人工智能技术在各行各业得到广泛应用，从自动驾驶到医疗诊断，从金融风控到教育个性化，AI正在深刻改变着我们的生活。</p><p>为满足社会对AI人才的迫切需求，清华大学、北京大学、浙江大学等顶尖高校纷纷设立人工智能学院或研究院，开设人工智能本科专业，培养具备扎实理论基础和实践能力的AI人才。</p><p>据统计，目前已有超过300所高校开设了人工智能相关专业，预计未来5年内，AI领域人才缺口将达到500万。</p>',
+              source: '教育部',
+              publish_date: '2024-12-15'
+            },
+            {
+              id: 2,
+              title: '新能源科学与工程专业受关注，碳中和目标推动人才需求',
+              summary: '在双碳目标背景下，新能源相关专业成为新宠，就业市场前景广阔。',
+              content: '<p>在双碳目标背景下，新能源相关专业成为新宠，就业市场前景广阔。</p><p>随着全球气候变化问题日益严峻，各国纷纷提出碳中和目标。中国承诺在2030年前实现碳达峰，2060年前实现碳中和。这一宏伟目标的实现离不开新能源技术的突破和新能源人才的培养。</p><p>新能源科学与工程专业涵盖太阳能、风能、生物质能、氢能等多个方向，培养学生掌握新能源转换与利用的基本理论和技能。</p><p>毕业生可在新能源企业、电力公司、科研院所等单位从事技术研发、工程设计、项目管理等工作，就业前景十分广阔。</p>',
+              source: '中国能源报',
+              publish_date: '2024-12-10'
+            },
+            {
+              id: 3,
+              title: '交叉学科兴起：生物信息学、计算神经科学等新兴专业',
+              summary: '学科交叉融合成为趋势，新兴交叉学科培养复合型人才。',
+              content: '<p>学科交叉融合成为趋势，新兴交叉学科培养复合型人才。</p><p>随着科学研究的深入，单一学科已难以解决复杂的科学问题。生物信息学、计算神经科学、环境经济学等交叉学科应运而生，成为高等教育的新热点。</p><p>生物信息学结合生物学、计算机科学和统计学，研究生物数据的获取、处理和分析；计算神经科学融合神经科学、认知科学和人工智能，探索大脑的工作原理。</p><p>这些交叉学科培养的学生具备多学科知识背景，能够应对复杂的研究挑战，在学术界和产业界都备受青睐。</p>',
+              source: '科学网',
+              publish_date: '2024-12-05'
+            }
+          ];
+        }
+        renderNews(newsData);
+      } catch (err) {
+        console.error('加载新闻失败:', err);
+        // 使用默认数据
+        renderNews(newsData);
+      }
+    }
+
+    // 渲染新闻列表
+    function renderNews(news) {
+      const list = document.getElementById('news-list');
+      
+      if (news.length === 0) {
+        list.innerHTML = '<div class="empty-state">暂无专业动态</div>';
+        return;
+      }
+      
+      list.innerHTML = news.map(item => `
+        <div class="news-item" onclick="showNewsDetail(${item.id})">
+          <h4>${item.title}</h4>
+          <p>${item.summary || item.content.substring(0, 100) + '...'}</p>
+          <div class="news-date">${item.publish_date || ''}</div>
+          ${item.source ? `<div class="news-source">来源：${item.source}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    // 显示新闻详情
+    function showNewsDetail(newsId) {
+      const item = newsData.find(n => n.id === newsId);
+      if (!item) return;
+      
+      document.getElementById('news-modal-title').textContent = item.title;
+      document.getElementById('news-modal-body').innerHTML = item.content || item.summary;
+      document.getElementById('news-modal-source').textContent = '来源：' + (item.source || '未知');
+      document.getElementById('news-modal-date').textContent = item.publish_date || '';
+      
+      document.getElementById('news-modal').classList.add('show');
+    }
+
+    // 关闭新闻弹窗
+    function closeNewsModal(event) {
+      if (!event || event.target.id === 'news-modal') {
+        document.getElementById('news-modal').classList.remove('show');
+      }
+    }
+
     // 页面加载
     window.onload = function() {
       loadMajors();
       loadSchools();
+      loadNews();
     };
   </script>
 </body>

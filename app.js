@@ -14,6 +14,11 @@ const AI_API_KEY = process.env.AI_KEY;
 const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
 const AI_MODEL = process.env.AI_MODEL || 'default';
 
+// 豆包AI配置 - 用于数据管理和院校信息检索
+const DOUBAO_API_KEY = process.env.DOUBAO_KEY;
+const DOUBAO_API_URL = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
+
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -764,7 +769,227 @@ app.post('/admin/school-programs', verifyAdmin, (req, res) => {
   });
 });
 
+// ========== 豆包AI数据管理功能 ==========
+
+// 调用豆包AI进行院校信息检索和整理
+async function callDoubaoAI(prompt, systemPrompt = '') {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    if (!DOUBAO_API_KEY) {
+      console.error("DOUBAO_KEY 环境变量未设置");
+      throw new Error("豆包AI密钥未配置");
+    }
+    
+    const response = await fetch(DOUBAO_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DOUBAO_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: DOUBAO_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt || '你是一个专业的教育数据管理助手，擅长整理和分析高校及专业信息。请根据用户提供的院校或专业名称，从官方网站检索相关信息并以结构化JSON格式返回。'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`豆包AI API错误: ${response.status}`, errorText);
+      throw new Error(`API错误: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return result.choices?.[0]?.message?.content || '';
+  } catch (error) {
+    console.error("调用豆包AI失败:", error);
+    throw error;
+  }
+}
+
+// 管理员：使用AI从院校官网检索并添加专业信息
+app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
+  const { password, school_name, major_name, major_id } = req.body;
+  
+  if (!school_name || !major_name) {
+    res.send({ code: 400, msg: "学校名称和专业名称为必填项" });
+    return;
+  }
+  
+  try {
+    // 构建AI提示词，要求从院校官网检索信息
+    const prompt = `请从${school_name}官方网站检索${major_name}专业的详细信息，并以JSON格式返回以下信息：
+{
+  "school_level": "院校层次（如：985、211、双一流等）",
+  "location": "院校所在城市",
+  "program_features": "该专业在该校的培养特色（200字以内）",
+  "courses": "主要课程，用逗号分隔",
+  "stream_division": "大类分流方案（如有）",
+  "admission_requirements": "招生要求",
+  "tuition_fee": "学费信息",
+  "scholarships": "奖学金信息",
+  "contact_info": "招生办联系方式"
+}
+
+请确保信息准确，如无法获取某项信息，对应字段返回空字符串。`;
+
+    const aiResponse = await callDoubaoAI(prompt);
+    
+    // 解析AI返回的JSON
+    let programData;
+    try {
+      // 尝试从AI响应中提取JSON
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        programData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("无法解析AI返回的数据");
+      }
+    } catch (parseErr) {
+      console.error("解析AI返回数据失败:", parseErr);
+      res.send({ code: 500, msg: "AI返回数据解析失败，请手动添加" });
+      return;
+    }
+    
+    // 插入数据库
+    const sql = `INSERT INTO school_major_programs 
+      (school_name, major_id, major_name, program_features, courses, stream_division, 
+       admission_requirements, tuition_fee, scholarships, contact_info) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    
+    db.run(sql, [
+      school_name,
+      major_id || null,
+      major_name,
+      programData.program_features || '',
+      programData.courses || '',
+      programData.stream_division || '',
+      programData.admission_requirements || '',
+      programData.tuition_fee || '',
+      programData.scholarships || '',
+      programData.contact_info || ''
+    ], function(err) {
+      if (err) {
+        console.error("添加专业项目失败:", err);
+        res.send({ code: 500, msg: "添加失败: " + err.message });
+        return;
+      }
+      
+      // 同时添加学校信息（如果不存在）
+      const schoolSql = `INSERT OR IGNORE INTO schools (school_name, school_level, location) VALUES (?, ?, ?)`;
+      db.run(schoolSql, [school_name, programData.school_level || '', programData.location || '']);
+      
+      res.send({ 
+        code: 200, 
+        msg: "AI检索并添加成功", 
+        id: this.lastID,
+        data: programData
+      });
+    });
+    
+  } catch (err) {
+    console.error("AI添加失败:", err);
+    res.send({ code: 500, msg: "AI检索失败: " + err.message });
+  }
+});
+
+// 管理员：批量AI添加多个专业
+app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
+  const { password, school_name, majors } = req.body;
+  
+  if (!school_name || !majors || !Array.isArray(majors)) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  
+  const results = [];
+  const errors = [];
+  
+  for (const major of majors) {
+    try {
+      const prompt = `请从${school_name}官方网站检索${major}专业的核心信息，以JSON格式返回：
+{
+  "program_features": "培养特色（150字以内）",
+  "courses": "主要课程，逗号分隔",
+  "tuition_fee": "学费"
+}`;
+
+      const aiResponse = await callDoubaoAI(prompt);
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        
+        await new Promise((resolve, reject) => {
+          const sql = `INSERT INTO school_major_programs 
+            (school_name, major_name, program_features, courses, tuition_fee) 
+            VALUES (?, ?, ?, ?, ?)`;
+          db.run(sql, [school_name, major, data.program_features || '', data.courses || '', data.tuition_fee || ''], 
+            function(err) {
+              if (err) reject(err);
+              else resolve(this.lastID);
+            }
+          );
+        });
+        
+        results.push({ major, status: 'success' });
+      }
+    } catch (err) {
+      errors.push({ major, error: err.message });
+    }
+  }
+  
+  res.send({
+    code: 200,
+    msg: `批量添加完成，成功${results.length}个，失败${errors.length}个`,
+    results,
+    errors
+  });
+});
+
+// ========== 专业动态新闻API ==========
+
+// 获取所有新闻
+app.get('/api/news', (req, res) => {
+  const sql = `SELECT * FROM major_news ORDER BY is_hot DESC, publish_date DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("获取新闻失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 获取单条新闻详情
+app.get('/api/news/:id', (req, res) => {
+  const newsId = req.params.id;
+  const sql = `SELECT * FROM major_news WHERE id = ?`;
+  db.get(sql, [newsId], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "新闻不存在" });
+      return;
+    }
+    res.send({ code: 200, data: row });
+  });
+});
+
 // 启动服务，监听 0.0.0.0:7860
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
+  console.log(`📊 数据目录: ${DATA_DIR}`);
+  console.log(`🤖 AI配置: ${AI_API_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 豆包AI: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
 });

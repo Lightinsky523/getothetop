@@ -408,6 +408,7 @@
         <button class="tab active" onclick="switchTab('majors')">专业概览管理</button>
         <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
+        <button class="tab" onclick="switchTab('ai')">🤖 AI数据管理</button>
       </div>
 
       <!-- 专业管理 -->
@@ -491,6 +492,51 @@
         </div>
         <div class="empty-state" id="newsEmpty" style="display: none;">
           <p>请选择专业或添加动态趣闻</p>
+        </div>
+      </div>
+
+      <!-- AI数据管理 -->
+      <div class="tab-content" id="aiTab">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 24px; color: white; margin-bottom: 24px;">
+          <h3 style="margin: 0 0 12px 0;">🤖 豆包AI数据管理助手</h3>
+          <p style="margin: 0; opacity: 0.9;">利用AI从各院校官网自动检索专业信息，快速完成数据录入</p>
+        </div>
+
+        <!-- AI单条添加 -->
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+          <h4 style="margin: 0 0 16px 0;">AI智能检索添加</h4>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>院校名称</label>
+              <input type="text" id="aiSchoolName" class="input" placeholder="如：清华大学" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>专业名称</label>
+              <input type="text" id="aiMajorName" class="input" placeholder="如：计算机科学与技术" />
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" onclick="aiAddProgram()">🤖 AI检索并添加</button>
+            <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">AI将从院校官网检索信息</span>
+          </div>
+          <div id="aiAddResult" style="margin-top: 16px; display: none;"></div>
+        </div>
+
+        <!-- AI批量添加 -->
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
+          <h4 style="margin: 0 0 16px 0;">AI批量添加</h4>
+          <div class="form-group">
+            <label>院校名称</label>
+            <input type="text" id="aiBatchSchool" class="input" placeholder="如：北京大学" />
+          </div>
+          <div class="form-group">
+            <label>专业列表（每行一个）</label>
+            <textarea id="aiBatchMajors" class="input" style="min-height: 120px;" placeholder="计算机科学与技术&#10;软件工程&#10;人工智能"></textarea>
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" onclick="aiBatchAdd()">🤖 批量AI检索添加</button>
+          </div>
+          <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
         </div>
       </div>
     </div>
@@ -1227,6 +1273,131 @@
         }
       } catch (err) {
         showToast('删除失败', 'error');
+      }
+    }
+
+    // ========== AI数据管理功能 ==========
+
+    // AI单条添加专业
+    async function aiAddProgram() {
+      const schoolName = document.getElementById('aiSchoolName').value.trim();
+      const majorName = document.getElementById('aiMajorName').value.trim();
+      
+      if (!schoolName || !majorName) {
+        showToast('请输入院校名称和专业名称', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('aiAddResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 AI正在检索院校官网信息，请稍候...</div>';
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-add-program', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password: adminPassword,
+            school_name: schoolName,
+            major_name: majorName
+          })
+        });
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          resultDiv.innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+              <strong>✅ AI检索添加成功！</strong><br>
+              <small>院校层次：${data.data.school_level || '未知'} | 位置：${data.data.location || '未知'}</small>
+            </div>
+          `;
+          document.getElementById('aiSchoolName').value = '';
+          document.getElementById('aiMajorName').value = '';
+          showToast('AI添加成功！', 'success');
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          resultDiv.innerHTML = `
+            <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+              <strong>❌ 添加失败</strong><br>
+              <small>${data.msg}</small>
+            </div>
+          `;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `
+          <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+            <strong>❌ 请求失败</strong><br>
+            <small>${err.message}</small>
+          </div>
+        `;
+      }
+    }
+
+    // AI批量添加
+    async function aiBatchAdd() {
+      const schoolName = document.getElementById('aiBatchSchool').value.trim();
+      const majorsText = document.getElementById('aiBatchMajors').value.trim();
+      
+      if (!schoolName || !majorsText) {
+        showToast('请输入院校名称和专业列表', 'error');
+        return;
+      }
+      
+      const majors = majorsText.split('\n').map(m => m.trim()).filter(m => m);
+      if (majors.length === 0) {
+        showToast('请输入至少一个专业', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('aiBatchResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `<div style="color: var(--text-soft);">🤖 正在批量检索 ${majors.length} 个专业，请稍候...</div>`;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-batch-add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password: adminPassword,
+            school_name: schoolName,
+            majors: majors
+          })
+        });
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          const successCount = data.results.length;
+          const failCount = data.errors.length;
+          resultDiv.innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+              <strong>✅ 批量添加完成</strong><br>
+              <small>成功：${successCount} 个 | 失败：${failCount} 个</small>
+              ${failCount > 0 ? '<br><small>失败项目：' + data.errors.map(e => e.major).join(', ') + '</small>' : ''}
+            </div>
+          `;
+          document.getElementById('aiBatchSchool').value = '';
+          document.getElementById('aiBatchMajors').value = '';
+          showToast(`批量添加完成！成功${successCount}个`, 'success');
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          resultDiv.innerHTML = `
+            <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+              <strong>❌ 批量添加失败</strong><br>
+              <small>${data.msg}</small>
+            </div>
+          `;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `
+          <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+            <strong>❌ 请求失败</strong><br>
+            <small>${err.message}</small>
+          </div>
+        `;
       }
     }
 

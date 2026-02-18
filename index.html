@@ -372,60 +372,6 @@
             <div class="tag-row" id="summary-tags"></div>
             <div class="pill-row" id="summary-pills"></div>
 
-            <div class="divider"></div>
-
-            <div class="section-title">
-              <span class="icon-pill">享</span>
-              在读分享
-            </div>
-            <div class="section-toggle">
-              <span class="helper-text">提交即展示</span>
-              <div class="pill-switch">
-                <button id="share-switch-fill" class="active" onclick="toggleShareMode('fill')">我要填写</button>
-                <button id="share-switch-view" onclick="toggleShareMode('view')">查看分享</button>
-              </div>
-            </div>
-
-            <div id="share-form-section" class="form-section active">
-              <div class="subgrid">
-                <div>
-                  <label class="field-label">学校</label>
-                  <input id="share-school" class="input" type="text" placeholder="如：浙江大学" />
-                </div>
-                <div>
-                  <label class="field-label">城市</label>
-                  <input id="share-city" class="input" type="text" placeholder="如：杭州" />
-                </div>
-              </div>
-              <div class="subgrid">
-                <div>
-                  <label class="field-label">专业</label>
-                  <input id="share-major" class="input" type="text" placeholder="如：计算机科学" />
-                </div>
-                <div>
-                  <label class="field-label">高考年份</label>
-                  <input id="share-year" class="input" type="number" placeholder="如：2023" />
-                </div>
-              </div>
-              <label class="field-label">真实体验 <span class="tip">宿舍、伙食、学业、就业等</span></label>
-              <textarea id="share-experience" class="textarea" style="min-height: 80px;" placeholder="分享你的真实体验..."></textarea>
-              <label class="field-label">关键词 <span class="tip">用逗号分隔</span></label>
-              <input id="share-label" class="input" type="text" placeholder="如：宿舍好, 食堂棒, 就业强" />
-              <div class="actions" style="margin-top: 12px;">
-                <button class="primary-btn" type="button" onclick="submitShare()">提交分享</button>
-              </div>
-            </div>
-
-            <div id="share-view-section" class="form-section">
-              <div class="table-wrapper">
-                <table class="shared-table">
-                  <thead>
-                    <tr><th>学校</th><th>专业</th><th>体验</th><th>标签</th></tr>
-                  </thead>
-                  <tbody id="share-list-body"></tbody>
-                </table>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -556,75 +502,6 @@
       
       if (score) pillsContainer.innerHTML += `<span class="pill">${score}分</span>`;
       if (city) pillsContainer.innerHTML += `<span class="pill">${city}</span>`;
-    }
-
-    function toggleShareMode(mode) {
-      document.getElementById('share-switch-fill').classList.toggle('active', mode === 'fill');
-      document.getElementById('share-switch-view').classList.toggle('active', mode === 'view');
-      document.getElementById('share-form-section').classList.toggle('active', mode === 'fill');
-      document.getElementById('share-view-section').classList.toggle('active', mode === 'view');
-      
-      if (mode === 'view') loadShares();
-    }
-
-    async function submitShare() {
-      const data = {
-        school: document.getElementById('share-school').value,
-        city: document.getElementById('share-city').value,
-        major: document.getElementById('share-major').value,
-        gaokao_year: document.getElementById('share-year').value,
-        experience: document.getElementById('share-experience').value,
-        label: document.getElementById('share-label').value
-      };
-      
-      if (!data.school || !data.experience) {
-        showToast('请填写学校和体验内容', 'error');
-        return;
-      }
-
-      try {
-        const res = await fetch(API_BASE + '/save-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        const result = await res.json();
-        if (result.code === 200) {
-          showToast('分享提交成功！', 'success');
-          document.getElementById('share-school').value = '';
-          document.getElementById('share-city').value = '';
-          document.getElementById('share-major').value = '';
-          document.getElementById('share-year').value = '';
-          document.getElementById('share-experience').value = '';
-          document.getElementById('share-label').value = '';
-        } else {
-          showToast('提交失败：' + result.msg, 'error');
-        }
-      } catch (err) {
-        showToast('网络错误，请稍后重试', 'error');
-      }
-    }
-
-    async function loadShares() {
-      try {
-        const res = await fetch(API_BASE + '/get-data');
-        const data = await res.json();
-        const tbody = document.getElementById('share-list-body');
-        if (data.code === 200 && data.data.length > 0) {
-          tbody.innerHTML = data.data.map(s => `
-            <tr>
-              <td>${s.school}${s.city ? '(' + s.city + ')' : ''}</td>
-              <td>${s.major || '-'}</td>
-              <td>${s.experience ? s.experience.substring(0, 30) + '...' : '-'}</td>
-              <td>${s.label || '-'}</td>
-            </tr>
-          `).join('');
-        } else {
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-soft);">暂无分享数据</td></tr>';
-        }
-      } catch (err) {
-        document.getElementById('share-list-body').innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--error);">加载失败</td></tr>';
-      }
     }
 
     function showToast(msg, type) {
