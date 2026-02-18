@@ -15,7 +15,7 @@ const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/wo
 const AI_MODEL = process.env.AI_MODEL || 'default';
 
 // 豆包AI配置 - 用于数据管理和院校信息检索
-const DOUBAO_API_KEY = process.env.DOUBAO_KEY;
+const DOUBAO_API_KEY = process.env.DOUBAO_KEY || '04ab8a51-281f-499f-b2a6-7c3782bb30ca';
 const DOUBAO_API_URL = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
 
@@ -818,7 +818,7 @@ async function callDoubaoAI(prompt, systemPrompt = '') {
   }
 }
 
-// 管理员：使用AI从院校官网检索并添加专业信息
+// 管理员：使用AI从院校官网检索并添加专业信息（写入 school_programs，便于管理后台列表显示）
 app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
   const { password, school_name, major_name, major_id } = req.body;
   
@@ -827,9 +827,23 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
     return;
   }
   
-  try {
-    // 构建AI提示词，要求从院校官网检索信息
-    const prompt = `请从${school_name}官方网站检索${major_name}专业的详细信息，并以JSON格式返回以下信息：
+  const resolveMajorId = (cb) => {
+    const mid = major_id ? parseInt(major_id, 10) : null;
+    if (mid) return cb(null, mid);
+    db.get('SELECT id FROM major_overviews WHERE major_name = ?', [major_name], (err, row) => {
+      if (err) return cb(err);
+      if (!row) return cb(new Error('请先在专业管理中添加该专业'));
+      cb(null, row.id);
+    });
+  };
+
+  resolveMajorId(async (err, resolvedMajorId) => {
+    if (err) {
+      res.send({ code: 400, msg: err.message });
+      return;
+    }
+    try {
+      const prompt = `请从${school_name}官方网站检索${major_name}专业的详细信息，并以JSON格式返回以下信息：
 {
   "school_level": "院校层次（如：985、211、双一流等）",
   "location": "院校所在城市",
@@ -844,67 +858,44 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
 
 请确保信息准确，如无法获取某项信息，对应字段返回空字符串。`;
 
-    const aiResponse = await callDoubaoAI(prompt);
-    
-    // 解析AI返回的JSON
-    let programData;
-    try {
-      // 尝试从AI响应中提取JSON
+      const aiResponse = await callDoubaoAI(prompt);
       const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        programData = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("无法解析AI返回的数据");
-      }
-    } catch (parseErr) {
-      console.error("解析AI返回数据失败:", parseErr);
-      res.send({ code: 500, msg: "AI返回数据解析失败，请手动添加" });
-      return;
-    }
-    
-    // 插入数据库
-    const sql = `INSERT INTO school_major_programs 
-      (school_name, major_id, major_name, program_features, courses, stream_division, 
-       admission_requirements, tuition_fee, scholarships, contact_info) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    
-    db.run(sql, [
-      school_name,
-      major_id || null,
-      major_name,
-      programData.program_features || '',
-      programData.courses || '',
-      programData.stream_division || '',
-      programData.admission_requirements || '',
-      programData.tuition_fee || '',
-      programData.scholarships || '',
-      programData.contact_info || ''
-    ], function(err) {
-      if (err) {
-        console.error("添加专业项目失败:", err);
-        res.send({ code: 500, msg: "添加失败: " + err.message });
+      if (!jsonMatch) {
+        res.send({ code: 500, msg: "AI返回数据解析失败，请手动添加" });
         return;
       }
-      
-      // 同时添加学校信息（如果不存在）
-      const schoolSql = `INSERT OR IGNORE INTO schools (school_name, school_level, location) VALUES (?, ?, ?)`;
-      db.run(schoolSql, [school_name, programData.school_level || '', programData.location || '']);
-      
-      res.send({ 
-        code: 200, 
-        msg: "AI检索并添加成功", 
-        id: this.lastID,
-        data: programData
+      const programData = JSON.parse(jsonMatch[0]);
+
+      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      db.run(sql, [
+        resolvedMajorId,
+        school_name,
+        programData.school_level || '',
+        programData.location || '',
+        programData.program_features || '',
+        programData.courses || '',
+        programData.admission_requirements || '',
+        programData.tuition_fee || '',
+        programData.scholarships || '',
+        programData.contact_info || ''
+      ], function(insertErr) {
+        if (insertErr) {
+          console.error("添加专业项目失败:", insertErr);
+          res.send({ code: 500, msg: "添加失败: " + insertErr.message });
+          return;
+        }
+        const schoolSql = `INSERT OR IGNORE INTO schools (school_name, school_level, location) VALUES (?, ?, ?)`;
+        db.run(schoolSql, [school_name, programData.school_level || '', programData.location || '']);
+        res.send({ code: 200, msg: "AI检索并添加成功", id: this.lastID, data: programData });
       });
-    });
-    
-  } catch (err) {
-    console.error("AI添加失败:", err);
-    res.send({ code: 500, msg: "AI检索失败: " + err.message });
-  }
+    } catch (e) {
+      console.error("AI添加失败:", e);
+      res.send({ code: 500, msg: "AI检索失败: " + e.message });
+    }
+  });
 });
 
-// 管理员：批量AI添加多个专业
+// 管理员：批量AI添加多个专业（写入 school_programs，便于管理后台列表显示）
 app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
   const { password, school_name, majors } = req.body;
   
@@ -916,10 +907,23 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
   const results = [];
   const errors = [];
   
+  const getMajorId = (majorName) => new Promise((resolve) => {
+    db.get('SELECT id FROM major_overviews WHERE major_name = ?', [majorName], (err, row) => {
+      if (err || !row) resolve(null); else resolve(row.id);
+    });
+  });
+
   for (const major of majors) {
     try {
+      const majorId = await getMajorId(major);
+      if (!majorId) {
+        errors.push({ major, error: '专业不存在，请先在专业管理中添加' });
+        continue;
+      }
       const prompt = `请从${school_name}官方网站检索${major}专业的核心信息，以JSON格式返回：
 {
+  "school_level": "院校层次",
+  "location": "所在城市",
   "program_features": "培养特色（150字以内）",
   "courses": "主要课程，逗号分隔",
   "tuition_fee": "学费"
@@ -930,20 +934,27 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
       
       if (jsonMatch) {
         const data = JSON.parse(jsonMatch[0]);
-        
         await new Promise((resolve, reject) => {
-          const sql = `INSERT INTO school_major_programs 
-            (school_name, major_name, program_features, courses, tuition_fee) 
-            VALUES (?, ?, ?, ?, ?)`;
-          db.run(sql, [school_name, major, data.program_features || '', data.courses || '', data.tuition_fee || ''], 
-            function(err) {
-              if (err) reject(err);
-              else resolve(this.lastID);
-            }
-          );
+          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+          db.run(sql, [
+            majorId,
+            school_name,
+            data.school_level || '',
+            data.location || '',
+            data.program_features || '',
+            data.courses || '',
+            '',
+            data.tuition_fee || '',
+            '',
+            ''
+          ], function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+          });
         });
-        
         results.push({ major, status: 'success' });
+      } else {
+        errors.push({ major, error: 'AI返回解析失败' });
       }
     } catch (err) {
       errors.push({ major, error: err.message });
@@ -956,6 +967,95 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
     results,
     errors
   });
+});
+
+// 管理员：仅提供学校名称，AI 自动检索并添加该校所有招生专业
+app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
+  const { password, school_name } = req.body;
+  
+  if (!school_name || !school_name.trim()) {
+    res.send({ code: 400, msg: "请填写学校名称" });
+    return;
+  }
+  
+  const name = school_name.trim();
+  const results = [];
+  const errors = [];
+  
+  try {
+    const listPrompt = `请列出「${name}」的本科招生专业列表。只返回一个 JSON 数组，格式为 ["专业名称1", "专业名称2", ...]，不要其他说明。`;
+    const listResponse = await callDoubaoAI(listPrompt, '你只输出一个 JSON 数组，不要 markdown 代码块包裹。');
+    let majorNames = [];
+    const arrMatch = listResponse.match(/\[[\s\S]*\]/);
+    if (arrMatch) {
+      try {
+        majorNames = JSON.parse(arrMatch[0]);
+        if (!Array.isArray(majorNames)) majorNames = [];
+      } catch (_) {}
+    }
+    if (majorNames.length === 0) {
+      res.send({ code: 500, msg: "未能解析到招生专业列表，请稍后重试或手动填写专业" });
+      return;
+    }
+
+    const getMajorId = (majorName) => new Promise((resolve) => {
+      db.get('SELECT id FROM major_overviews WHERE major_name = ?', [majorName], (err, row) => {
+        if (err || !row) resolve(null); else resolve(row.id);
+      });
+    });
+
+    for (const major of majorNames) {
+      const majorStr = String(major).trim();
+      if (!majorStr) continue;
+      try {
+        const majorId = await getMajorId(majorStr);
+        if (!majorId) {
+          errors.push({ major: majorStr, error: '专业未在系统中，请先在专业管理中添加' });
+          continue;
+        }
+        const prompt = `请从${name}官方网站检索「${majorStr}」专业的核心信息，以JSON格式返回：
+{"school_level":"院校层次","location":"所在城市","program_features":"培养特色（150字以内）","courses":"主要课程，逗号分隔","tuition_fee":"学费"}`;
+        const aiResponse = await callDoubaoAI(prompt);
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          errors.push({ major: majorStr, error: 'AI返回解析失败' });
+          continue;
+        }
+        const data = JSON.parse(jsonMatch[0]);
+        await new Promise((resolve, reject) => {
+          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+          db.run(sql, [
+            majorId,
+            name,
+            data.school_level || '',
+            data.location || '',
+            data.program_features || '',
+            data.courses || '',
+            '',
+            data.tuition_fee || '',
+            '',
+            ''
+          ], function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+          });
+        });
+        results.push({ major: majorStr, status: 'success' });
+      } catch (err) {
+        errors.push({ major: majorStr, error: err.message });
+      }
+    }
+
+    res.send({
+      code: 200,
+      msg: `已检索并添加完成，成功 ${results.length} 个，失败 ${errors.length} 个`,
+      results,
+      errors
+    });
+  } catch (err) {
+    console.error("AI 按学校添加所有专业失败:", err);
+    res.send({ code: 500, msg: "检索失败: " + err.message });
+  }
 });
 
 // ========== 专业动态新闻API ==========

@@ -19,6 +19,11 @@ models: #关联模型
 #   entry_file: app.py
 license: Apache License 2.0
 ---
+#### 魔搭创空间部署说明
+- 端口：7860（已暴露）
+- 数据目录：/home/user/app/data（已挂载卷）
+- 环境变量（可选）：`DOUBAO_KEY` 豆包 API Key（未设置时使用内置默认值）
+
 #### Clone with HTTP
 ```bash
  git clone https://www.modelscope.cn/studios/taoyao0498/Guidance_on_Application_and_streaming.git

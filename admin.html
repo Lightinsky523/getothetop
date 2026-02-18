@@ -502,6 +502,20 @@
           <p style="margin: 0; opacity: 0.9;">利用AI从各院校官网自动检索专业信息，快速完成数据录入</p>
         </div>
 
+        <!-- 仅填学校名：自动检索并添加该校所有招生专业 -->
+        <div style="background: #e8f4fd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+          <h4 style="margin: 0 0 16px 0;">按学校一键添加所有招生专业</h4>
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft);">仅填写学校名称，AI 将自动检索该校招生专业并逐个添加（专业需已在「专业管理」中存在）</p>
+          <div class="form-group">
+            <label>院校名称</label>
+            <input type="text" id="aiSchoolOnlyName" class="input" placeholder="如：清华大学" />
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" onclick="aiAddSchoolAllMajors()">🤖 仅按学校检索并添加所有专业</button>
+          </div>
+          <div id="aiSchoolOnlyResult" style="margin-top: 16px; display: none;"></div>
+        </div>
+
         <!-- AI单条添加 -->
         <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
           <h4 style="margin: 0 0 16px 0;">AI智能检索添加</h4>
@@ -1314,6 +1328,7 @@
           document.getElementById('aiSchoolName').value = '';
           document.getElementById('aiMajorName').value = '';
           showToast('AI添加成功！', 'success');
+          loadPrograms();
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
           location.reload();
@@ -1380,6 +1395,7 @@
           document.getElementById('aiBatchSchool').value = '';
           document.getElementById('aiBatchMajors').value = '';
           showToast(`批量添加完成！成功${successCount}个`, 'success');
+          loadPrograms();
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
           location.reload();
@@ -1396,6 +1412,54 @@
           <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
             <strong>❌ 请求失败</strong><br>
             <small>${err.message}</small>
+          </div>
+        `;
+      }
+    }
+
+    // 仅填学校名：AI 自动检索并添加该校所有招生专业
+    async function aiAddSchoolAllMajors() {
+      const schoolName = document.getElementById('aiSchoolOnlyName').value.trim();
+      if (!schoolName) {
+        showToast('请输入院校名称', 'error');
+        return;
+      }
+      const resultDiv = document.getElementById('aiSchoolOnlyResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 正在检索该校招生专业并逐个添加，请稍候...</div>';
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-add-school-all-majors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword, school_name: schoolName })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          const successCount = data.results.length;
+          const failCount = data.errors.length;
+          resultDiv.innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+              <strong>✅ ${data.msg}</strong>
+              ${failCount > 0 ? '<br><small>失败：' + data.errors.map(e => e.major + '(' + e.error + ')').join('；') + '</small>' : ''}
+            </div>
+          `;
+          document.getElementById('aiSchoolOnlyName').value = '';
+          showToast(`添加完成，成功 ${successCount} 个`, 'success');
+          loadPrograms();
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          resultDiv.innerHTML = `
+            <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+              <strong>❌ 失败</strong><br><small>${data.msg}</small>
+            </div>
+          `;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `
+          <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+            <strong>❌ 请求失败</strong><br><small>${err.message}</small>
           </div>
         `;
       }
