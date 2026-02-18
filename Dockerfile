@@ -1,7 +1,16 @@
-FROM node:18-alpine
+FROM modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/python:3.10
+
+# 安装 Node.js 18
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /home/user/app
 COPY ./ /home/user/app
-RUN npm install express sqlite3 cors node-fetch
+
+# 安装 Node.js 依赖
+RUN npm install
 
 # 创建数据目录并设置权限
 RUN mkdir -p /home/user/app/data && chmod 777 /home/user/app/data

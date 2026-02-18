@@ -65,13 +65,53 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       title TEXT,
       content TEXT,
       tags TEXT,
-      status TEXT DEFAULT 'pending',
+      images TEXT,
+      status TEXT DEFAULT 'approved',
       upload_time DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) {
-        console.error("创建学生分享表失败：", err);
+        console.error("创建学生分享表失败:", err);
       } else {
         console.log("✅ 学生分享表初始化成功！");
+      }
+    });
+    
+    // 创建学校信息表
+    db.run(`CREATE TABLE IF NOT EXISTS schools (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      school_name TEXT UNIQUE NOT NULL,
+      school_level TEXT,
+      location TEXT,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) {
+        console.error("创建学校表失败:", err);
+      } else {
+        console.log("✅ 学校表初始化成功！");
+      }
+    });
+    
+    // 创建学校专业关联表
+    db.run(`CREATE TABLE IF NOT EXISTS school_major_programs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      school_name TEXT NOT NULL,
+      major_id INTEGER,
+      major_name TEXT,
+      program_features TEXT,
+      courses TEXT,
+      stream_division TEXT,
+      admission_requirements TEXT,
+      tuition_fee TEXT,
+      scholarships TEXT,
+      contact_info TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (major_id) REFERENCES major_overviews(id)
+    )`, (err) => {
+      if (err) {
+        console.error("创建学校专业关联表失败:", err);
+      } else {
+        console.log("✅ 学校专业关联表初始化成功！");
       }
     });
   }
@@ -596,6 +636,131 @@ app.get('/api/majors/search', (req, res) => {
       return;
     }
     res.send({ code: 200, data: rows });
+  });
+});
+
+// ========== 新的学生分享 API ==========
+
+// 获取学生分享列表（支持搜索）
+app.get('/api/student-shares', (req, res) => {
+  const { school, major, keyword } = req.query;
+  let sql = `SELECT * FROM student_shares WHERE status = 'approved'`;
+  const params = [];
+  
+  if (school) {
+    sql += ` AND school = ?`;
+    params.push(school);
+  }
+  
+  if (major) {
+    sql += ` AND major = ?`;
+    params.push(major);
+  }
+  
+  if (keyword) {
+    sql += ` AND (title LIKE ? OR content LIKE ? OR tags LIKE ?)`;
+    params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+  }
+  
+  sql += ` ORDER BY upload_time DESC`;
+  
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error("获取学生分享失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 提交学生分享（带图片）
+app.post('/api/student-shares', (req, res) => {
+  const { school, major, grade, title, content, tags, images } = req.body;
+  
+  if (!school || !major || !title || !content) {
+    res.send({ code: 400, msg: "学校、专业、标题和内容为必填项" });
+    return;
+  }
+  
+  // 将图片数组转为逗号分隔的字符串
+  const imagesStr = images && Array.isArray(images) ? images.join(',') : '';
+  
+  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved')`;
+  db.run(sql, [school, major, grade || '未知年级', title, content, tags || '', imagesStr], function(err) {
+    if (err) {
+      console.error("保存学生分享失败:", err);
+      res.send({ code: 500, msg: "保存失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "分享提交成功！", id: this.lastID });
+  });
+});
+
+// ========== 学校相关 API ==========
+
+// 获取所有学校列表
+app.get('/api/schools', (req, res) => {
+  const sql = `SELECT * FROM schools ORDER BY school_name`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("获取学校列表失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 获取某学校的所有专业
+app.get('/api/schools/:schoolName/majors', (req, res) => {
+  const schoolName = req.params.schoolName;
+  const sql = `SELECT smp.*, mo.id as major_id, mo.major_name, mo.category, mo.degree_type 
+               FROM school_major_programs smp 
+               LEFT JOIN major_overviews mo ON smp.major_id = mo.id 
+               WHERE smp.school_name = ?`;
+  db.all(sql, [schoolName], (err, rows) => {
+    if (err) {
+      console.error("获取学校专业失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 管理员：添加学校
+app.post('/admin/schools', verifyAdmin, (req, res) => {
+  const { password, school_name, school_level, location, description } = req.body;
+  
+  const sql = `INSERT INTO schools (school_name, school_level, location, description) VALUES (?, ?, ?, ?)`;
+  db.run(sql, [school_name, school_level, location, description], function(err) {
+    if (err) {
+      console.error("添加学校失败:", err);
+      res.send({ code: 500, msg: "添加失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "添加成功", id: this.lastID });
+  });
+});
+
+// 管理员：添加学校专业项目
+app.post('/admin/school-programs', verifyAdmin, (req, res) => {
+  const { password, school_name, major_id, major_name, program_features, courses, stream_division, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
+  
+  if (!school_name || !major_id) {
+    res.send({ code: 400, msg: "学校名称和专业ID为必填项" });
+    return;
+  }
+  
+  const sql = `INSERT INTO school_major_programs (school_name, major_id, major_name, program_features, courses, stream_division, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [school_name, major_id, major_name, program_features, courses, stream_division, admission_requirements, tuition_fee, scholarships, contact_info], function(err) {
+    if (err) {
+      console.error("添加学校专业项目失败:", err);
+      res.send({ code: 500, msg: "添加失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "添加成功", id: this.lastID });
   });
 });
 
