@@ -81,11 +81,10 @@
     .nav-tab:hover { color: var(--text); }
     .nav-tab.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
 
-    .admin-link {
-      margin-left: 8px; padding: 6px 12px; background: var(--accent);
-      color: #fffef9; border-radius: 4px; font-size: 12px;
-      text-decoration: none; cursor: pointer;
+    .nav-tab.admin-link {
+      background: var(--accent); color: #fffef9; margin-left: 2px;
     }
+    .nav-tab.admin-link:hover { opacity: 0.9; }
 
     .main-content {
       background: #fffef9; border-radius: var(--radius-lg);
@@ -234,7 +233,7 @@
           <a href="index.html" class="nav-tab active">志愿填报</a>
           <a href="major-info.html" class="nav-tab">专业院校信息概览</a>
           <a href="student-shares.html" class="nav-tab">学生分享</a>
-          <a href="admin.html" class="admin-link" onclick="return checkAdminAccess()">管理者通道</a>
+          <a href="admin.html" class="nav-tab admin-link" onclick="return checkAdminAccess()">管理者通道</a>
         </nav>
       </header>
 

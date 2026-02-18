@@ -1320,15 +1320,25 @@
         const data = await res.json();
         
         if (data.code === 200) {
-          resultDiv.innerHTML = `
-            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
-              <strong>✅ AI检索添加成功！</strong><br>
-              <small>院校层次：${data.data.school_level || '未知'} | 位置：${data.data.location || '未知'}</small>
-            </div>
-          `;
-          document.getElementById('aiSchoolName').value = '';
-          document.getElementById('aiMajorName').value = '';
-          showToast('AI添加成功！', 'success');
+          if (data.skipped) {
+            resultDiv.innerHTML = `
+              <div style="background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px;">
+                <strong>⏭️ 已跳过</strong><br>
+                <small>该专业下该院校已录入，未重复添加</small>
+              </div>
+            `;
+            showToast('该院校该专业已录入，已跳过', 'success');
+          } else {
+            resultDiv.innerHTML = `
+              <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+                <strong>✅ AI检索添加成功！</strong><br>
+                <small>院校层次：${data.data.school_level || '未知'} | 位置：${data.data.location || '未知'}</small>
+              </div>
+            `;
+            document.getElementById('aiSchoolName').value = '';
+            document.getElementById('aiMajorName').value = '';
+            showToast('AI添加成功！', 'success');
+          }
           loadPrograms();
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
@@ -1384,18 +1394,19 @@
         const data = await res.json();
         
         if (data.code === 200) {
-          const successCount = data.results.length;
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const skippedCount = data.results.filter(r => r.status === 'skipped').length;
           const failCount = data.errors.length;
           resultDiv.innerHTML = `
             <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
               <strong>✅ 批量添加完成</strong><br>
-              <small>成功：${successCount} 个 | 失败：${failCount} 个</small>
+              <small>成功：${successCount} 个 | 已跳过（已录入）：${skippedCount} 个 | 失败：${failCount} 个</small>
               ${failCount > 0 ? '<br><small>失败项目：' + data.errors.map(e => e.major).join(', ') + '</small>' : ''}
             </div>
           `;
           document.getElementById('aiBatchSchool').value = '';
           document.getElementById('aiBatchMajors').value = '';
-          showToast(`批量添加完成！成功${successCount}个`, 'success');
+          showToast(`批量添加完成！成功${successCount}个，跳过${skippedCount}个`, 'success');
           loadPrograms();
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
@@ -1436,16 +1447,18 @@
         });
         const data = await res.json();
         if (data.code === 200) {
-          const successCount = data.results.length;
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const skippedCount = data.results.filter(r => r.status === 'skipped').length;
           const failCount = data.errors.length;
           resultDiv.innerHTML = `
             <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
-              <strong>✅ ${data.msg}</strong>
+              <strong>✅ ${data.msg}</strong><br>
+              <small>成功：${successCount} 个 | 已跳过：${skippedCount} 个 | 失败：${failCount} 个</small>
               ${failCount > 0 ? '<br><small>失败：' + data.errors.map(e => e.major + '(' + e.error + ')').join('；') + '</small>' : ''}
             </div>
           `;
           document.getElementById('aiSchoolOnlyName').value = '';
-          showToast(`添加完成，成功 ${successCount} 个`, 'success');
+          showToast(`添加完成，成功 ${successCount} 个，跳过 ${skippedCount} 个`, 'success');
           loadPrograms();
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
