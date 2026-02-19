@@ -21,7 +21,7 @@ license: Apache License 2.0
 ---
 #### 魔搭创空间部署说明
 - 端口：7860（已暴露）
-- 数据目录：/home/user/app/data（已挂载卷）
+- 数据目录：/home/user/app/data（已挂载卷，**重启空间时卷会保留，已录入数据不会丢失**）
 - 环境变量（可选）：`DOUBAO_KEY` 豆包 API Key（未设置时使用内置默认值）
 
 #### Clone with HTTP
