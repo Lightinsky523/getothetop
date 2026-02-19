@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const app = express();
 
 // 从环境变量读取配置
@@ -1114,7 +1115,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   }
 });
 
-// 管理员：复制当前数据库到数据集目录（用于备份，后续需在终端 git push）
+// 管理员：一键复制数据库到数据集目录并自动 git push（无需找终端）
 app.post('/admin/backup-to-dataset', verifyAdmin, (req, res) => {
   const datasetPath = (req.body && req.body.dataset_path) ? String(req.body.dataset_path).trim() : (process.env.DATASET_PATH || '').trim();
   if (!datasetPath) {
@@ -1132,13 +1133,28 @@ app.post('/admin/backup-to-dataset', verifyAdmin, (req, res) => {
     }
     const destFile = path.join(resolved, 'study_experience.db');
     fs.copyFileSync(DB_PATH, destFile);
-    const gitCmd = `cd ${resolved} && git add . && git commit -m "backup" && git push`;
+
+    let pushOk = false;
+    let pushError = '';
+    try {
+      execSync(`cd "${resolved}" && git add . && git commit -m "backup" --allow-empty && git push`, {
+        timeout: 60000,
+        stdio: 'pipe',
+        encoding: 'utf8'
+      });
+      pushOk = true;
+    } catch (e) {
+      pushError = (e.stderr || e.stdout || e.message || String(e)).slice(0, 500);
+      console.error('git push 失败:', pushError);
+    }
+
     res.send({
       code: 200,
-      msg: '数据库已复制到数据集目录',
+      msg: pushOk ? '数据库已复制并已推送到数据集，一键存储完成。' : '数据库已复制到数据集目录，但自动推送失败（请确认该目录为已 clone 的数据集且可 push）。',
       path: resolved,
       file: destFile,
-      git_commands: gitCmd
+      push_ok: pushOk,
+      push_error: pushError || undefined
     });
   } catch (err) {
     console.error('备份到数据集失败:', err);

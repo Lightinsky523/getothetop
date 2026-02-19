@@ -559,23 +559,17 @@
       <!-- 数据备份到数据集 -->
       <div class="tab-content" id="backupTab">
         <div style="background: #e8f5e9; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-          <h3 style="margin: 0 0 12px 0;">📦 保存数据到魔搭数据集</h3>
-          <p style="margin: 0 0 8px 0; font-size: 14px;">将当前数据库（专业、院校、学生分享等）复制到您已 clone 的数据集目录，重启后可从数据集恢复。</p>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>原理：</strong>创空间重启会清空容器内文件；数据集在魔搭平台持久保存。先把数据复制到数据集目录，再在终端执行 git push，数据就存到数据集。下次启动时 clone 数据集并指定 DATA_DIR 指向该目录即可恢复。</p>
+          <h3 style="margin: 0 0 12px 0;">📦 一键存储到魔搭数据集</h3>
+          <p style="margin: 0 0 8px 0; font-size: 14px;">将当前数据库（专业、院校、学生分享等）复制到数据集目录并自动推送到魔搭，无需找终端。</p>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>使用前：</strong>在创空间里先把您的数据集 clone 到某目录（若找不到终端，可在「开发」或「终端」入口执行一次）：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/你的用户名/你的数据集名.git /home/user/app/my_dataset</code>，下方填写该路径后点击一键存储即可。</p>
         </div>
         <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
-          <h4 style="margin: 0 0 16px 0;">操作步骤</h4>
-          <ol style="margin: 0 0 16px 0; padding-left: 20px; line-height: 1.8;">
-            <li>在魔搭创空间终端执行：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/你的用户名/你的数据集名.git /home/user/app/my_dataset</code>（路径可自定）</li>
-            <li>下方填写该目录的<strong>绝对路径</strong>，点击「复制数据库到数据集目录」</li>
-            <li>到终端执行：<code style="background:#eee;padding:2px 6px;border-radius:4px;">cd 该目录 && git add . && git commit -m "backup" && git push</code></li>
-          </ol>
           <div class="form-group">
-            <label>数据集目录（创空间内 clone 后的绝对路径）</label>
+            <label>数据集目录（创空间内已 clone 的数据集绝对路径）</label>
             <input type="text" id="datasetPathInput" class="input" placeholder="如：/home/user/app/my_dataset" />
           </div>
           <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="backupToDataset()">复制数据库到数据集目录</button>
+            <button class="btn btn-primary" onclick="backupToDataset()">一键存储到数据集</button>
           </div>
           <div id="backupResult" style="margin-top: 16px; display: none;"></div>
         </div>
@@ -1523,15 +1517,16 @@
         });
         const data = await res.json();
         if (data.code === 200) {
+          const isPushOk = data.push_ok === true;
           resultDiv.innerHTML = `
-            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
-              <strong>✅ ${data.msg}</strong><br>
-              <small>已写入：${data.file || data.path}</small><br><br>
-              <strong>请到创空间终端执行：</strong><br>
-              <code style="display:block; margin-top:8px; padding:8px; background:#f0ede8; border-radius:4px; word-break:break-all;">${data.git_commands || ('cd ' + data.path + ' && git add . && git commit -m "backup" && git push')}</code>
+            <div style="background: ${isPushOk ? '#d4edda' : '#fff3cd'}; color: ${isPushOk ? '#155724' : '#856404'}; padding: 12px; border-radius: 6px;">
+              <strong>${isPushOk ? '✅ 一键存储完成' : '⚠️ 已复制，但推送未成功'}</strong><br>
+              <small>${data.msg}</small><br>
+              <small>文件：${data.file || data.path}</small>
+              ${data.push_error ? '<br><small style="color:#721c24;">' + data.push_error + '</small>' : ''}
             </div>
           `;
-          showToast('复制成功，请到终端执行 git push', 'success');
+          showToast(isPushOk ? '已存储到数据集' : data.msg, isPushOk ? 'success' : 'error');
         } else if (data.code === 403) {
           showToast('密码错误，请重新登录', 'error');
           location.reload();
