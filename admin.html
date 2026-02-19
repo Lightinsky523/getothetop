@@ -561,12 +561,12 @@
         <div style="background: #e8f5e9; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
           <h3 style="margin: 0 0 12px 0;">📦 一键存储到魔搭数据集</h3>
           <p style="margin: 0 0 8px 0; font-size: 14px;">将当前数据库（专业、院校、学生分享等）复制到数据集目录并自动推送到魔搭，无需找终端。</p>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>使用前：</strong>在创空间里先把您的数据集 clone 到某目录（若找不到终端，可在「开发」或「终端」入口执行一次）：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/你的用户名/你的数据集名.git /home/user/app/my_dataset</code>，下方填写该路径后点击一键存储即可。</p>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>使用前：</strong>在创空间终端执行一次 clone（<a href="https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS" target="_blank" rel="noopener">数据集 taoyao0498/Data_for_GAS</a>）：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS.git /home/user/app/Data_for_GAS</code>，下方填写路径后点击一键存储即可。</p>
         </div>
         <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
           <div class="form-group">
-            <label>数据集目录（创空间内已 clone 的数据集绝对路径）</label>
-            <input type="text" id="datasetPathInput" class="input" placeholder="如：/home/user/app/my_dataset" />
+            <label>数据集目录（创空间内已 clone 的绝对路径）</label>
+            <input type="text" id="datasetPathInput" class="input" placeholder="/home/user/app/Data_for_GAS" value="/home/user/app/Data_for_GAS" />
           </div>
           <div style="margin-top: 16px;">
             <button class="btn btn-primary" onclick="backupToDataset()">一键存储到数据集</button>

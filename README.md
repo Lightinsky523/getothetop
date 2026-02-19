@@ -25,9 +25,10 @@ license: Apache License 2.0
 - 环境变量（可选）：`DOUBAO_KEY` 豆包 API Key（未设置时使用内置默认值）
 
 #### 数据备份到数据集（防止重启丢失，一键存储）
+- **数据集**：[taoyao0498/Data_for_GAS](https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS)
 - **原理**：创空间重启会清空容器内文件；魔搭「数据集」在平台侧持久保存。应用会把数据库复制到已 clone 的数据集目录并自动执行 `git add / commit / push`，无需找终端。
-- **操作**：先把您的数据集在创空间里 clone 到某目录（只需做一次，若找不到终端可在「开发」等入口找）；管理后台 →「数据备份」→ 填写该目录绝对路径 → 点击「一键存储到数据集」。
-- **恢复**：新环境中 `git clone 你的数据集` 到某目录，设置环境变量 `DATA_DIR=该目录` 后启动应用即可。
+- **操作**：在创空间终端执行一次 <code>git clone https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS.git /home/user/app/Data_for_GAS</code>；管理后台 →「数据备份」→ 路径已预填为 <code>/home/user/app/Data_for_GAS</code> → 点击「一键存储到数据集」。
+- **恢复**：新环境中 <code>git clone https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS.git /home/user/app/Data_for_GAS</code>，设置环境变量 <code>DATA_DIR=/home/user/app/Data_for_GAS</code> 后启动应用即可。
 
 #### Clone with HTTP
 ```bash
