@@ -666,12 +666,13 @@
         return;
       }
       
+      const IMAGE_SEP = '|||IMAGE_SEP|||';
       list.innerHTML = shares.map(share => {
-        const imagesHtml = share.images ? share.images.split(',').filter(img => img).map((img, idx) => `
-          <div class="share-image" onclick="showImageModal('${img}')">
-            <img src="${img}" alt="分享图片" />
-          </div>
-        `).join('') : '';
+        const imageList = share.images ? share.images.split(IMAGE_SEP).filter(img => img.trim()) : [];
+        const imagesHtml = imageList.map((img) => {
+          const safe = (img || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `<div class="share-image" onclick="showImageModal(this)" data-src="${safe}"><img alt="分享图片" /></div>`;
+        }).join('');
         
         const tagsHtml = share.tags ? share.tags.split(/[,，]/).filter(t => t.trim()).map(tag => `
           <span class="tag">${tag.trim()}</span>
@@ -701,6 +702,10 @@
           </div>
         `;
       }).join('');
+      list.querySelectorAll('.share-image').forEach(div => {
+        const src = div.getAttribute('data-src');
+        if (src) div.querySelector('img').src = src;
+      });
     }
 
     // 搜索分享
@@ -730,9 +735,10 @@
       renderShares(filtered);
     }
 
-    // 显示图片模态框
-    function showImageModal(src) {
-      document.getElementById('modal-image').src = src;
+    // 显示图片模态框（传入被点击的元素，从 data-src 取图）
+    function showImageModal(el) {
+      const src = el && el.getAttribute ? el.getAttribute('data-src') : el;
+      if (src) document.getElementById('modal-image').src = src;
       document.getElementById('image-modal').classList.add('show');
     }
 

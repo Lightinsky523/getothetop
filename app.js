@@ -29,9 +29,9 @@ const DB_PATH = path.join(DATA_DIR, 'study_experience.db');
 
 // 允许网页跨域访问
 app.use(cors());
-// 解析网页提交的信息
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 解析网页提交的信息（学生分享含 base64 图片时 body 较大，提高限制）
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // 提供静态文件服务（前端页面）
 app.use(express.static(path.join(__dirname)));
@@ -638,18 +638,28 @@ app.get('/api/majors/:id', (req, res) => {
   });
 });
 
-// 公开API：按专业搜索
-app.get('/api/majors/search', (req, res) => {
-  const { keyword } = req.query;
+// 公开API：按专业搜索（支持 GET 与 POST，便于前端可靠传参）
+const searchMajorsByKeyword = (keyword, res) => {
+  const k = (keyword && String(keyword).trim()) || '';
+  if (!k) {
+    res.send({ code: 400, msg: "请输入关键词" });
+    return;
+  }
   const sql = `SELECT * FROM major_overviews WHERE major_name LIKE ? OR category LIKE ? ORDER BY major_name`;
-  db.all(sql, [`%${keyword}%`, `%${keyword}%`], (err, rows) => {
+  db.all(sql, [`%${k}%`, `%${k}%`], (err, rows) => {
     if (err) {
       console.error("搜索专业失败:", err);
       res.send({ code: 500, msg: "搜索失败" });
       return;
     }
-    res.send({ code: 200, data: rows });
+    res.send({ code: 200, data: rows || [] });
   });
+};
+app.get('/api/majors/search', (req, res) => {
+  searchMajorsByKeyword(req.query.keyword, res);
+});
+app.post('/api/majors/search', (req, res) => {
+  searchMajorsByKeyword(req.body && req.body.keyword, res);
 });
 
 // ========== 新的学生分享 API ==========
@@ -687,7 +697,10 @@ app.get('/api/student-shares', (req, res) => {
   });
 });
 
-// 提交学生分享（带图片）
+// 学生分享图片存储分隔符（data URL 内含逗号，不可用逗号分隔）
+const IMAGE_SEP = '|||IMAGE_SEP|||';
+
+// 提交学生分享（带图片，base64 用安全分隔符存储）
 app.post('/api/student-shares', (req, res) => {
   const { school, major, grade, title, content, tags, images } = req.body;
   
@@ -696,8 +709,7 @@ app.post('/api/student-shares', (req, res) => {
     return;
   }
   
-  // 将图片数组转为逗号分隔的字符串
-  const imagesStr = images && Array.isArray(images) ? images.join(',') : '';
+  const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
   
   const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved')`;
   db.run(sql, [school, major, grade || '未知年级', title, content, tags || '', imagesStr], function(err) {
@@ -1099,6 +1111,38 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   } catch (err) {
     console.error("AI 按学校添加所有专业失败:", err);
     res.send({ code: 500, msg: "检索失败: " + err.message });
+  }
+});
+
+// 管理员：复制当前数据库到数据集目录（用于备份，后续需在终端 git push）
+app.post('/admin/backup-to-dataset', verifyAdmin, (req, res) => {
+  const datasetPath = (req.body && req.body.dataset_path) ? String(req.body.dataset_path).trim() : (process.env.DATASET_PATH || '').trim();
+  if (!datasetPath) {
+    res.send({ code: 400, msg: '请填写数据集目录路径，或设置环境变量 DATASET_PATH' });
+    return;
+  }
+  const resolved = path.resolve(datasetPath);
+  if (!resolved.startsWith('/home') && !resolved.startsWith(path.resolve(__dirname))) {
+    res.send({ code: 400, msg: '路径必须在 /home 或应用目录下' });
+    return;
+  }
+  try {
+    if (!fs.existsSync(resolved)) {
+      fs.mkdirSync(resolved, { recursive: true });
+    }
+    const destFile = path.join(resolved, 'study_experience.db');
+    fs.copyFileSync(DB_PATH, destFile);
+    const gitCmd = `cd ${resolved} && git add . && git commit -m "backup" && git push`;
+    res.send({
+      code: 200,
+      msg: '数据库已复制到数据集目录',
+      path: resolved,
+      file: destFile,
+      git_commands: gitCmd
+    });
+  } catch (err) {
+    console.error('备份到数据集失败:', err);
+    res.send({ code: 500, msg: '复制失败: ' + err.message });
   }
 });
 

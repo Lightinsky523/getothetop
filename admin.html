@@ -409,6 +409,7 @@
         <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
         <button class="tab" onclick="switchTab('ai')">🤖 AI数据管理</button>
+        <button class="tab" onclick="switchTab('backup')">📦 数据备份</button>
       </div>
 
       <!-- 专业管理 -->
@@ -552,6 +553,31 @@
             <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入</span>
           </div>
           <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
+        </div>
+      </div>
+
+      <!-- 数据备份到数据集 -->
+      <div class="tab-content" id="backupTab">
+        <div style="background: #e8f5e9; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+          <h3 style="margin: 0 0 12px 0;">📦 保存数据到魔搭数据集</h3>
+          <p style="margin: 0 0 8px 0; font-size: 14px;">将当前数据库（专业、院校、学生分享等）复制到您已 clone 的数据集目录，重启后可从数据集恢复。</p>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>原理：</strong>创空间重启会清空容器内文件；数据集在魔搭平台持久保存。先把数据复制到数据集目录，再在终端执行 git push，数据就存到数据集。下次启动时 clone 数据集并指定 DATA_DIR 指向该目录即可恢复。</p>
+        </div>
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
+          <h4 style="margin: 0 0 16px 0;">操作步骤</h4>
+          <ol style="margin: 0 0 16px 0; padding-left: 20px; line-height: 1.8;">
+            <li>在魔搭创空间终端执行：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/你的用户名/你的数据集名.git /home/user/app/my_dataset</code>（路径可自定）</li>
+            <li>下方填写该目录的<strong>绝对路径</strong>，点击「复制数据库到数据集目录」</li>
+            <li>到终端执行：<code style="background:#eee;padding:2px 6px;border-radius:4px;">cd 该目录 && git add . && git commit -m "backup" && git push</code></li>
+          </ol>
+          <div class="form-group">
+            <label>数据集目录（创空间内 clone 后的绝对路径）</label>
+            <input type="text" id="datasetPathInput" class="input" placeholder="如：/home/user/app/my_dataset" />
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" onclick="backupToDataset()">复制数据库到数据集目录</button>
+          </div>
+          <div id="backupResult" style="margin-top: 16px; display: none;"></div>
         </div>
       </div>
     </div>
@@ -1476,6 +1502,44 @@
             <strong>❌ 请求失败</strong><br><small>${err.message}</small>
           </div>
         `;
+      }
+    }
+
+    // 复制数据库到数据集目录
+    async function backupToDataset() {
+      const datasetPath = document.getElementById('datasetPathInput').value.trim();
+      if (!datasetPath) {
+        showToast('请填写数据集目录路径', 'error');
+        return;
+      }
+      const resultDiv = document.getElementById('backupResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div style="color: var(--text-soft);">正在复制...</div>';
+      try {
+        const res = await fetch(API_BASE + '/admin/backup-to-dataset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword, dataset_path: datasetPath })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          resultDiv.innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+              <strong>✅ ${data.msg}</strong><br>
+              <small>已写入：${data.file || data.path}</small><br><br>
+              <strong>请到创空间终端执行：</strong><br>
+              <code style="display:block; margin-top:8px; padding:8px; background:#f0ede8; border-radius:4px; word-break:break-all;">${data.git_commands || ('cd ' + data.path + ' && git add . && git commit -m "backup" && git push')}</code>
+            </div>
+          `;
+          showToast('复制成功，请到终端执行 git push', 'success');
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;"><strong>❌</strong> ${data.msg}</div>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;"><strong>❌ 请求失败</strong><br>${err.message}</div>`;
       }
     }
 
