@@ -374,6 +374,7 @@ db.run(`CREATE TABLE IF NOT EXISTS school_programs (
   location TEXT,
   program_features TEXT,
   courses TEXT,
+  course_intros TEXT,
   admission_requirements TEXT,
   tuition_fee TEXT,
   scholarships TEXT,
@@ -388,6 +389,8 @@ db.run(`CREATE TABLE IF NOT EXISTS school_programs (
     console.log("✅ 开设院校表初始化成功！");
   }
 });
+// 兼容旧库：开设院校表增加课程介绍字段（不删除任何已有数据）
+db.run(`ALTER TABLE school_programs ADD COLUMN course_intros TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 course_intros 列:", err); });
 
 // 创建专业动态趣闻表
 db.run(`CREATE TABLE IF NOT EXISTS major_news (
@@ -498,8 +501,8 @@ app.get('/admin/majors/:id/programs', (req, res) => {
 app.post('/admin/programs', verifyAdmin, (req, res) => {
   const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   
-  const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-  db.run(sql, [major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info], function(err) {
+  const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [major_id, school_name, school_level, location, program_features, courses, '', admission_requirements, tuition_fee, scholarships, contact_info], function(err) {
     if (err) {
       console.error("添加开设院校失败:", err);
       res.send({ code: 500, msg: "添加失败: " + err.message });
@@ -841,11 +844,22 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   });
   if (existing) {
     const prompt = `请从「${schoolName}」官方网站（院校官网）检索「${majorName}」专业在该校的开设信息，以JSON格式返回：
-{"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式"}`;
+{"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","course_intros":[{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],"admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式"}`;
     const aiResponse = await callDoubaoAI(prompt);
     const m = aiResponse.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('AI返回解析失败');
-    const programData = JSON.parse(m[0]);
+    const raw = JSON.parse(m[0]);
+    const programData = {
+      school_level: raw.school_level || '',
+      location: raw.location || '',
+      program_features: raw.program_features || '',
+      courses: raw.courses || '',
+      course_intros: Array.isArray(raw.course_intros) ? JSON.stringify(raw.course_intros) : '',
+      admission_requirements: raw.admission_requirements || '',
+      tuition_fee: raw.tuition_fee || '',
+      scholarships: raw.scholarships || '',
+      contact_info: raw.contact_info || ''
+    };
     return { majorId: existing.id, programData };
   }
   const fullPrompt = `请按以下两个数据源分别检索并合并为一条JSON（用于系统录入，缺项填空字符串）：
@@ -866,6 +880,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   "location": "院校所在城市",
   "program_features": "该校该专业培养特色（200字以内）",
   "courses": "该校开设的主要课程，逗号分隔",
+  "course_intros": [{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],
   "admission_requirements": "招生要求",
   "tuition_fee": "学费",
   "scholarships": "奖学金",
@@ -901,6 +916,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
     location: data.location || '',
     program_features: data.program_features || '',
     courses: data.courses || '',
+    course_intros: Array.isArray(data.course_intros) ? JSON.stringify(data.course_intros) : '',
     admission_requirements: data.admission_requirements || '',
     tuition_fee: data.tuition_fee || '',
     scholarships: data.scholarships || '',
@@ -928,7 +944,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
       return;
     }
     await new Promise((resolve, reject) => {
-      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
       db.run(sql, [
         majorId,
         sName,
@@ -936,6 +952,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
         programData.location || '',
         programData.program_features || '',
         programData.courses || '',
+        programData.course_intros || '',
         programData.admission_requirements || '',
         programData.tuition_fee || '',
         programData.scholarships || '',
@@ -976,7 +993,7 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
         continue;
       }
       await new Promise((resolve, reject) => {
-        const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         db.run(sql, [
           majorId,
           name,
@@ -984,6 +1001,7 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
           programData.location || '',
           programData.program_features || '',
           programData.courses || '',
+          programData.course_intros || '',
           programData.admission_requirements || '',
           programData.tuition_fee || '',
           programData.scholarships || '',
@@ -1047,7 +1065,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
           continue;
         }
         await new Promise((resolve, reject) => {
-          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
           db.run(sql, [
             majorId,
             name,
@@ -1055,6 +1073,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
             programData.location || '',
             programData.program_features || '',
             programData.courses || '',
+            programData.course_intros || '',
             programData.admission_requirements || '',
             programData.tuition_fee || '',
             programData.scholarships || '',

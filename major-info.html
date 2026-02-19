@@ -252,6 +252,24 @@
       font-size: 11px; padding: 2px 8px; border-radius: 4px;
       background: #f0ede8; color: var(--text-soft);
     }
+    .course-tag.course-tag-clickable {
+      cursor: pointer;
+    }
+    .course-tag.course-tag-clickable:hover {
+      background: var(--accent); color: #fffef9;
+    }
+    .course-intro-modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+    }
+    .course-intro-modal.active { display: flex; }
+    .course-intro-content {
+      background: #fffef9; border-radius: var(--radius-lg); padding: 24px; max-width: 420px; width: 100%;
+      border: 1px solid var(--border-subtle); box-shadow: var(--shadow);
+    }
+    .course-intro-content h4 { margin: 0 0 12px 0; font-size: 16px; }
+    .course-intro-content p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-soft); }
+    .course-intro-content .close-btn { margin-top: 16px; padding: 6px 14px; cursor: pointer; border-radius: var(--radius); border: 1px solid var(--border-subtle); background: #fff; }
 
     .stream-info {
       margin-top: 12px; padding-top: 12px;
@@ -418,7 +436,7 @@
               <option value="">选择专业</option>
             </select>
             <input type="text" class="input" id="major-keyword" placeholder="或输入专业名称搜索..." />
-            <button class="primary-btn" onclick="searchByMajor()">检索专业</button>
+            <button type="button" class="primary-btn" onclick="searchByMajor()">检索专业</button>
           </div>
           
           <div class="search-form" id="school-search-form" style="display: none;">
@@ -527,6 +545,15 @@
         <span id="news-modal-source">来源：教育部</span>
         <span id="news-modal-date">2024-12-15</span>
       </div>
+    </div>
+  </div>
+
+  <!-- 课程介绍弹窗 -->
+  <div class="course-intro-modal" id="course-intro-modal" onclick="closeCourseIntroModal(event)">
+    <div class="course-intro-content" onclick="event.stopPropagation()">
+      <h4 id="course-intro-title">课程名称</h4>
+      <p id="course-intro-body">暂无介绍</p>
+      <button type="button" class="close-btn" onclick="closeCourseIntroModal()">关闭</button>
     </div>
   </div>
 
@@ -677,24 +704,31 @@
       
       if (majorId) {
         showMajorDetail(majorId);
-      } else if (keyword) {
-        // 按关键词搜索
+        return;
+      }
+      if (keyword) {
         try {
           const res = await fetch(API_BASE + '/api/majors/search?keyword=' + encodeURIComponent(keyword));
           const data = await res.json();
           if (data.code === 200 && data.data.length > 0) {
-            renderMajorGrid(data.data);
-            document.getElementById('major-list').style.display = 'block';
-            document.getElementById('major-overview').style.display = 'none';
-          } else {
-            alert('未找到相关专业');
+            if (data.data.length === 1) {
+              showMajorDetail(data.data[0].id);
+            } else {
+              renderMajorGrid(data.data);
+              document.getElementById('major-list').style.display = 'block';
+              document.getElementById('major-overview').style.display = 'none';
+            }
+            return;
           }
+          alert('未找到相关专业');
+          return;
         } catch (err) {
           console.error('搜索失败:', err);
+          alert('搜索失败，请稍后重试');
+          return;
         }
-      } else {
-        alert('请选择专业或输入关键词');
       }
+      alert('请选择专业或输入关键词');
     }
 
     // 按学校搜索
@@ -774,14 +808,28 @@
             <p style="margin: 0; font-size: 13px; color: var(--text-soft);">${p.program_features}</p>
           </div>
           ` : ''}
-          ${p.courses ? `
+          ${(function(){
+            let courseItems = [];
+            try {
+              if (p.course_intros && typeof p.course_intros === 'string') {
+                const arr = JSON.parse(p.course_intros);
+                if (Array.isArray(arr)) courseItems = arr.map(x => ({ name: x.name || '', intro: x.intro || '' }));
+              }
+            } catch (_) {}
+            if (courseItems.length === 0 && p.courses) {
+              courseItems = p.courses.split(/[,，]/).map(c => ({ name: c.trim(), intro: '' })).filter(x => x.name);
+            }
+            if (courseItems.length === 0) return '';
+            const escape = s => String(s).replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            return `
           <div class="curriculum-section">
-            <div class="curriculum-title">开设课程</div>
+            <div class="curriculum-title">开设课程（点击可看介绍）</div>
             <div class="course-list">
-              ${p.courses.split(/[,，]/).map(c => `<span class="course-tag">${c.trim()}</span>`).join('')}
+              ${courseItems.map(item => `<span class="course-tag course-tag-clickable" data-name="${escape(item.name)}" data-intro="${escape(item.intro)}" title="点击查看介绍">${item.name}</span>`).join('')}
             </div>
           </div>
-          ` : ''}
+          `;
+          })()}
           ${p.stream_division ? `
           <div class="stream-info">
             <strong>大类分流方案：</strong>${p.stream_division}
@@ -819,6 +867,23 @@
       document.getElementById('major-list').style.display = 'block';
       document.getElementById('major-overview').style.display = 'none';
     }
+
+    function showCourseIntro(name, intro) {
+      document.getElementById('course-intro-title').textContent = name || '课程';
+      document.getElementById('course-intro-body').textContent = intro && intro.trim() ? intro : '暂无介绍';
+      document.getElementById('course-intro-modal').classList.add('active');
+    }
+
+    function closeCourseIntroModal(event) {
+      if (event && event.target !== document.getElementById('course-intro-modal')) return;
+      document.getElementById('course-intro-modal').classList.remove('active');
+    }
+
+    document.getElementById('school-list').addEventListener('click', function(e) {
+      if (e.target.classList.contains('course-tag-clickable')) {
+        showCourseIntro(e.target.getAttribute('data-name') || '', e.target.getAttribute('data-intro') || '');
+      }
+    });
 
     // ========== 专业动态与趣闻功能 ==========
     let newsData = [];
@@ -912,6 +977,9 @@
       loadMajors();
       loadSchools();
       loadNews();
+      document.getElementById('major-keyword').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchByMajor(); }
+      });
     };
   </script>
 </body>

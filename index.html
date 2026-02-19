@@ -319,13 +319,10 @@
 
             <div class="subgrid">
               <div>
-                <label class="field-label">考生姓名 <span class="tip">可先填昵称</span></label>
-                <input id="name-input" class="input" type="text" placeholder="例如：小林 / 张三" />
-              </div>
-              <div>
                 <label class="field-label">生源地省份</label>
                 <input id="province-input" class="input" type="text" placeholder="例如：浙江 / 河南" />
               </div>
+              <div></div>
             </div>
 
             <div class="subgrid">
@@ -460,14 +457,12 @@
       const rank = document.getElementById('rank-input').value;
       const type = document.getElementById('type-select').value;
       const city = document.getElementById('city-input').value;
-      const name = document.getElementById('name-input').value;
       
       if (province) parts.push(`省份：${province}`);
       if (score) parts.push(`分数：${score}`);
       if (rank) parts.push(`位次：${rank}`);
       if (type) parts.push(`科类：${type}`);
       if (city) parts.push(`目标城市：${city}`);
-      if (name) parts.push(`姓名：${name}`);
       
       return parts.length ? parts.join('，') : '未填写';
     }
