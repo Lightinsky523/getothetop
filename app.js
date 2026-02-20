@@ -3,11 +3,39 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const app = express();
 
 // 从环境变量读取配置
 const PORT = process.env.PORT || 7860;
-const DATA_DIR = process.env.DATA_DIR || '/home/user/app/data';
+
+// 无法使用创空间终端时：设置 AUTO_CLONE_DATASET 后，应用启动时会自动克隆数据集到本地并用作数据目录
+function resolveDataDir() {
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  const datasetId = process.env.AUTO_CLONE_DATASET; // 例如 taoyao0498/Data_for_GAS
+  if (!datasetId) return '/home/user/app/data';
+  const persistDir = process.env.DATASET_LOCAL_PATH || '/home/user/app/Data_for_GAS';
+  const repoUrl = `https://www.modelscope.cn/datasets/${datasetId.trim().replace(/^datasets\/?/, '')}.git`;
+  const hasGit = fs.existsSync(path.join(persistDir, '.git'));
+  try {
+    if (!fs.existsSync(persistDir)) {
+      fs.mkdirSync(path.dirname(persistDir), { recursive: true });
+      execSync(`git clone "${repoUrl}" "${persistDir}"`, { stdio: 'inherit', timeout: 60000 });
+      console.log('✅ 已自动克隆数据集到', persistDir);
+    } else if (hasGit) {
+      try {
+        execSync(`git -C "${persistDir}" pull --rebase`, { stdio: 'inherit', timeout: 30000 });
+      } catch (e) {
+        console.warn('拉取数据集最新内容失败（可忽略）:', e.message);
+      }
+    }
+  } catch (err) {
+    console.warn('自动克隆/更新数据集失败，将使用目录', persistDir, '（可能为空）:', err.message);
+  }
+  return persistDir;
+}
+
+const DATA_DIR = resolveDataDir();
 
 // AI API 配置 - 从环境变量读取 API Key
 const AI_API_KEY = process.env.AI_KEY;
