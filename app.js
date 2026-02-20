@@ -3,7 +3,6 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
 const app = express();
 
 // 从环境变量读取配置
@@ -1112,53 +1111,6 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   } catch (err) {
     console.error("AI 按学校添加所有专业失败:", err);
     res.send({ code: 500, msg: "检索失败: " + err.message });
-  }
-});
-
-// 管理员：一键复制数据库到数据集目录并自动 git push（无需找终端）
-app.post('/admin/backup-to-dataset', verifyAdmin, (req, res) => {
-  const datasetPath = (req.body && req.body.dataset_path) ? String(req.body.dataset_path).trim() : (process.env.DATASET_PATH || '').trim();
-  if (!datasetPath) {
-    res.send({ code: 400, msg: '请填写数据集目录路径，或设置环境变量 DATASET_PATH' });
-    return;
-  }
-  const resolved = path.resolve(datasetPath);
-  if (!resolved.startsWith('/home') && !resolved.startsWith(path.resolve(__dirname))) {
-    res.send({ code: 400, msg: '路径必须在 /home 或应用目录下' });
-    return;
-  }
-  try {
-    if (!fs.existsSync(resolved)) {
-      fs.mkdirSync(resolved, { recursive: true });
-    }
-    const destFile = path.join(resolved, 'study_experience.db');
-    fs.copyFileSync(DB_PATH, destFile);
-
-    let pushOk = false;
-    let pushError = '';
-    try {
-      execSync(`cd "${resolved}" && git add . && git commit -m "backup" --allow-empty && git push`, {
-        timeout: 60000,
-        stdio: 'pipe',
-        encoding: 'utf8'
-      });
-      pushOk = true;
-    } catch (e) {
-      pushError = (e.stderr || e.stdout || e.message || String(e)).slice(0, 500);
-      console.error('git push 失败:', pushError);
-    }
-
-    res.send({
-      code: 200,
-      msg: pushOk ? '数据库已复制并已推送到数据集，一键存储完成。' : '数据库已复制到数据集目录，但自动推送失败（请确认该目录为已 clone 的数据集且可 push）。',
-      path: resolved,
-      file: destFile,
-      push_ok: pushOk,
-      push_error: pushError || undefined
-    });
-  } catch (err) {
-    console.error('备份到数据集失败:', err);
-    res.send({ code: 500, msg: '复制失败: ' + err.message });
   }
 });
 

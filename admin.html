@@ -408,12 +408,15 @@
         <button class="tab active" onclick="switchTab('majors')">专业概览管理</button>
         <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
-        <button class="tab" onclick="switchTab('ai')">🤖 AI数据管理</button>
-        <button class="tab" onclick="switchTab('backup')">📦 数据备份</button>
+        <button class="tab" onclick="switchTab('ai')">数据检索录入</button>
       </div>
 
-      <!-- 专业管理 -->
+      <!-- 专业概览管理 -->
       <div class="tab-content active" id="majorsTab">
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">专业概览</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">管理专业代码、名称、类别、学制及简介等</p>
+        </div>
         <div class="toolbar">
           <div class="search-box">
             <input type="text" class="input" id="majorSearch" placeholder="搜索专业名称或类别..." />
@@ -441,8 +444,12 @@
         </div>
       </div>
 
-      <!-- 院校项目管理 -->
+      <!-- 开设院校管理 -->
       <div class="tab-content" id="programsTab">
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">开设院校</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">按专业管理各院校的培养特色、课程、学费等</p>
+        </div>
         <div class="toolbar">
           <select class="input" id="programMajorSelect" style="max-width: 300px;" onchange="loadPrograms()">
             <option value="">请选择专业</option>
@@ -471,6 +478,10 @@
 
       <!-- 专业动态管理 -->
       <div class="tab-content" id="newsTab">
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">专业动态趣闻</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">管理各专业相关的新闻与动态</p>
+        </div>
         <div class="toolbar">
           <select class="input" id="newsMajorSelect" style="max-width: 300px;" onchange="loadNews()">
             <option value="">请选择专业</option>
@@ -496,30 +507,30 @@
         </div>
       </div>
 
-      <!-- AI数据管理 -->
+      <!-- 数据检索录入（原 AI 数据管理，降 AI 表述） -->
       <div class="tab-content" id="aiTab">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 24px; color: white; margin-bottom: 24px;">
-          <h3 style="margin: 0 0 12px 0;">🤖 豆包AI数据管理助手</h3>
-          <p style="margin: 0; opacity: 0.9;">利用AI从各院校官网自动检索专业信息，快速完成数据录入</p>
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+          <h4 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600;">数据检索录入</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">从院校官网与阳光高考检索专业与开设信息，自动写入专业概览与开设院校</p>
         </div>
 
-        <!-- 仅填学校名：自动检索并添加该校所有招生专业 -->
-        <div style="background: #e8f4fd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-          <h4 style="margin: 0 0 16px 0;">按学校一键添加所有招生专业</h4>
-          <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft);">仅填写学校名称，AI 将自动检索该校招生专业，并自动创建专业（含介绍、培养方案、修读课程、招生计划）及该校开设信息，无需事先在「专业管理」中添加</p>
+        <!-- 按学校添加所有招生专业 -->
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+          <h4 style="margin: 0 0 16px 0;">按学校添加所有招生专业</h4>
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft);">填写学校名称，系统将检索该校招生专业并逐条创建专业与开设信息</p>
           <div class="form-group">
             <label>院校名称</label>
             <input type="text" id="aiSchoolOnlyName" class="input" placeholder="如：清华大学" />
           </div>
           <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiAddSchoolAllMajors()">🤖 仅按学校检索并添加所有专业</button>
+            <button class="btn btn-primary" onclick="aiAddSchoolAllMajors()">检索并添加该校所有专业</button>
           </div>
           <div id="aiSchoolOnlyResult" style="margin-top: 16px; display: none;"></div>
         </div>
 
-        <!-- AI单条添加 -->
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-          <h4 style="margin: 0 0 16px 0;">AI智能检索添加</h4>
+        <!-- 单条检索添加 -->
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+          <h4 style="margin: 0 0 16px 0;">单条检索添加</h4>
           <div class="form-row">
             <div class="form-group" style="margin-bottom: 0;">
               <label>院校名称</label>
@@ -531,15 +542,15 @@
             </div>
           </div>
           <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiAddProgram()">🤖 AI检索并添加</button>
+            <button class="btn btn-primary" onclick="aiAddProgram()">检索并添加</button>
             <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入介绍、培养方案、课程、招生计划</span>
           </div>
           <div id="aiAddResult" style="margin-top: 16px; display: none;"></div>
         </div>
 
-        <!-- AI批量添加 -->
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
-          <h4 style="margin: 0 0 16px 0;">AI批量添加</h4>
+        <!-- 批量检索添加 -->
+        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; border: 1px solid var(--border-subtle);">
+          <h4 style="margin: 0 0 16px 0;">批量检索添加</h4>
           <div class="form-group">
             <label>院校名称</label>
             <input type="text" id="aiBatchSchool" class="input" placeholder="如：北京大学" />
@@ -549,29 +560,10 @@
             <textarea id="aiBatchMajors" class="input" style="min-height: 120px;" placeholder="计算机科学与技术&#10;软件工程&#10;人工智能"></textarea>
           </div>
           <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiBatchAdd()">🤖 批量AI检索添加</button>
+            <button class="btn btn-primary" onclick="aiBatchAdd()">批量检索并添加</button>
             <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入</span>
           </div>
           <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
-        </div>
-      </div>
-
-      <!-- 数据备份到数据集 -->
-      <div class="tab-content" id="backupTab">
-        <div style="background: #e8f5e9; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-          <h3 style="margin: 0 0 12px 0;">📦 一键存储到魔搭数据集</h3>
-          <p style="margin: 0 0 8px 0; font-size: 14px;">将当前数据库（专业、院校、学生分享等）复制到数据集目录并自动推送到魔搭，无需找终端。</p>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);"><strong>使用前：</strong>在创空间终端执行一次 clone（<a href="https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS" target="_blank" rel="noopener">数据集 taoyao0498/Data_for_GAS</a>）：<code style="background:#eee;padding:2px 6px;border-radius:4px;">git clone https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS.git /home/user/app/Data_for_GAS</code>，下方填写路径后点击一键存储即可。</p>
-        </div>
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px;">
-          <div class="form-group">
-            <label>数据集目录（创空间内已 clone 的绝对路径）</label>
-            <input type="text" id="datasetPathInput" class="input" placeholder="/home/user/app/Data_for_GAS" value="/home/user/app/Data_for_GAS" />
-          </div>
-          <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="backupToDataset()">一键存储到数据集</button>
-          </div>
-          <div id="backupResult" style="margin-top: 16px; display: none;"></div>
         </div>
       </div>
     </div>
@@ -1496,45 +1488,6 @@
             <strong>❌ 请求失败</strong><br><small>${err.message}</small>
           </div>
         `;
-      }
-    }
-
-    // 复制数据库到数据集目录
-    async function backupToDataset() {
-      const datasetPath = document.getElementById('datasetPathInput').value.trim();
-      if (!datasetPath) {
-        showToast('请填写数据集目录路径', 'error');
-        return;
-      }
-      const resultDiv = document.getElementById('backupResult');
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div style="color: var(--text-soft);">正在复制...</div>';
-      try {
-        const res = await fetch(API_BASE + '/admin/backup-to-dataset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: adminPassword, dataset_path: datasetPath })
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          const isPushOk = data.push_ok === true;
-          resultDiv.innerHTML = `
-            <div style="background: ${isPushOk ? '#d4edda' : '#fff3cd'}; color: ${isPushOk ? '#155724' : '#856404'}; padding: 12px; border-radius: 6px;">
-              <strong>${isPushOk ? '✅ 一键存储完成' : '⚠️ 已复制，但推送未成功'}</strong><br>
-              <small>${data.msg}</small><br>
-              <small>文件：${data.file || data.path}</small>
-              ${data.push_error ? '<br><small style="color:#721c24;">' + data.push_error + '</small>' : ''}
-            </div>
-          `;
-          showToast(isPushOk ? '已存储到数据集' : data.msg, isPushOk ? 'success' : 'error');
-        } else if (data.code === 403) {
-          showToast('密码错误，请重新登录', 'error');
-          location.reload();
-        } else {
-          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;"><strong>❌</strong> ${data.msg}</div>`;
-        }
-      } catch (err) {
-        resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;"><strong>❌ 请求失败</strong><br>${err.message}</div>`;
       }
     }
 
