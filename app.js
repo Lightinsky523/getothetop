@@ -1096,7 +1096,8 @@ const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALI
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 
-// 高考生认证：仅昵称即可获得 token，可发帖但不带学校/专业
+// 高考生认证：仅昵称即可获得 token（仅可评论不可发帖）
+// 先插入必填列，再更新昵称，避免 nickname 列未就绪导致失败
 app.post('/api/auth/gaokao', (req, res) => {
   const { nickname } = req.body;
   const nick = (nickname || '').trim();
@@ -1109,13 +1110,14 @@ app.post('/api/auth/gaokao', (req, res) => {
   const authToken = require('crypto').randomBytes(32).toString('hex');
   const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   db.run(
-    'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-    [email, schoolName, 'gaokao', authToken, tokenExpiresAt, nick],
+    'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+    [email, schoolName, 'gaokao', authToken, tokenExpiresAt],
     function (err) {
       if (err) {
         res.send({ code: 500, msg: "认证失败" });
         return;
       }
+      db.run('UPDATE verified_users SET nickname = ? WHERE auth_token = ?', [nick, authToken], () => {});
       res.send({ code: 200, msg: "认证成功", authToken, nickname: nick, authType: 'gaokao', expiresAt: tokenExpiresAt });
     }
   );
