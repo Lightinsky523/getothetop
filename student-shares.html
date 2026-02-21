@@ -365,19 +365,48 @@
             <span class="icon-pill">验</span>
             信息认证
           </div>
-          <p class="section-desc">请使用学校邮箱（.edu 或 .edu.cn 结尾）完成认证，认证通过后才可发帖与评论。</p>
-          <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
-            <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
-            <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
-            <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
+          <p class="section-desc">请选择一种方式完成认证，认证通过后才可发帖与评论。</p>
+          <div class="pill-switch" style="margin-bottom: 16px;">
+            <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
+            <button type="button" id="auth-tab-student" onclick="switchAuthMode('student')">学生证认证</button>
           </div>
-          <div id="verify-step2" style="display: none;">
-            <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 8px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
-            <div class="form-grid" style="margin-bottom: 12px;">
-              <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
-              <button class="primary-btn" onclick="doVerify()">确认认证</button>
-              <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
+          <!-- 邮箱认证 -->
+          <div id="auth-mode-email">
+            <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
+              <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
+              <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
+              <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
             </div>
+            <div id="verify-step2" style="display: none;">
+              <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 8px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
+              <div class="form-grid" style="margin-bottom: 12px;">
+                <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
+                <button class="primary-btn" onclick="doVerify()">确认认证</button>
+                <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
+              </div>
+            </div>
+          </div>
+          <!-- 学生证认证 -->
+          <div id="auth-mode-student" style="display: none;">
+            <p class="section-desc">上传学生证照片，系统将进行鉴伪；存疑时转人工审核。</p>
+            <div class="form-grid" style="margin-bottom: 12px;">
+              <select class="select" id="student-id-school" style="min-width: 200px;">
+                <option value="">选择学校</option>
+              </select>
+            </div>
+            <div class="image-upload" style="margin-bottom: 12px;">
+              <label class="image-upload-label">学生证图片（1 张）</label>
+              <div class="image-input-wrapper">
+                <input type="file" id="student-id-image" accept="image/*" onchange="onStudentIdImageChange(event)" />
+                <div class="image-upload-btn"><span>📷</span> 选择图片</div>
+              </div>
+              <div id="student-id-preview" class="image-preview-grid"></div>
+            </div>
+            <div class="form-grid">
+              <button class="primary-btn" id="submit-student-id-btn" onclick="submitStudentId()" disabled>提交认证</button>
+              <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
+            </div>
+            <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
           </div>
         </div>
 
@@ -393,6 +422,7 @@
           <button class="primary-btn" onclick="searchShares()">搜索</button>
           <button class="primary-btn secondary" onclick="toggleUploadForm()">+ 写分享</button>
           <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
+          <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
         </div>
 
         <!-- 上传表单 -->
@@ -470,6 +500,132 @@
     let majorsData = [];
     let authToken = localStorage.getItem('authToken') || '';
     let verifiedSchool = localStorage.getItem('verifiedSchool') || '';
+    let authMode = 'email';
+    let studentIdImageBase64 = '';
+
+    // 切换认证方式
+    function switchAuthMode(mode) {
+      authMode = mode;
+      document.getElementById('auth-tab-email').classList.toggle('active', mode === 'email');
+      document.getElementById('auth-tab-student').classList.toggle('active', mode === 'student');
+      document.getElementById('auth-mode-email').style.display = mode === 'email' ? 'block' : 'none';
+      document.getElementById('auth-mode-student').style.display = mode === 'student' ? 'block' : 'none';
+      if (mode === 'student') {
+        document.getElementById('verify-step2').style.display = 'none';
+        loadStudentIdSchoolOptions();
+      }
+    }
+
+    function loadStudentIdSchoolOptions() {
+      const sel = document.getElementById('student-id-school');
+      if (sel.options.length > 1) return;
+      fetch(API_BASE + '/api/schools').then(r => r.json()).then(data => {
+        if (data.code === 200 && data.data) {
+          sel.innerHTML = '<option value="">选择学校</option>';
+          data.data.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.school_name;
+            o.textContent = s.school_name;
+            sel.appendChild(o);
+          });
+        }
+      });
+    }
+
+    function onStudentIdImageChange(e) {
+      const file = e.target.files && e.target.files[0];
+      studentIdImageBase64 = '';
+      document.getElementById('student-id-preview').innerHTML = '';
+      document.getElementById('submit-student-id-btn').disabled = true;
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        studentIdImageBase64 = ev.target.result;
+        document.getElementById('student-id-preview').innerHTML = '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
+        document.getElementById('submit-student-id-btn').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function submitStudentId() {
+      const school = document.getElementById('student-id-school').value;
+      if (!school) {
+        showToast('请选择学校', 'error');
+        return;
+      }
+      if (!studentIdImageBase64) {
+        showToast('请上传学生证图片', 'error');
+        return;
+      }
+      const btn = document.getElementById('submit-student-id-btn');
+      const msgEl = document.getElementById('student-id-status-msg');
+      btn.disabled = true;
+      msgEl.style.display = 'block';
+      msgEl.textContent = '提交中…';
+      try {
+        const res = await fetch(API_BASE + '/api/auth/student-id', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ school, imageBase64: studentIdImageBase64 })
+        });
+        const data = await res.json();
+        if (data.code !== 200) {
+          showToast(data.msg || '提交失败', 'error');
+          btn.disabled = false;
+          return;
+        }
+        if (data.authToken && data.school) {
+          authToken = data.authToken;
+          verifiedSchool = data.school;
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          document.getElementById('verification-panel').style.display = 'none';
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('auth-school').textContent = verifiedSchool;
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          showToast('认证成功', 'success');
+          return;
+        }
+        if (data.status === 'rejected') {
+          msgEl.textContent = data.msg || '未通过鉴伪，请使用真实学生证。';
+          btn.disabled = false;
+          return;
+        }
+        msgEl.textContent = '已提交，等待人工审核。请稍后刷新或等待审核通过。';
+        pollStudentIdStatus(data.submissionId, msgEl, btn);
+      } catch (e) {
+        msgEl.textContent = '网络错误';
+        btn.disabled = false;
+      }
+    }
+
+    function pollStudentIdStatus(submissionId, msgEl, btn) {
+      const t = setInterval(async () => {
+        try {
+          const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
+          const data = await res.json();
+          if (data.code === 200 && data.status === 'approved' && data.authToken) {
+            clearInterval(t);
+            authToken = data.authToken;
+            verifiedSchool = data.school || '';
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('verifiedSchool', verifiedSchool);
+            document.getElementById('verification-panel').style.display = 'none';
+            document.getElementById('auth-badge').style.display = 'inline';
+            document.getElementById('auth-school').textContent = verifiedSchool;
+            document.getElementById('exit-auth-btn').style.display = 'inline-block';
+            msgEl.style.display = 'none';
+            showToast('认证已通过', 'success');
+          }
+          if (data.status === 'rejected') {
+            clearInterval(t);
+            msgEl.textContent = '审核未通过。';
+            btn.disabled = false;
+          }
+        } catch (e) {}
+      }, 4000);
+      setTimeout(() => { clearInterval(t); btn.disabled = false; }, 5 * 60 * 1000);
+    }
 
     // 检查管理员权限
     function checkAdminAccess() {
@@ -564,6 +720,7 @@
           document.getElementById('verification-panel').style.display = 'none';
           document.getElementById('auth-badge').style.display = 'inline';
           document.getElementById('auth-school').textContent = verifiedSchool;
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
           toggleUploadForm();
         } else {
           showToast(data.msg || '验证失败', 'error');
@@ -951,8 +1108,22 @@
       if (authToken && verifiedSchool) {
         document.getElementById('auth-badge').style.display = 'inline';
         document.getElementById('auth-school').textContent = verifiedSchool;
+        document.getElementById('exit-auth-btn').style.display = 'inline-block';
       }
     };
+
+    // 退出认证
+    function exitVerification() {
+      authToken = '';
+      verifiedSchool = '';
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('verifiedSchool');
+      document.getElementById('auth-badge').style.display = 'none';
+      document.getElementById('exit-auth-btn').style.display = 'none';
+      document.getElementById('upload-form').style.display = 'none';
+      document.getElementById('verification-panel').style.display = 'none';
+      showToast('已退出认证，发帖或评论需重新认证', 'success');
+    }
   </script>
 </body>
 </html>

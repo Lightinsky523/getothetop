@@ -409,6 +409,7 @@
         <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
         <button class="tab" onclick="switchTab('ai')">数据检索录入</button>
+        <button class="tab" onclick="switchTab('studentId')">学生证审核</button>
       </div>
 
       <!-- 专业概览管理 -->
@@ -564,6 +565,51 @@
             <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入</span>
           </div>
           <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
+        </div>
+      </div>
+
+      <!-- 学生证审核 -->
+      <div class="tab-content" id="studentIdTab">
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">待人工审核的学生证</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">学生证认证存疑时在此通过或拒绝</p>
+        </div>
+        <div class="toolbar">
+          <button class="btn btn-secondary" onclick="loadStudentIdPending()">刷新</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>学校</th>
+                <th>提交时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="studentIdTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="studentIdEmpty" style="display: none;">
+          <p>暂无待审核记录</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 学生证图片预览弹窗 -->
+  <div class="modal" id="studentIdImageModal">
+    <div class="modal-content" style="max-width: 560px;">
+      <div class="modal-header">
+        <h3>学生证图片</h3>
+        <button class="close-btn" onclick="closeModal('studentIdImageModal')">&times;</button>
+      </div>
+      <div style="padding: 16px;">
+        <img id="studentIdImageEl" src="" alt="学生证" style="max-width: 100%; border-radius: 8px;" />
+        <p id="studentIdImageMeta" style="font-size: 13px; color: var(--text-soft); margin-top: 12px;"></p>
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+          <button class="btn btn-primary" id="studentIdApproveBtn">通过</button>
+          <button class="btn btn-secondary" id="studentIdRejectBtn">拒绝</button>
         </div>
       </div>
     </div>
@@ -784,6 +830,8 @@
         loadMajorSelect();
       } else if (tab === 'news') {
         loadNewsMajorSelect();
+      } else if (tab === 'studentId') {
+        loadStudentIdPending();
       }
     }
 
@@ -1490,6 +1538,81 @@
         `;
       }
     }
+
+    // 学生证待审列表
+    let currentStudentIdReviewId = null;
+    async function loadStudentIdPending() {
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-pending?password=' + encodeURIComponent(adminPassword));
+        const data = await res.json();
+        const tbody = document.getElementById('studentIdTableBody');
+        const empty = document.getElementById('studentIdEmpty');
+        if (data.code !== 200 || !data.data || data.data.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = data.data.map(r => `
+          <tr>
+            <td>${r.id}</td>
+            <td>${r.school_name}</td>
+            <td>${r.created_at || '-'}</td>
+            <td>
+              <button class="btn btn-secondary" onclick="viewStudentIdImage(${r.id})">查看图片</button>
+              <button class="btn btn-primary" style="margin-left:6px;" onclick="reviewStudentId(${r.id}, 'approve')">通过</button>
+              <button class="btn btn-secondary" style="margin-left:6px;" onclick="reviewStudentId(${r.id}, 'reject')">拒绝</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    async function viewStudentIdImage(id) {
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-pending/' + id + '?password=' + encodeURIComponent(adminPassword));
+        const data = await res.json();
+        if (data.code !== 200 || !data.data) {
+          showToast('获取失败', 'error');
+          return;
+        }
+        currentStudentIdReviewId = id;
+        document.getElementById('studentIdImageEl').src = data.data.imageDataUrl || '';
+        document.getElementById('studentIdImageMeta').textContent = `ID: ${data.data.id} | 学校: ${data.data.school_name} | 提交时间: ${data.data.created_at || '-'}`;
+        document.getElementById('studentIdImageModal').classList.add('active');
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    async function reviewStudentId(id, action) {
+      if (!confirm(action === 'approve' ? '确认通过该学生证认证？' : '确认拒绝？')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword, id: String(id), action })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg || (action === 'approve' ? '已通过' : '已拒绝'), 'success');
+          closeModal('studentIdImageModal');
+          loadStudentIdPending();
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    document.getElementById('studentIdApproveBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'approve'); };
+    document.getElementById('studentIdRejectBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'reject'); };
 
     // 关闭弹窗
     function closeModal(id) {

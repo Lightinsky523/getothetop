@@ -138,17 +138,35 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       else console.log("✅ 验证码表初始化成功！");
     });
 
-    // 信息认证：已认证用户（学校邮箱验证通过）
+    // 信息认证：已认证用户（邮箱或学生证）
     db.run(`CREATE TABLE IF NOT EXISTS verified_users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
       school_name TEXT NOT NULL,
+      auth_type TEXT DEFAULT 'email',
       auth_token TEXT NOT NULL,
       token_expires_at DATETIME NOT NULL,
       verified_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) console.error("创建已认证用户表失败:", err);
       else console.log("✅ 已认证用户表初始化成功！");
+    });
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_verified_users_token ON verified_users(auth_token)`, () => {});
+    db.run(`ALTER TABLE verified_users ADD COLUMN auth_type TEXT DEFAULT 'email'`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add auth_type:", err); });
+
+    // 学生证认证：待审核/已通过/已拒绝（AI 或人工）
+    db.run(`CREATE TABLE IF NOT EXISTS student_id_verifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      school_name TEXT NOT NULL,
+      image_data TEXT,
+      status TEXT NOT NULL DEFAULT 'pending_manual',
+      auth_token TEXT,
+      token_expires_at DATETIME,
+      ali_task_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) console.error("创建学生证认证表失败:", err);
+      else console.log("✅ 学生证认证表初始化成功！");
     });
 
     // 帖子评论表（评论需认证）
@@ -523,6 +541,86 @@ app.get('/admin/backup/download-db', (req, res) => {
   fs.createReadStream(DB_PATH).pipe(res);
 });
 
+// 管理员：待人工审核的学生证列表
+app.get('/admin/student-id-pending', (req, res) => {
+  const pwd = req.query.password || (req.body && req.body.password);
+  if (pwd !== ADMIN_PASSWORD) {
+    res.send({ code: 403, msg: "无权限" });
+    return;
+  }
+  db.all(
+    'SELECT id, school_name, status, created_at FROM student_id_verifications WHERE status = ? ORDER BY created_at DESC',
+    ['pending_manual'],
+    (err, rows) => {
+      if (err) {
+        res.send({ code: 500, msg: "获取失败" });
+        return;
+      }
+      res.send({ code: 200, data: rows });
+    }
+  );
+});
+
+// 管理员：查看单条学生证图片（base64）
+app.get('/admin/student-id-pending/:id', (req, res) => {
+  const pwd = req.query.password;
+  if (pwd !== ADMIN_PASSWORD) {
+    res.send({ code: 403, msg: "无权限" });
+    return;
+  }
+  db.get('SELECT id, school_name, image_data, status, created_at FROM student_id_verifications WHERE id = ?', [req.params.id], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "记录不存在" });
+      return;
+    }
+    res.send({ code: 200, data: { id: row.id, school_name: row.school_name, status: row.status, created_at: row.created_at, imageDataUrl: row.image_data ? 'data:image/jpeg;base64,' + row.image_data : null } });
+  });
+});
+
+// 管理员：通过/拒绝学生证
+app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
+  const { id, action } = req.body;
+  if (!id || !['approve', 'reject'].includes(action)) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  db.get('SELECT id, school_name, status FROM student_id_verifications WHERE id = ?', [id], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "记录不存在" });
+      return;
+    }
+    if (row.status !== 'pending_manual') {
+      res.send({ code: 400, msg: "该记录已处理" });
+      return;
+    }
+    if (action === 'reject') {
+      db.run('UPDATE student_id_verifications SET status = ? WHERE id = ?', ['rejected', id], (e) => {
+        res.send(e ? { code: 500, msg: "操作失败" } : { code: 200, msg: "已拒绝" });
+      });
+      return;
+    }
+    const authToken = require('crypto').randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    db.run(
+      'UPDATE student_id_verifications SET status = ?, auth_token = ?, token_expires_at = ? WHERE id = ?',
+      ['approved', authToken, tokenExpiresAt, id],
+      (e) => {
+        if (e) {
+          res.send({ code: 500, msg: "操作失败" });
+          return;
+        }
+        db.run(
+          'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+          ['sid_' + id, row.school_name, 'student_id', authToken, tokenExpiresAt],
+          (e2) => {
+            res.send(e2 ? { code: 500, msg: "通过成功但写入用户表失败" } : { code: 200, msg: "已通过", authToken });
+          }
+        );
+      }
+    );
+  });
+});
+
 // 获取所有专业概览
 app.get('/admin/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
@@ -894,8 +992,8 @@ app.post('/api/auth/verify', (req, res) => {
       const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       db.run(
-        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_token, token_expires_at) VALUES (?, ?, ?, ?)',
-        [emailLower, schoolName, authToken, tokenExpiresAt],
+        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+        [emailLower, schoolName, 'email', authToken, tokenExpiresAt],
         function (replaceErr) {
           if (replaceErr) {
             res.send({ code: 500, msg: "认证失败" });
@@ -910,6 +1008,131 @@ app.post('/api/auth/verify', (req, res) => {
           });
         }
       );
+    }
+  );
+});
+
+// 阿里云内容安全配置（可选，用于学生证鉴伪）
+const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID;
+const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET;
+const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
+
+// 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审
+app.post('/api/auth/student-id', async (req, res) => {
+  const { school, imageBase64 } = req.body;
+  const schoolName = (school || '').trim();
+  if (!schoolName) {
+    res.send({ code: 400, msg: "请选择学校" });
+    return;
+  }
+  const rawBase64 = (imageBase64 || '').replace(/^data:image\/\w+;base64,/, '');
+  if (!rawBase64 || rawBase64.length > 4 * 1024 * 1024) {
+    res.send({ code: 400, msg: "请上传学生证图片（不超过约 3MB）" });
+    return;
+  }
+
+  let status = 'pending_manual';
+  if (ALIYUN_ACCESS_KEY_ID && ALIYUN_ACCESS_KEY_SECRET) {
+    try {
+      const result = await callAliyunImageScan(rawBase64);
+      if (result === 'pass') status = 'approved';
+      else if (result === 'rejected') status = 'rejected';
+      else status = 'pending_manual';
+    } catch (e) {
+      console.error("阿里云图片鉴伪失败，转人工:", e.message);
+      status = 'pending_manual';
+    }
+  }
+
+  db.run(
+    'INSERT INTO student_id_verifications (school_name, image_data, status) VALUES (?, ?, ?)',
+    [schoolName, rawBase64, status],
+    function (err) {
+      if (err) {
+        res.send({ code: 500, msg: "提交失败" });
+        return;
+      }
+      const id = this.lastID;
+      if (status === 'approved') {
+        const authToken = require('crypto').randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        db.run(
+          'UPDATE student_id_verifications SET auth_token = ?, token_expires_at = ? WHERE id = ?',
+          [authToken, tokenExpiresAt, id],
+          (updateErr) => {
+            if (updateErr) {
+              res.send({ code: 200, submissionId: id, status: 'pending_manual', msg: "已提交，等待人工审核" });
+              return;
+            }
+            db.run(
+              'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+              ['sid_' + id, schoolName, 'student_id', authToken, tokenExpiresAt],
+              () => {
+                res.send({ code: 200, msg: "认证成功", authToken, school: schoolName, submissionId: id });
+              }
+            );
+          }
+        );
+      } else if (status === 'rejected') {
+        res.send({ code: 200, submissionId: id, status: 'rejected', msg: "图片未通过鉴伪，请使用真实学生证照片" });
+      } else {
+        res.send({ code: 200, submissionId: id, status: 'pending_manual', msg: "已提交，等待人工审核" });
+      }
+    }
+  );
+});
+
+// 阿里云图片鉴伪：翻拍/PS 检测。官方接口需 OpenAPI 签名且多接受图片 URL；未配置或调用失败时一律转人工审核
+async function callAliyunImageScan(imageBase64) {
+  const fetch = (await import('node-fetch')).default;
+  const endpoint = `green-cip.${ALIYUN_GREEN_REGION}.aliyuncs.com`;
+  const path = '/green/image/scan';
+  const body = JSON.stringify({
+    bizType: 'student_id_check',
+    scenes: ['recapDetector', 'psDetector'],
+    tasks: [{ dataId: require('crypto').randomUUID(), imageBytes: imageBase64 }]
+  });
+  try {
+    const resp = await fetch(`https://${endpoint}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (resp.ok && result.code === 200 && result.data && result.data.results && result.data.results[0]) {
+      const suggestion = (result.data.results[0].suggestion || 'review').toLowerCase();
+      if (suggestion === 'pass') return 'pass';
+      if (suggestion === 'block') return 'rejected';
+    }
+  } catch (e) {
+    console.warn('阿里云鉴伪调用失败，转人工:', e.message);
+    throw e;
+  }
+  return 'review';
+}
+
+// 学生证认证状态轮询（人工通过后前端可拿到 token）
+app.get('/api/auth/student-id/status', (req, res) => {
+  const submissionId = req.query.submissionId;
+  if (!submissionId) {
+    res.send({ code: 400, msg: "缺少 submissionId" });
+    return;
+  }
+  db.get(
+    'SELECT status, auth_token, token_expires_at, school_name FROM student_id_verifications WHERE id = ?',
+    [submissionId],
+    (err, row) => {
+      if (err || !row) {
+        res.send({ code: 404, msg: "记录不存在" });
+        return;
+      }
+      const expired = row.token_expires_at && new Date(row.token_expires_at) < new Date();
+      res.send({
+        code: 200,
+        status: row.status,
+        authToken: row.status === 'approved' && !expired ? row.auth_token : undefined,
+        school: row.school_name
+      });
     }
   );
 });

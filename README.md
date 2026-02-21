@@ -25,6 +25,11 @@ license: Apache License 2.0
 - 环境变量（可选）：
   - `DOUBAO_KEY` 豆包 API Key（用于信息认证邮箱后缀→学校识别，未设置时使用内置默认值）
   - `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS` 邮件配置（未配置时验证码在响应中返回，便于测试）
+  - `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 阿里云内容安全（学生证鉴伪；未配置时一律走人工审核）
+
+#### 学生分享认证与人工审核
+- 认证方式二选一：**邮箱认证**（.edu/.edu.cn + 验证码）或 **学生证认证**（上传学生证图片）。认证后可 **退出认证**，退出后需重新认证才能发帖/评论。
+- 学生证认证：若配置了阿里云内容安全则先走图片鉴伪，存疑或未配置时转 **人工审核**。管理员审核接口：<code>GET /admin/student-id-pending?password=管理员密码</code> 获取待审列表，<code>GET /admin/student-id-pending/:id?password=xxx</code> 查看图片，<code>POST /admin/student-id-review</code> 传 <code>password, id, action=approve|reject</code> 通过或拒绝。
 
 #### 数据备份到数据集（防止重启丢失，一键存储）
 - **数据集**：[taoyao0498/Data_for_GAS](https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS)
