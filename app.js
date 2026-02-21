@@ -123,6 +123,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       } else {
         console.log("✅ 学生分享表初始化成功！");
       }
+      db.run(`ALTER TABLE student_shares ADD COLUMN author_nickname TEXT`, () => {});
     });
 
     // 信息认证：验证码表
@@ -153,6 +154,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     });
     db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_verified_users_token ON verified_users(auth_token)`, () => {});
     db.run(`ALTER TABLE verified_users ADD COLUMN auth_type TEXT DEFAULT 'email'`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add auth_type:", err); });
+    db.run(`ALTER TABLE verified_users ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add nickname:", err); });
 
     // 学生证认证：待审核/已通过/已拒绝（AI 或人工）
     db.run(`CREATE TABLE IF NOT EXISTS student_id_verifications (
@@ -163,10 +165,12 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       auth_token TEXT,
       token_expires_at DATETIME,
       ali_task_id TEXT,
+      nickname TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) console.error("创建学生证认证表失败:", err);
       else console.log("✅ 学生证认证表初始化成功！");
+      db.run(`ALTER TABLE student_id_verifications ADD COLUMN nickname TEXT`, () => {});
     });
 
     // 帖子评论表（评论需认证）
@@ -175,6 +179,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       share_id INTEGER NOT NULL,
       user_email TEXT NOT NULL,
       school_name TEXT NOT NULL,
+      nickname TEXT,
       content TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (share_id) REFERENCES student_shares(id)
@@ -182,6 +187,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       if (err) console.error("创建评论表失败:", err);
       else console.log("✅ 评论表初始化成功！");
     });
+    db.run(`ALTER TABLE share_comments ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment nickname:", err); });
     
     // 创建学校信息表
     db.run(`CREATE TABLE IF NOT EXISTS schools (
@@ -584,7 +590,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
     res.send({ code: 400, msg: "参数错误" });
     return;
   }
-  db.get('SELECT id, school_name, status FROM student_id_verifications WHERE id = ?', [id], (err, row) => {
+  db.get('SELECT id, school_name, status, nickname FROM student_id_verifications WHERE id = ?', [id], (err, row) => {
     if (err || !row) {
       res.send({ code: 404, msg: "记录不存在" });
       return;
@@ -602,6 +608,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
     const authToken = require('crypto').randomBytes(32).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const sid = 'sid_' + id;
+    const nick = (row.nickname || '').trim() || '在读生';
     db.run(
       'UPDATE student_id_verifications SET status = ?, auth_token = ?, token_expires_at = ? WHERE id = ?',
       ['approved', authToken, tokenExpiresAt, id],
@@ -618,8 +625,8 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
               return res.send({ code: 200, msg: "已通过（该用户已认证）", authToken });
             }
             db.run(
-              'INSERT OR REPLACE INTO verified_users (email, school_name, auth_token, token_expires_at) VALUES (?, ?, ?, ?)',
-              [sid, row.school_name, authToken, tokenExpiresAt],
+              'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+              [sid, row.school_name, 'student_id', authToken, tokenExpiresAt, nick],
               (e3) => {
                 if (e3) console.error('学生证通过-INSERT无auth_type失败:', e3.message);
                 res.send(e3 ? { code: 500, msg: "写入用户表失败，请查看服务端日志" } : { code: 200, msg: "已通过", authToken });
@@ -630,8 +637,8 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
           res.send({ code: 200, msg: "已通过", authToken });
         };
         db.run(
-          'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-          [sid, row.school_name, 'student_id', authToken, tokenExpiresAt],
+          'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+          [sid, row.school_name, 'student_id', authToken, tokenExpiresAt, nick],
           insertCb
         );
       }
@@ -986,11 +993,12 @@ app.post('/api/auth/send-code', async (req, res) => {
   );
 });
 
-// 验证码校验，获得认证
+// 验证码校验，获得认证（在读生-邮箱认证）
 app.post('/api/auth/verify', (req, res) => {
-  const { email, code } = req.body;
+  const { email, code, nickname } = req.body;
   const emailLower = (email || '').trim().toLowerCase();
   const codeStr = String(code || '').trim();
+  const nick = (nickname || '').trim() || '在读生';
 
   if (!emailLower || !codeStr) {
     res.send({ code: 400, msg: "请输入邮箱和验证码" });
@@ -1010,8 +1018,8 @@ app.post('/api/auth/verify', (req, res) => {
       const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       db.run(
-        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-        [emailLower, schoolName, 'email', authToken, tokenExpiresAt],
+        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+        [emailLower, schoolName, 'email', authToken, tokenExpiresAt, nick],
         function (replaceErr) {
           if (replaceErr) {
             res.send({ code: 500, msg: "认证失败" });
@@ -1022,6 +1030,7 @@ app.post('/api/auth/verify', (req, res) => {
             msg: "认证成功",
             authToken,
             school: schoolName,
+            nickname: nick,
             expiresAt: tokenExpiresAt
           });
         }
@@ -1035,10 +1044,36 @@ const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALI
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 
-// 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审
+// 高考生认证：仅昵称即可获得 token，可发帖但不带学校/专业
+app.post('/api/auth/gaokao', (req, res) => {
+  const { nickname } = req.body;
+  const nick = (nickname || '').trim();
+  if (!nick) {
+    res.send({ code: 400, msg: "请填写昵称" });
+    return;
+  }
+  const email = 'gaokao_' + require('crypto').randomBytes(16).toString('hex');
+  const schoolName = '高考生';
+  const authToken = require('crypto').randomBytes(32).toString('hex');
+  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  db.run(
+    'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+    [email, schoolName, 'gaokao', authToken, tokenExpiresAt, nick],
+    function (err) {
+      if (err) {
+        res.send({ code: 500, msg: "认证失败" });
+        return;
+      }
+      res.send({ code: 200, msg: "认证成功", authToken, nickname: nick, authType: 'gaokao', expiresAt: tokenExpiresAt });
+    }
+  );
+});
+
+// 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审（在读生认证）
 app.post('/api/auth/student-id', async (req, res) => {
-  const { school, imageBase64 } = req.body;
+  const { school, imageBase64, nickname } = req.body;
   const schoolName = (school || '').trim();
+  const nick = (nickname || '').trim() || '在读生';
   if (!schoolName) {
     res.send({ code: 400, msg: "请选择学校" });
     return;
@@ -1063,8 +1098,8 @@ app.post('/api/auth/student-id', async (req, res) => {
   }
 
   db.run(
-    'INSERT INTO student_id_verifications (school_name, image_data, status) VALUES (?, ?, ?)',
-    [schoolName, rawBase64, status],
+    'INSERT INTO student_id_verifications (school_name, image_data, status, nickname) VALUES (?, ?, ?, ?)',
+    [schoolName, rawBase64, status, nick],
     function (err) {
       if (err) {
         res.send({ code: 500, msg: "提交失败" });
@@ -1083,10 +1118,10 @@ app.post('/api/auth/student-id', async (req, res) => {
               return;
             }
             db.run(
-              'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-              ['sid_' + id, schoolName, 'student_id', authToken, tokenExpiresAt],
+              'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+              ['sid_' + id, schoolName, 'student_id', authToken, tokenExpiresAt, nick],
               () => {
-                res.send({ code: 200, msg: "认证成功", authToken, school: schoolName, submissionId: id });
+                res.send({ code: 200, msg: "认证成功", authToken, school: schoolName, nickname: nick, submissionId: id });
               }
             );
           }
@@ -1183,7 +1218,7 @@ app.get('/api/auth/student-id/status', (req, res) => {
     return;
   }
   db.get(
-    'SELECT status, auth_token, token_expires_at, school_name FROM student_id_verifications WHERE id = ?',
+    'SELECT status, auth_token, token_expires_at, school_name, nickname FROM student_id_verifications WHERE id = ?',
     [submissionId],
     (err, row) => {
       if (err || !row) {
@@ -1195,46 +1230,63 @@ app.get('/api/auth/student-id/status', (req, res) => {
         code: 200,
         status: row.status,
         authToken: row.status === 'approved' && !expired ? row.auth_token : undefined,
-        school: row.school_name
+        school: row.school_name,
+        nickname: row.nickname || undefined
       });
     }
   );
 });
 
-// 解析认证 token，返回 { email, school } 或 null
+// 解析认证 token，返回 { email, school_name, auth_type, nickname } 或 null
 function parseAuthToken(authToken) {
   return new Promise((resolve) => {
     if (!authToken) return resolve(null);
     db.get(
-      'SELECT email, school_name FROM verified_users WHERE auth_token = ? AND token_expires_at > datetime("now")',
+      'SELECT email, school_name, auth_type, nickname FROM verified_users WHERE auth_token = ? AND token_expires_at > datetime("now")',
       [String(authToken).trim()],
       (err, row) => resolve(err ? null : row)
     );
   });
 }
 
-// 提交学生分享（需信息认证，只能在认证学校下发帖）
+// 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
 app.post('/api/student-shares', async (req, res) => {
   const { school, major, grade, title, content, tags, images, authToken } = req.body;
   const token = authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
 
   const verified = await parseAuthToken(token);
   if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证（学校邮箱验证）" });
+    res.send({ code: 403, msg: "请先完成信息认证" });
     return;
   }
-  if (!school || !major || !title || !content) {
-    res.send({ code: 400, msg: "学校、专业、标题和内容为必填项" });
+  const isGaokao = verified.auth_type === 'gaokao';
+  const authorNick = verified.nickname || (isGaokao ? '高考生' : '在读生');
+
+  if (!title || !content) {
+    res.send({ code: 400, msg: "标题和内容为必填项" });
     return;
   }
-  if (school !== verified.school_name) {
-    res.send({ code: 403, msg: `您只能在认证学校「${verified.school_name}」下发帖` });
-    return;
+  let finalSchool = '';
+  let finalMajor = '';
+  if (isGaokao) {
+    finalSchool = '高考生';
+    finalMajor = '';
+  } else {
+    if (!school || !major) {
+      res.send({ code: 400, msg: "学校、专业为必填项" });
+      return;
+    }
+    if (school !== verified.school_name) {
+      res.send({ code: 403, msg: `您只能在认证学校「${verified.school_name}」下发帖` });
+      return;
+    }
+    finalSchool = school;
+    finalMajor = major;
   }
 
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
-  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved')`;
-  db.run(sql, [school, major, grade || '未知年级', title, content, tags || '', imagesStr], function (err) {
+  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status, author_nickname) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?)`;
+  db.run(sql, [finalSchool, finalMajor, grade || '未知年级', title, content, tags || '', imagesStr, authorNick], function (err) {
     if (err) {
       console.error("保存学生分享失败:", err);
       res.send({ code: 500, msg: "保存失败" });
@@ -1247,7 +1299,7 @@ app.post('/api/student-shares', async (req, res) => {
 // 获取帖子评论
 app.get('/api/student-shares/:id/comments', (req, res) => {
   const shareId = req.params.id;
-  db.all('SELECT id, share_id, user_email, school_name, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC', [shareId], (err, rows) => {
+  db.all('SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC', [shareId], (err, rows) => {
     if (err) {
       res.send({ code: 500, msg: "获取评论失败" });
       return;
@@ -1264,7 +1316,7 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
 
   const verified = await parseAuthToken(token);
   if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证（学校邮箱验证）" });
+    res.send({ code: 403, msg: "请先完成信息认证" });
     return;
   }
   const contentTrimmed = (content || '').trim();
@@ -1272,10 +1324,11 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     res.send({ code: 400, msg: "请输入评论内容" });
     return;
   }
+  const nick = verified.nickname || (verified.auth_type === 'gaokao' ? '高考生' : '在读生');
 
   db.run(
-    'INSERT INTO share_comments (share_id, user_email, school_name, content) VALUES (?, ?, ?, ?)',
-    [shareId, verified.email, verified.school_name, contentTrimmed],
+    'INSERT INTO share_comments (share_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?)',
+    [shareId, verified.email, verified.school_name, nick, contentTrimmed],
     function (err) {
       if (err) {
         res.send({ code: 500, msg: "评论失败" });
