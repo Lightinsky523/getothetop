@@ -264,6 +264,12 @@
       margin-top: 12px; padding-top: 12px;
       border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-soft);
     }
+    .report-link {
+      background: none; border: none; color: var(--text-soft);
+      font-size: 12px; cursor: pointer; padding: 0 4px;
+      text-decoration: none;
+    }
+    .report-link:hover { color: var(--error); text-decoration: underline; }
 
     /* 评论区域 */
     .share-comments {
@@ -424,7 +430,7 @@
           </div>
           <!-- 高考生认证 -->
           <div id="auth-category-gaokao" style="display: none;">
-            <p class="section-desc">高考生可直接填写昵称完成认证，可发帖与评论，但帖子不会显示学校与专业信息。</p>
+            <p class="section-desc">高考生可直接填写昵称完成认证，仅可评论、不可发帖。</p>
             <div class="form-grid" style="margin-bottom: 12px;">
               <input type="text" class="input" id="gaokao-nickname" placeholder="昵称（必填）" style="max-width: 240px;" />
               <button class="primary-btn" onclick="doGaokaoAuth()">确认认证</button>
@@ -443,7 +449,7 @@
             <option value="">全部专业</option>
           </select>
           <button class="primary-btn" onclick="searchShares()">搜索</button>
-          <button class="primary-btn secondary" onclick="toggleUploadForm()">+ 写分享</button>
+          <button class="primary-btn secondary" id="btn-write-share" onclick="toggleUploadForm()">+ 写分享</button>
           <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
           <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
         </div>
@@ -736,13 +742,23 @@
       } else {
         el.textContent = verifiedNickname ? verifiedNickname + ' · ' + verifiedSchool : verifiedSchool;
       }
+      updateWriteShareButtonVisibility();
+    }
+    function updateWriteShareButtonVisibility() {
+      const btn = document.getElementById('btn-write-share');
+      if (!btn) return;
+      btn.style.display = (authToken && authType === 'gaokao') ? 'none' : '';
     }
 
-    // 切换上传表单
+    // 切换上传表单（高考生仅可评论不可发帖）
     function toggleUploadForm() {
+      if (authToken && authType === 'gaokao') {
+        showToast('高考生仅可评论，不可发帖', 'error');
+        return;
+      }
       const form = document.getElementById('upload-form');
       const verifyPanel = document.getElementById('verification-panel');
-      const canPost = authToken && (verifiedSchool || authType === 'gaokao');
+      const canPost = authToken && verifiedSchool;
       if (!canPost) {
         verifyPanel.style.display = verifyPanel.style.display === 'none' ? 'block' : 'none';
         form.style.display = 'none';
@@ -1126,6 +1142,7 @@
             ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
             <div class="share-footer">
               <span>${formatDate(share.upload_time)}</span>
+              <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();">举报</button>
             </div>
             <div class="share-comments" id="comments-${share.id}">
               <div class="comment-list-${share.id}"></div>
@@ -1154,7 +1171,7 @@
         if (data.code === 200 && data.data && data.data.length > 0) {
           list.innerHTML = data.data.map(c => `
             <div class="comment-item">
-              <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)}</div>
+              <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button></div>
               <div>${escapeHtml(c.content)}</div>
             </div>
           `).join('');
@@ -1195,6 +1212,44 @@
         } else {
           showToast(data.msg || '评论失败', 'error');
         }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 举报帖子
+    async function reportShare(shareId) {
+      if (!authToken) {
+        showToast('请先完成信息认证', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authToken })
+        });
+        const data = await res.json();
+        showToast(data.msg || (data.code === 200 ? '举报已提交' : '举报失败'), data.code === 200 ? 'success' : 'error');
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 举报评论
+    async function reportComment(shareId, commentId) {
+      if (!authToken) {
+        showToast('请先完成信息认证', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authToken })
+        });
+        const data = await res.json();
+        showToast(data.msg || (data.code === 200 ? '举报已提交' : '举报失败'), data.code === 200 ? 'success' : 'error');
       } catch (e) {
         showToast('网络错误', 'error');
       }
@@ -1269,6 +1324,7 @@
         setAuthBadgeText();
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
       }
+      updateWriteShareButtonVisibility();
     };
 
     // 退出认证

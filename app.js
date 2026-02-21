@@ -188,7 +188,23 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       else console.log("✅ 评论表初始化成功！");
     });
     db.run(`ALTER TABLE share_comments ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment nickname:", err); });
-    
+
+    // 帖子/评论举报表（举报次数>50的帖子进入后台审核可删帖）
+    db.run(`CREATE TABLE IF NOT EXISTS share_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      share_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (share_id) REFERENCES student_shares(id)
+    )`, () => {});
+    db.run(`CREATE TABLE IF NOT EXISTS comment_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comment_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comment_id) REFERENCES share_comments(id)
+    )`, () => {});
+
     // 创建学校信息表
     db.run(`CREATE TABLE IF NOT EXISTS schools (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -646,6 +662,40 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
   });
 });
 
+// 管理员：获取被举报待审核的帖子（举报次数>50 后 status=pending_review）
+app.get('/admin/reported-shares', (req, res) => {
+  const pwd = req.query.password || (req.body && req.body.password);
+  if (pwd !== ADMIN_PASSWORD) {
+    res.send({ code: 403, msg: "无权限" });
+    return;
+  }
+  db.all(
+    `SELECT s.id, s.school, s.major, s.title, s.content, s.upload_time, s.status,
+      (SELECT COUNT(*) FROM share_reports r WHERE r.share_id = s.id) AS report_count
+     FROM student_shares s WHERE s.status = 'pending_review' ORDER BY report_count DESC, s.upload_time DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        res.send({ code: 500, msg: "获取失败" });
+        return;
+      }
+      res.send({ code: 200, data: rows });
+    }
+  );
+});
+
+// 管理员：删帖（用于举报审核后删除）
+app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
+  const id = req.params.id;
+  db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [id], function (err) {
+    if (err) {
+      res.send({ code: 500, msg: "操作失败" });
+      return;
+    }
+    res.send({ code: 200, msg: this.changes ? "已删除" : "记录不存在或已删除" });
+  });
+});
+
 // 获取所有专业概览
 app.get('/admin/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
@@ -1017,14 +1067,16 @@ app.post('/api/auth/verify', (req, res) => {
       const authToken = require('crypto').randomBytes(32).toString('hex');
       const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+      // 先插入必填列，避免因 nickname 列未就绪导致失败；再单独更新昵称
       db.run(
-        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-        [emailLower, schoolName, 'email', authToken, tokenExpiresAt, nick],
+        'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+        [emailLower, schoolName, 'email', authToken, tokenExpiresAt],
         function (replaceErr) {
           if (replaceErr) {
             res.send({ code: 500, msg: "认证失败" });
             return;
           }
+          db.run('UPDATE verified_users SET nickname = ? WHERE auth_token = ?', [nick, authToken], () => {});
           res.send({
             code: 200,
             msg: "认证成功",
@@ -1260,7 +1312,11 @@ app.post('/api/student-shares', async (req, res) => {
     return;
   }
   const isGaokao = verified.auth_type === 'gaokao';
-  const authorNick = verified.nickname || (isGaokao ? '高考生' : '在读生');
+  if (isGaokao) {
+    res.send({ code: 403, msg: "高考生仅可评论，不可发帖" });
+    return;
+  }
+  const authorNick = verified.nickname || '在读生';
 
   if (!title || !content) {
     res.send({ code: 400, msg: "标题和内容为必填项" });
@@ -1268,10 +1324,7 @@ app.post('/api/student-shares', async (req, res) => {
   }
   let finalSchool = '';
   let finalMajor = '';
-  if (isGaokao) {
-    finalSchool = '高考生';
-    finalMajor = '';
-  } else {
+  {
     if (!school || !major) {
       res.send({ code: 400, msg: "学校、专业为必填项" });
       return;
@@ -1337,6 +1390,48 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
       res.send({ code: 200, msg: "评论成功", id: this.lastID });
     }
   );
+});
+
+// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）
+const REPORT_THRESHOLD = 50;
+app.post('/api/student-shares/:id/report', async (req, res) => {
+  const shareId = req.params.id;
+  const token = req.body.authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  const verified = await parseAuthToken(token);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成信息认证" });
+    return;
+  }
+  db.run('INSERT INTO share_reports (share_id, user_email) VALUES (?, ?)', [shareId, verified.email], function (err) {
+    if (err) {
+      res.send({ code: 500, msg: "举报失败" });
+      return;
+    }
+    db.get('SELECT COUNT(*) AS cnt FROM share_reports WHERE share_id = ?', [shareId], (e, row) => {
+      if (!e && row && row.cnt >= REPORT_THRESHOLD) {
+        db.run("UPDATE student_shares SET status = 'pending_review' WHERE id = ?", [shareId], () => {});
+      }
+      res.send({ code: 200, msg: "举报已提交" });
+    });
+  });
+});
+
+// 举报评论（需认证）
+app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
+  const { shareId, commentId } = req.params;
+  const token = req.body.authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  const verified = await parseAuthToken(token);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成信息认证" });
+    return;
+  }
+  db.run('INSERT INTO comment_reports (comment_id, user_email) VALUES (?, ?)', [commentId, verified.email], function (err) {
+    if (err) {
+      res.send({ code: 500, msg: "举报失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "举报已提交" });
+  });
 });
 
 // ========== 学校相关 API ==========

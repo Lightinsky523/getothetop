@@ -29,7 +29,8 @@ license: Apache License 2.0
 
 #### 学生分享认证与人工审核
 - 认证方式：**在读生认证**（邮箱认证：.edu/.edu.cn + 验证码；或学生证认证：上传学生证图片）与 **高考生认证**（仅填昵称即可）。认证时需填写 **昵称**（用于展示）。认证后可 **退出认证**，退出后需重新认证才能发帖/评论。
-- **在读生**：只能在认证学校下发帖，帖子展示学校与专业。**高考生**：可直接发帖与评论，帖子不展示学校/专业，仅展示昵称。
+- **在读生**：只能在认证学校下发帖，帖子展示学校与专业。**高考生**：仅可评论，不可发帖。
+- **举报与审核**：帖子和评论均有「举报」选项；某帖子举报次数超过 50 次后自动进入后台审核（status=pending_review），管理员可删帖。接口：<code>GET /admin/reported-shares?password=管理员密码</code> 查看待审帖子，<code>POST /admin/student-shares/:id/delete</code> 传 <code>password</code> 删帖。
 - 学生证认证：若配置了阿里云内容安全则先走图片鉴伪，存疑或未配置时转 **人工审核**。管理员审核接口：<code>GET /admin/student-id-pending?password=管理员密码</code> 获取待审列表，<code>GET /admin/student-id-pending/:id?password=xxx</code> 查看图片，<code>POST /admin/student-id-review</code> 传 <code>password, id, action=approve|reject</code> 通过或拒绝。
 
 #### 数据备份到数据集（防止重启丢失，一键存储）
