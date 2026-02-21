@@ -9,28 +9,37 @@ const app = express();
 // 从环境变量读取配置
 const PORT = process.env.PORT || 7860;
 
-// 无法使用创空间终端时：设置 AUTO_CLONE_DATASET 后，应用启动时会自动克隆数据集到本地并用作数据目录
+// 无法使用创空间终端时：优先用 DATA_DIR；或设置 AUTO_CLONE_DATASET 尝试自动克隆；或设置 DATASET_MOUNT_PATH 使用创空间已挂载的数据集路径
 function resolveDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  // 创空间在「配置-关联数据集」里挂载数据集时，可能会出现在某路径，请在该路径的父目录或挂载点设置此变量
+  if (process.env.DATASET_MOUNT_PATH) return process.env.DATASET_MOUNT_PATH;
   const datasetId = process.env.AUTO_CLONE_DATASET; // 例如 taoyao0498/Data_for_GAS
   if (!datasetId) return '/home/user/app/data';
   const persistDir = process.env.DATASET_LOCAL_PATH || '/home/user/app/Data_for_GAS';
   const repoUrl = `https://www.modelscope.cn/datasets/${datasetId.trim().replace(/^datasets\/?/, '')}.git`;
   const hasGit = fs.existsSync(path.join(persistDir, '.git'));
-  try {
-    if (!fs.existsSync(persistDir)) {
-      fs.mkdirSync(path.dirname(persistDir), { recursive: true });
-      execSync(`git clone "${repoUrl}" "${persistDir}"`, { stdio: 'inherit', timeout: 60000 });
+  if (!fs.existsSync(persistDir)) {
+    fs.mkdirSync(path.dirname(persistDir), { recursive: true });
+    let cloned = false;
+    // 先尝试系统 git（浅克隆，减少失败率）
+    try {
+      execSync(`git clone --depth 1 "${repoUrl}" "${persistDir}"`, { stdio: 'pipe', timeout: 90000 });
+      cloned = true;
       console.log('✅ 已自动克隆数据集到', persistDir);
-    } else if (hasGit) {
-      try {
-        execSync(`git -C "${persistDir}" pull --rebase`, { stdio: 'inherit', timeout: 30000 });
-      } catch (e) {
-        console.warn('拉取数据集最新内容失败（可忽略）:', e.message);
-      }
+    } catch (gitErr) {
+      const msg = (gitErr.stderr && gitErr.stderr.toString()) || gitErr.message;
+      console.warn('自动克隆数据集失败（可能容器内无 git 或网络限制）:', msg.slice(0, 200));
     }
-  } catch (err) {
-    console.warn('自动克隆/更新数据集失败，将使用目录', persistDir, '（可能为空）:', err.message);
+    if (!cloned) {
+      console.warn('请改用：在创空间配置里「关联数据集」后，把数据集挂载路径设为环境变量 DATA_DIR 或 DATASET_MOUNT_PATH');
+    }
+  } else if (hasGit) {
+    try {
+      execSync(`git -C "${persistDir}" pull --rebase --depth 1`, { stdio: 'pipe', timeout: 30000 });
+    } catch (e) {
+      console.warn('拉取数据集最新内容失败（可忽略）:', e.message);
+    }
   }
   return persistDir;
 }
@@ -63,6 +72,13 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // 提供静态文件服务（前端页面）
 app.use(express.static(path.join(__dirname)));
+
+// 邮件发送配置（可选，未配置时验证码在响应中返回，便于开发测试）
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
 // 连接 SQLite 数据库
 const db = new sqlite3.Database(DB_PATH, (err) => {
@@ -107,6 +123,46 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       } else {
         console.log("✅ 学生分享表初始化成功！");
       }
+    });
+
+    // 信息认证：验证码表
+    db.run(`CREATE TABLE IF NOT EXISTS verification_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      school_name TEXT,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) console.error("创建验证码表失败:", err);
+      else console.log("✅ 验证码表初始化成功！");
+    });
+
+    // 信息认证：已认证用户（学校邮箱验证通过）
+    db.run(`CREATE TABLE IF NOT EXISTS verified_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      school_name TEXT NOT NULL,
+      auth_token TEXT NOT NULL,
+      token_expires_at DATETIME NOT NULL,
+      verified_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) console.error("创建已认证用户表失败:", err);
+      else console.log("✅ 已认证用户表初始化成功！");
+    });
+
+    // 帖子评论表（评论需认证）
+    db.run(`CREATE TABLE IF NOT EXISTS share_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      share_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      school_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (share_id) REFERENCES student_shares(id)
+    )`, (err) => {
+      if (err) console.error("创建评论表失败:", err);
+      else console.log("✅ 评论表初始化成功！");
     });
     
     // 创建学校信息表
@@ -451,6 +507,22 @@ function verifyAdmin(req, res, next) {
   next();
 }
 
+// 管理员：下载数据库备份（防止重启丢失且无法用终端/自动克隆时，可定期下载到本机保存）
+app.get('/admin/backup/download-db', (req, res) => {
+  const pwd = req.query.password || (req.body && req.body.password);
+  if (pwd !== ADMIN_PASSWORD) {
+    res.status(403).send('无权限');
+    return;
+  }
+  if (!fs.existsSync(DB_PATH)) {
+    res.status(404).send('数据库文件不存在');
+    return;
+  }
+  res.setHeader('Content-Disposition', 'attachment; filename="study_experience.db"');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  fs.createReadStream(DB_PATH).pipe(res);
+});
+
 // 获取所有专业概览
 app.get('/admin/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
@@ -728,19 +800,154 @@ app.get('/api/student-shares', (req, res) => {
 // 学生分享图片存储分隔符（data URL 内含逗号，不可用逗号分隔）
 const IMAGE_SEP = '|||IMAGE_SEP|||';
 
-// 提交学生分享（带图片，base64 用安全分隔符存储）
-app.post('/api/student-shares', (req, res) => {
-  const { school, major, grade, title, content, tags, images } = req.body;
-  
+// ========== 信息认证（学校邮箱验证） ==========
+
+// 豆包：根据邮箱后缀识别学校名称
+async function getSchoolFromEmailSuffix(emailSuffix) {
+  const prompt = `请根据中国高校邮箱后缀判断对应的学校中文名称。例如：pku.edu.cn -> 北京大学；tsinghua.edu.cn -> 清华大学；fudan.edu.cn -> 复旦大学。
+邮箱后缀：${emailSuffix}
+只返回学校的中文全称，不要任何标点、解释或换行。如果无法确定，返回"未知"`;
+  try {
+    const result = await callDoubaoAI(prompt, '你是一个教育数据助手。根据邮箱后缀准确识别中国大陆高校中文名称。');
+    return (result || '').trim().replace(/["'\n\r。，、]/g, '') || '未知';
+  } catch (e) {
+    console.error("豆包识别学校失败:", e);
+    return '未知';
+  }
+}
+
+// 发送验证码
+app.post('/api/auth/send-code', async (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  if (!email) {
+    res.send({ code: 400, msg: "请输入学校邮箱" });
+    return;
+  }
+  const suffix = email.split('@')[1] || '';
+  if (!suffix.endsWith('.edu') && !suffix.endsWith('.edu.cn')) {
+    res.send({ code: 400, msg: "请使用学校邮箱（以 .edu 或 .edu.cn 结尾）" });
+    return;
+  }
+
+  const schoolName = await getSchoolFromEmailSuffix(suffix);
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+  db.run(
+    'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, ?)',
+    [email, code, schoolName, expiresAt],
+    async (err) => {
+      if (err) {
+        console.error("保存验证码失败:", err);
+        res.send({ code: 500, msg: "发送失败" });
+        return;
+      }
+      if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+        try {
+          const nodemailer = (await import('nodemailer')).default;
+          const transporter = nodemailer.createTransport({
+            host: SMTP_HOST,
+            port: SMTP_PORT,
+            secure: SMTP_PORT === 465,
+            auth: { user: SMTP_USER, pass: SMTP_PASS }
+          });
+          await transporter.sendMail({
+            from: SMTP_FROM,
+            to: email,
+            subject: '【志愿填报参考】邮箱验证码',
+            text: `您的验证码是：${code}，5 分钟内有效。`
+          });
+          res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
+        } catch (mailErr) {
+          console.error("邮件发送失败:", mailErr);
+          res.send({ code: 500, msg: "邮件发送失败，请稍后重试" });
+        }
+      } else {
+        console.warn("未配置 SMTP，验证码返回在响应中（仅供测试）");
+        res.send({ code: 200, msg: "验证码已生成（未配置邮件服务，测试模式）", school: schoolName, vc: code });
+      }
+    }
+  );
+});
+
+// 验证码校验，获得认证
+app.post('/api/auth/verify', (req, res) => {
+  const { email, code } = req.body;
+  const emailLower = (email || '').trim().toLowerCase();
+  const codeStr = String(code || '').trim();
+
+  if (!emailLower || !codeStr) {
+    res.send({ code: 400, msg: "请输入邮箱和验证码" });
+    return;
+  }
+
+  db.get(
+    'SELECT school_name FROM verification_codes WHERE email = ? AND code = ? AND expires_at > datetime("now") ORDER BY id DESC LIMIT 1',
+    [emailLower, codeStr],
+    (err, row) => {
+      if (err || !row) {
+        res.send({ code: 400, msg: "验证码错误或已过期" });
+        return;
+      }
+      const schoolName = row.school_name || '未知';
+      const authToken = require('crypto').randomBytes(32).toString('hex');
+      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      db.run(
+        'INSERT OR REPLACE INTO verified_users (email, school_name, auth_token, token_expires_at) VALUES (?, ?, ?, ?)',
+        [emailLower, schoolName, authToken, tokenExpiresAt],
+        function (replaceErr) {
+          if (replaceErr) {
+            res.send({ code: 500, msg: "认证失败" });
+            return;
+          }
+          res.send({
+            code: 200,
+            msg: "认证成功",
+            authToken,
+            school: schoolName,
+            expiresAt: tokenExpiresAt
+          });
+        }
+      );
+    }
+  );
+});
+
+// 解析认证 token，返回 { email, school } 或 null
+function parseAuthToken(authToken) {
+  return new Promise((resolve) => {
+    if (!authToken) return resolve(null);
+    db.get(
+      'SELECT email, school_name FROM verified_users WHERE auth_token = ? AND token_expires_at > datetime("now")',
+      [String(authToken).trim()],
+      (err, row) => resolve(err ? null : row)
+    );
+  });
+}
+
+// 提交学生分享（需信息认证，只能在认证学校下发帖）
+app.post('/api/student-shares', async (req, res) => {
+  const { school, major, grade, title, content, tags, images, authToken } = req.body;
+  const token = authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+
+  const verified = await parseAuthToken(token);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成信息认证（学校邮箱验证）" });
+    return;
+  }
   if (!school || !major || !title || !content) {
     res.send({ code: 400, msg: "学校、专业、标题和内容为必填项" });
     return;
   }
-  
+  if (school !== verified.school_name) {
+    res.send({ code: 403, msg: `您只能在认证学校「${verified.school_name}」下发帖` });
+    return;
+  }
+
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
-  
   const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved')`;
-  db.run(sql, [school, major, grade || '未知年级', title, content, tags || '', imagesStr], function(err) {
+  db.run(sql, [school, major, grade || '未知年级', title, content, tags || '', imagesStr], function (err) {
     if (err) {
       console.error("保存学生分享失败:", err);
       res.send({ code: 500, msg: "保存失败" });
@@ -748,6 +955,48 @@ app.post('/api/student-shares', (req, res) => {
     }
     res.send({ code: 200, msg: "分享提交成功！", id: this.lastID });
   });
+});
+
+// 获取帖子评论
+app.get('/api/student-shares/:id/comments', (req, res) => {
+  const shareId = req.params.id;
+  db.all('SELECT id, share_id, user_email, school_name, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC', [shareId], (err, rows) => {
+    if (err) {
+      res.send({ code: 500, msg: "获取评论失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
+
+// 发表评论（需信息认证）
+app.post('/api/student-shares/:id/comments', async (req, res) => {
+  const shareId = req.params.id;
+  const { content, authToken } = req.body;
+  const token = authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+
+  const verified = await parseAuthToken(token);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成信息认证（学校邮箱验证）" });
+    return;
+  }
+  const contentTrimmed = (content || '').trim();
+  if (!contentTrimmed) {
+    res.send({ code: 400, msg: "请输入评论内容" });
+    return;
+  }
+
+  db.run(
+    'INSERT INTO share_comments (share_id, user_email, school_name, content) VALUES (?, ?, ?, ?)',
+    [shareId, verified.email, verified.school_name, contentTrimmed],
+    function (err) {
+      if (err) {
+        res.send({ code: 500, msg: "评论失败" });
+        return;
+      }
+      res.send({ code: 200, msg: "评论成功", id: this.lastID });
+    }
+  );
 });
 
 // ========== 学校相关 API ==========

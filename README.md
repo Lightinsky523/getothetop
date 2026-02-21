@@ -22,7 +22,9 @@ license: Apache License 2.0
 #### 魔搭创空间部署说明
 - 端口：7860（已暴露）
 - 数据目录：`DATA_DIR` 默认为 `/home/user/app/data`（重启「从基础镜像开始」时会被清空）
-- 环境变量（可选）：`DOUBAO_KEY` 豆包 API Key（未设置时使用内置默认值）
+- 环境变量（可选）：
+  - `DOUBAO_KEY` 豆包 API Key（用于信息认证邮箱后缀→学校识别，未设置时使用内置默认值）
+  - `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS` 邮件配置（未配置时验证码在响应中返回，便于测试）
 
 #### 数据备份到数据集（防止重启丢失，一键存储）
 - **数据集**：[taoyao0498/Data_for_GAS](https://www.modelscope.cn/datasets/taoyao0498/Data_for_GAS)
@@ -33,11 +35,13 @@ license: Apache License 2.0
 - 管理后台 →「数据备份」→ 路径已预填为 <code>/home/user/app/Data_for_GAS</code> → 点击「一键存储到数据集」。
 - 恢复：新环境中再次执行上述 clone，并设置环境变量 <code>DATA_DIR=/home/user/app/Data_for_GAS</code> 后启动应用。
 
-**方式二：无法使用创空间终端时（推荐）**
+**方式二：无法使用创空间终端时**
 - 在创空间 **设置 / 环境变量** 里添加：<code>AUTO_CLONE_DATASET=taoyao0498/Data_for_GAS</code>（请先到魔搭创建该数据集，可为空仓库）。
-- 保存并重新启动应用。应用会在**首次启动时自动克隆**该数据集到 <code>/home/user/app/Data_for_GAS</code>，并把数据库放在该目录，重启创空间后数据仍会保留（因为数据在数据集里）。
-- 可选：<code>DATASET_LOCAL_PATH=/home/user/app/Data_for_GAS</code> 可改为其它本地路径。
-- 备份到平台：管理后台 →「数据备份」→ 路径填 <code>/home/user/app/Data_for_GAS</code> →「一键存储到数据集」。
+- 保存并重新启动应用。应用会尝试在**首次启动时自动克隆**该数据集；若容器内无 git 或网络限制导致失败，请改用下方「若自动克隆无效」的作法。
+
+**若自动克隆无效（容器无 git / 无法用终端时）**
+- **方案 A（推荐）**：在创空间 **配置 / 关联数据集** 里把数据集 <code>Data_for_GAS</code> 关联上，创空间可能会把数据集挂载到某个路径；在官方文档或运行日志中确认该路径后，在环境变量中设置 <code>DATA_DIR=挂载路径</code> 或 <code>DATASET_MOUNT_PATH=挂载路径</code>，重启应用即可把数据库写到持久化目录。
+- **方案 B**：定期把数据库下载到本机备份。在浏览器打开：<code>https://你的创空间地址/admin/backup/download-db?password=管理员密码</code>（密码与管理后台一致），会下载 <code>study_experience.db</code>。重启创空间后数据会清空，但至少手头有备份可留存或日后恢复。
 
 #### Clone with HTTP
 ```bash

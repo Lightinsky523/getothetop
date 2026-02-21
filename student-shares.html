@@ -265,6 +265,22 @@
       border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-soft);
     }
 
+    /* 评论区域 */
+    .share-comments {
+      margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-subtle);
+    }
+    .comment-item {
+      padding: 8px 0; font-size: 13px; color: var(--text);
+      border-bottom: 1px solid #f0ede8;
+    }
+    .comment-item:last-child { border-bottom: none; }
+    .comment-author { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
+    .comment-form {
+      margin-top: 12px; display: flex; gap: 8px; align-items: flex-start;
+    }
+    .comment-form .input { flex: 1; min-height: 36px; }
+    .comment-form .primary-btn { flex-shrink: 0; }
+
     .loading {
       text-align: center; padding: 60px 20px; color: var(--text-soft);
     }
@@ -340,8 +356,30 @@
           学生分享
         </div>
         <p class="section-desc">
-          阅读在读学生的真实分享，了解他们的学习经历。你也可以匿名分享你的经历，帮助更多学弟学妹做出选择。
+          阅读在读学生的真实分享，了解他们的学习经历。完成信息认证后，可使用学校邮箱发帖与评论。
         </p>
+
+        <!-- 信息认证（未认证时显示） -->
+        <div id="verification-panel" class="upload-section" style="display: none;">
+          <div class="section-title">
+            <span class="icon-pill">验</span>
+            信息认证
+          </div>
+          <p class="section-desc">请使用学校邮箱（.edu 或 .edu.cn 结尾）完成认证，认证通过后才可发帖与评论。</p>
+          <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
+            <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
+            <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
+            <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
+          </div>
+          <div id="verify-step2" style="display: none;">
+            <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 8px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
+            <div class="form-grid" style="margin-bottom: 12px;">
+              <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
+              <button class="primary-btn" onclick="doVerify()">确认认证</button>
+              <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
+            </div>
+          </div>
+        </div>
 
         <!-- 搜索栏 -->
         <div class="search-bar">
@@ -354,6 +392,7 @@
           </select>
           <button class="primary-btn" onclick="searchShares()">搜索</button>
           <button class="primary-btn secondary" onclick="toggleUploadForm()">+ 写分享</button>
+          <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
         </div>
 
         <!-- 上传表单 -->
@@ -362,12 +401,10 @@
             <span class="icon-pill">写</span>
             分享你的经历
           </div>
-          <p class="section-desc">选择学校和专业，匿名分享你的真实经历（支持上传图片）。</p>
+          <p class="section-desc">您只能在认证学校下发帖。选择专业，匿名分享你的真实经历（支持上传图片）。</p>
           
           <div class="form-grid">
-            <select class="select" id="upload-school" onchange="onSchoolChange()">
-              <option value="">选择学校</option>
-            </select>
+            <input type="text" class="input" id="upload-school" readonly placeholder="认证学校（自动填入）" style="background: #f8f7f4; cursor: not-allowed;" />
             <select class="select" id="upload-major">
               <option value="">选择专业</option>
             </select>
@@ -431,6 +468,8 @@
     let allShares = [];
     let schoolsData = [];
     let majorsData = [];
+    let authToken = localStorage.getItem('authToken') || '';
+    let verifiedSchool = localStorage.getItem('verifiedSchool') || '';
 
     // 检查管理员权限
     function checkAdminAccess() {
@@ -447,10 +486,96 @@
     // 切换上传表单
     function toggleUploadForm() {
       const form = document.getElementById('upload-form');
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
-      if (form.style.display === 'block') {
-        loadSchoolOptions();
+      const verifyPanel = document.getElementById('verification-panel');
+      if (!authToken || !verifiedSchool) {
+        verifyPanel.style.display = verifyPanel.style.display === 'none' ? 'block' : 'none';
+        form.style.display = 'none';
+        return;
       }
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      verifyPanel.style.display = 'none';
+      if (form.style.display === 'block') {
+        document.getElementById('upload-school').value = verifiedSchool;
+        loadMajorsForSchool(verifiedSchool);
+      }
+    }
+
+    // 信息认证：发送验证码
+    async function sendVerifyCode() {
+      const email = document.getElementById('verify-email').value.trim().toLowerCase();
+      if (!email) {
+        showToast('请输入学校邮箱', 'error');
+        return;
+      }
+      const suffix = (email.split('@')[1] || '');
+      if (!suffix.endsWith('.edu') && !suffix.endsWith('.edu.cn')) {
+        showToast('请使用学校邮箱（.edu 或 .edu.cn 结尾）', 'error');
+        return;
+      }
+      const btn = document.getElementById('send-code-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/send-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg, 'success');
+          document.getElementById('verify-school-name').textContent = data.school || '未知';
+          document.getElementById('verify-step2').style.display = 'block';
+          if (data.vc) {
+            document.getElementById('verify-code').value = data.vc;
+            document.getElementById('verify-code').placeholder = '验证码已预填（测试模式）';
+          }
+          btn.disabled = false;
+        } else {
+          showToast(data.msg || '发送失败', 'error');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // 信息认证：确认验证
+    async function doVerify() {
+      const email = document.getElementById('verify-email').value.trim().toLowerCase();
+      const code = document.getElementById('verify-code').value.trim();
+      if (!email || !code) {
+        showToast('请输入邮箱和验证码', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          authToken = data.authToken;
+          verifiedSchool = data.school || '';
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          showToast('认证成功，可在认证学校下发帖', 'success');
+          document.getElementById('verification-panel').style.display = 'none';
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('auth-school').textContent = verifiedSchool;
+          toggleUploadForm();
+        } else {
+          showToast(data.msg || '验证失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    function resetVerifyStep() {
+      document.getElementById('verify-step2').style.display = 'none';
+      document.getElementById('verify-code').value = '';
     }
 
     // 加载学校选项
@@ -460,23 +585,13 @@
         const data = await res.json();
         if (data.code === 200) {
           schoolsData = data.data;
-          const schoolSelect = document.getElementById('upload-school');
           const searchSchoolSelect = document.getElementById('search-school');
-          
-          // 保留第一个选项
-          schoolSelect.innerHTML = '<option value="">选择学校</option>';
           searchSchoolSelect.innerHTML = '<option value="">全部学校</option>';
-          
           data.data.forEach(school => {
-            const option1 = document.createElement('option');
-            option1.value = school.school_name;
-            option1.textContent = school.school_name;
-            schoolSelect.appendChild(option1);
-            
-            const option2 = document.createElement('option');
-            option2.value = school.school_name;
-            option2.textContent = school.school_name;
-            searchSchoolSelect.appendChild(option2);
+            const option = document.createElement('option');
+            option.value = school.school_name;
+            option.textContent = school.school_name;
+            searchSchoolSelect.appendChild(option);
           });
         }
       } catch (err) {
@@ -484,19 +599,15 @@
       }
     }
 
-    // 学校选择变化时加载专业
-    async function onSchoolChange() {
-      const schoolName = document.getElementById('upload-school').value;
+    // 为指定学校加载专业（认证后发帖用）
+    async function loadMajorsForSchool(schoolName) {
       const majorSelect = document.getElementById('upload-major');
-      
       majorSelect.innerHTML = '<option value="">选择专业</option>';
-      
       if (!schoolName) return;
-      
       try {
         const res = await fetch(API_BASE + '/api/schools/' + encodeURIComponent(schoolName) + '/majors');
         const data = await res.json();
-        if (data.code === 200) {
+        if (data.code === 200 && data.data) {
           data.data.forEach(major => {
             const option = document.createElement('option');
             option.value = major.major_name;
@@ -605,7 +716,8 @@
         title,
         content,
         tags: tags || '',
-        images: imageData
+        images: imageData,
+        authToken
       };
 
       try {
@@ -699,6 +811,13 @@
             <div class="share-footer">
               <span>${formatDate(share.upload_time)}</span>
             </div>
+            <div class="share-comments" id="comments-${share.id}">
+              <div class="comment-list-${share.id}"></div>
+              <div class="comment-form" id="comment-form-${share.id}">
+                <input type="text" class="input" id="comment-input-${share.id}" placeholder="发表评论（需信息认证）" />
+                <button class="primary-btn" onclick="submitComment(${share.id})">评论</button>
+              </div>
+            </div>
           </div>
         `;
       }).join('');
@@ -706,6 +825,63 @@
         const src = div.getAttribute('data-src');
         if (src) div.querySelector('img').src = src;
       });
+      shares.forEach(share => loadComments(share.id));
+    }
+
+    // 加载评论
+    async function loadComments(shareId) {
+      const list = document.querySelector('.comment-list-' + shareId);
+      if (!list) return;
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments');
+        const data = await res.json();
+        if (data.code === 200 && data.data && data.data.length > 0) {
+          list.innerHTML = data.data.map(c => `
+            <div class="comment-item">
+              <div class="comment-author">${escapeHtml(c.school_name)} · ${formatDate(c.created_at)}</div>
+              <div>${escapeHtml(c.content)}</div>
+            </div>
+          `).join('');
+        }
+      } catch (e) {}
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // 发表评论
+    async function submitComment(shareId) {
+      if (!authToken) {
+        showToast('请先完成信息认证（点击「写分享」进行认证）', 'error');
+        return;
+      }
+      const input = document.getElementById('comment-input-' + shareId);
+      const content = (input && input.value || '').trim();
+      if (!content) {
+        showToast('请输入评论内容', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, authToken })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('评论成功', 'success');
+          input.value = '';
+          loadComments(shareId);
+        } else {
+          showToast(data.msg || '评论失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
     }
 
     // 搜索分享
@@ -772,6 +948,10 @@
       loadShares();
       loadSchoolOptions();
       loadMajorOptions();
+      if (authToken && verifiedSchool) {
+        document.getElementById('auth-badge').style.display = 'inline';
+        document.getElementById('auth-school').textContent = verifiedSchool;
+      }
     };
   </script>
 </body>
