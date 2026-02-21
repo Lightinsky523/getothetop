@@ -601,20 +601,38 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
     }
     const authToken = require('crypto').randomBytes(32).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const sid = 'sid_' + id;
     db.run(
       'UPDATE student_id_verifications SET status = ?, auth_token = ?, token_expires_at = ? WHERE id = ?',
       ['approved', authToken, tokenExpiresAt, id],
       (e) => {
         if (e) {
+          console.error('学生证通过-UPDATE失败:', e);
           res.send({ code: 500, msg: "操作失败" });
           return;
         }
-        db.run(
-          'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-          ['sid_' + id, row.school_name, 'student_id', authToken, tokenExpiresAt],
-          (e2) => {
-            res.send(e2 ? { code: 500, msg: "通过成功但写入用户表失败" } : { code: 200, msg: "已通过", authToken });
+        const insertCb = (e2) => {
+          if (e2) {
+            console.error('学生证通过-INSERT verified_users失败:', e2.message);
+            if (String(e2.message).includes('duplicate') || String(e2.message).includes('UNIQUE')) {
+              return res.send({ code: 200, msg: "已通过（该用户已认证）", authToken });
+            }
+            db.run(
+              'INSERT OR REPLACE INTO verified_users (email, school_name, auth_token, token_expires_at) VALUES (?, ?, ?, ?)',
+              [sid, row.school_name, authToken, tokenExpiresAt],
+              (e3) => {
+                if (e3) console.error('学生证通过-INSERT无auth_type失败:', e3.message);
+                res.send(e3 ? { code: 500, msg: "写入用户表失败，请查看服务端日志" } : { code: 200, msg: "已通过", authToken });
+              }
+            );
+            return;
           }
+          res.send({ code: 200, msg: "已通过", authToken });
+        };
+        db.run(
+          'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
+          [sid, row.school_name, 'student_id', authToken, tokenExpiresAt],
+          insertCb
         );
       }
     );

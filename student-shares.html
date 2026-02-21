@@ -407,6 +407,7 @@
               <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
             </div>
             <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
+            <button type="button" class="primary-btn secondary" id="student-id-query-btn" style="margin-top: 8px; display: none;" onclick="queryStudentIdStatusOnce()">查询认证结果</button>
           </div>
         </div>
 
@@ -591,8 +592,10 @@
           btn.disabled = false;
           return;
         }
-        msgEl.textContent = '已提交，等待人工审核。请稍后刷新或等待审核通过。';
+        msgEl.textContent = '已提交，等待人工审核。请稍后点击下方按钮查询，或保持本页等待自动刷新。';
         pollStudentIdStatus(data.submissionId, msgEl, btn);
+        window._lastStudentIdSubmissionId = data.submissionId;
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
       } catch (e) {
         msgEl.textContent = '网络错误';
         btn.disabled = false;
@@ -615,6 +618,7 @@
             document.getElementById('auth-school').textContent = verifiedSchool;
             document.getElementById('exit-auth-btn').style.display = 'inline-block';
             msgEl.style.display = 'none';
+            document.getElementById('student-id-query-btn').style.display = 'none';
             showToast('认证已通过', 'success');
           }
           if (data.status === 'rejected') {
@@ -624,7 +628,43 @@
           }
         } catch (e) {}
       }, 4000);
-      setTimeout(() => { clearInterval(t); btn.disabled = false; }, 5 * 60 * 1000);
+      setTimeout(() => { clearInterval(t); btn.disabled = false; document.getElementById('student-id-query-btn').style.display = 'inline-block'; }, 5 * 60 * 1000);
+    }
+
+    async function queryStudentIdStatusOnce() {
+      const submissionId = window._lastStudentIdSubmissionId;
+      if (!submissionId) {
+        showToast('请先提交学生证认证', 'error');
+        return;
+      }
+      const msgEl = document.getElementById('student-id-status-msg');
+      const queryBtn = document.getElementById('student-id-query-btn');
+      queryBtn.disabled = true;
+      msgEl.textContent = '正在查询…';
+      try {
+        const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
+        const data = await res.json();
+        if (data.code === 200 && data.status === 'approved' && data.authToken) {
+          authToken = data.authToken;
+          verifiedSchool = data.school || '';
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          document.getElementById('verification-panel').style.display = 'none';
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('auth-school').textContent = verifiedSchool;
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          msgEl.style.display = 'none';
+          queryBtn.style.display = 'none';
+          showToast('认证已通过', 'success');
+        } else if (data.code === 200 && data.status === 'rejected') {
+          msgEl.textContent = '审核未通过。';
+        } else {
+          msgEl.textContent = data.status === 'pending_manual' ? '仍在审核中，请稍后再点「查询认证结果」。' : (data.msg || '查询失败');
+        }
+      } catch (e) {
+        msgEl.textContent = '网络错误，请重试';
+      }
+      queryBtn.disabled = false;
     }
 
     // 检查管理员权限
