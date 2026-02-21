@@ -1030,9 +1030,9 @@ app.post('/api/auth/verify', (req, res) => {
   );
 });
 
-// 阿里云内容安全配置（可选，用于学生证鉴伪）
-const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID;
-const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET;
+// 阿里云内容安全配置（可选，用于学生证鉴伪）。环境变量名支持 ALIYUN_* 或 ALIBABA_CLOUD_*
+const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALIBABA_CLOUD_ACCESS_KEY_ID;
+const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 
 // 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审
@@ -1100,30 +1100,76 @@ app.post('/api/auth/student-id', async (req, res) => {
   );
 });
 
-// 阿里云图片鉴伪：翻拍/PS 检测。官方接口需 OpenAPI 签名且多接受图片 URL；未配置或调用失败时一律转人工审核
+// 阿里云内容安全：使用 POP 签名调用图片同步检测。中国地域固定使用 green.cn-shanghai.aliyuncs.com
+function signAliyunGreen(method, path, body, headers, accessKeySecret) {
+  const crypto = require('crypto');
+  const contentMd5 = body ? crypto.createHash('md5').update(body, 'utf8').digest('base64') : '';
+  const stringToSign = [
+    method,
+    'application/json',
+    contentMd5,
+    'application/json',
+    headers['Date'],
+    Object.keys(headers)
+      .filter((k) => k.toLowerCase().startsWith('x-acs-'))
+      .sort()
+      .map((k) => k + ':' + headers[k])
+      .join('\n'),
+    path
+  ].join('\n');
+  const signature = crypto.createHmac('sha1', accessKeySecret + '&').update(stringToSign, 'utf8').digest('base64');
+  return signature;
+}
+
 async function callAliyunImageScan(imageBase64) {
   const fetch = (await import('node-fetch')).default;
-  const endpoint = `green-cip.${ALIYUN_GREEN_REGION}.aliyuncs.com`;
-  const path = '/green/image/scan';
+  const crypto = require('crypto');
+  const endpoint = 'green.cn-shanghai.aliyuncs.com';
+  const clientInfoStr = JSON.stringify({ userId: 'student_id_check' });
+  const pathForSign = '/green/image/scan?clientInfo=' + clientInfoStr;
   const body = JSON.stringify({
     bizType: 'student_id_check',
-    scenes: ['recapDetector', 'psDetector'],
-    tasks: [{ dataId: require('crypto').randomUUID(), imageBytes: imageBase64 }]
+    scenes: ['porn', 'terrorism'],
+    tasks: [{ dataId: crypto.randomUUID(), imageBytes: imageBase64 }]
   });
+  const date = new Date().toUTCString();
+  const nonce = crypto.randomUUID();
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Date': date,
+    'x-acs-version': '2018-05-09',
+    'x-acs-signature-nonce': nonce,
+    'x-acs-signature-version': '1.0',
+    'x-acs-signature-method': 'HMAC-SHA1'
+  };
+  const contentMd5 = crypto.createHash('md5').update(body, 'utf8').digest('base64');
+  headers['Content-MD5'] = contentMd5;
+  const signature = signAliyunGreen('POST', pathForSign, body, headers, ALIYUN_ACCESS_KEY_SECRET);
+  headers['Authorization'] = 'acs ' + ALIYUN_ACCESS_KEY_ID + ':' + signature;
+
   try {
-    const resp = await fetch(`https://${endpoint}${path}`, {
+    const url = 'https://' + endpoint + '/green/image/scan?clientInfo=' + encodeURIComponent(clientInfoStr);
+    const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body
     });
     const result = await resp.json().catch(() => ({}));
-    if (resp.ok && result.code === 200 && result.data && result.data.results && result.data.results[0]) {
+    if (!resp.ok) {
+      console.warn('阿里云图片审核 HTTP', resp.status, result.message || result.msg || JSON.stringify(result).slice(0, 200));
+      throw new Error(result.message || result.msg || 'Request failed');
+    }
+    if (result.code === 200 && result.data && result.data.results && result.data.results[0]) {
       const suggestion = (result.data.results[0].suggestion || 'review').toLowerCase();
       if (suggestion === 'pass') return 'pass';
       if (suggestion === 'block') return 'rejected';
     }
+    if (result.code === 400 && (result.message || '').toLowerCase().includes('url')) {
+      console.warn('阿里云图片审核仅支持 URL 传图，当前使用 base64 可能被拒，请配置 OSS 或使用人工审核');
+    }
   } catch (e) {
-    console.warn('阿里云鉴伪调用失败，转人工:', e.message);
+    console.warn('阿里云图片审核调用失败，转人工:', e.message);
     throw e;
   }
   return 'review';

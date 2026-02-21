@@ -25,7 +25,7 @@ license: Apache License 2.0
 - 环境变量（可选）：
   - `DOUBAO_KEY` 豆包 API Key（用于信息认证邮箱后缀→学校识别，未设置时使用内置默认值）
   - `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS` 邮件配置（未配置时验证码在响应中返回，便于测试）
-  - `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 阿里云内容安全（学生证鉴伪；未配置时一律走人工审核）
+  - `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 阿里云内容安全（学生证鉴伪；未配置时一律走人工审核）。也支持 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`。RAM 用户需授权 `AliyunYundunGreenWebFullAccess`。
 
 #### 学生分享认证与人工审核
 - 认证方式二选一：**邮箱认证**（.edu/.edu.cn + 验证码）或 **学生证认证**（上传学生证图片）。认证后可 **退出认证**，退出后需重新认证才能发帖/评论。
