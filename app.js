@@ -46,10 +46,14 @@ function resolveDataDir() {
 
 const DATA_DIR = resolveDataDir();
 
-// AI API 配置 - 从环境变量读取 API Key
+// AI API 配置 - 志愿填报「智能查询」使用直连 API（不再使用阿里云/AnythingLLM）
+const DIRECT_AI_KEY = process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
+const DIRECT_AI_URL = process.env.DIRECT_AI_URL || 'https://api.openai.com/v1/chat/completions';
+const DIRECT_AI_MODEL = process.env.DIRECT_AI_MODEL || 'gpt-3.5-turbo';
+
+// 旧配置保留（管理后台等如仍用可读环境变量）
 const AI_API_KEY = process.env.AI_KEY;
 const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
-const AI_MODEL = process.env.AI_MODEL || 'default';
 
 // 豆包AI配置 - 用于数据管理和院校信息检索
 const DOUBAO_API_KEY = process.env.DOUBAO_KEY || '04ab8a51-281f-499f-b2a6-7c3782bb30ca';
@@ -273,95 +277,103 @@ app.get('/get-data', (req, res) => {
   });
 });
 
-// ********** 功能3：AI 查询 - 使用本地知识库回复 **********
+// ********** 功能3：智能查询 - 直连 API + 学生分享筛选与总结 **********
+// 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答
+function fetchRelevantShares(prompt, limit = 20) {
+  return new Promise((resolve) => {
+    db.all(
+      `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC LIMIT 100`,
+      [],
+      (err, rows) => {
+        if (err || !rows || rows.length === 0) {
+          return resolve([]);
+        }
+        const keywords = (prompt || '')
+          .replace(/[,，、；;!\s]+/g, ' ')
+          .split(/\s+/)
+          .filter((w) => w.length >= 2);
+        if (keywords.length === 0) {
+          return resolve(rows.slice(0, limit));
+        }
+        const lower = (s) => (s || '').toLowerCase();
+        const matched = rows.filter((row) => {
+          const text = [row.school, row.major, row.title, row.content, row.tags].map(lower).join(' ');
+          return keywords.some((k) => text.includes(lower(k)));
+        });
+        resolve((matched.length ? matched : rows).slice(0, limit));
+      }
+    );
+  });
+}
+
 app.post('/ai-query', async (req, res) => {
-  const { prompt, profileSummary, shareEntries, isXuanke, xuankeContext } = req.body;
+  const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
   try {
-    // 构建上下文信息
-    let contextInfo = "";
-    if (profileSummary && profileSummary !== "（未填写）") {
-      contextInfo += `\n用户基本信息：${profileSummary}`;
-    }
-    if (shareEntries && shareEntries.length > 0) {
-      contextInfo += "\n在读学生分享信息：\n";
-      shareEntries.slice(0, 5).forEach((entry, i) => {
-        contextInfo += `[${i+1}] ${entry.school || ''} - ${entry.major || ''}: ${entry.experience || ''}\n`;
-      });
-    }
-    if (isXuanke && xuankeContext) {
-      const combo = [xuankeContext.first, ...xuankeContext.second].filter(Boolean).join("+");
-      contextInfo += `\n选科信息：首选 ${xuankeContext.first || '未选'}，再选 ${xuankeContext.second?.join('、') || '未选'}（组合：${combo}）`;
-      contextInfo += `\n省份：${xuankeContext.province || '未填'}`;
-    }
-
-    // 调用 AnythingLLM API
-    try {
-      const fetch = (await import('node-fetch')).default;
-      console.log(`正在调用 AnythingLLM API: ${AI_API_URL}`);
-      console.log(`API Key 是否配置: ${AI_API_KEY ? '已配置' : '未配置'}`);
-      
-      if (!AI_API_KEY) {
-        console.error("AI_KEY 环境变量未设置");
-        throw new Error("AI_KEY 未配置");
-      }
-      
-      // 生成新的 sessionId，确保每次查询都是新对话
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      console.log(`使用新会话 ID: ${sessionId}`);
-      
-      const response = await fetch(AI_API_URL, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AI_API_KEY}`
-        },
-        body: JSON.stringify({
-          message: `${contextInfo}\n\n用户问题：${prompt}\n\n请给出详细、专业的回答：`,
-          mode: "chat",
-          sessionId: sessionId
-        })
-      });
-
-      console.log(`API 响应状态: ${response.status}`);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log("AnythingLLM API 调用成功，响应内容:", JSON.stringify(result).substring(0, 200));
-        
-        // 尝试多种可能的响应格式
-        let aiResponse = result.textResponse || 
-                        result.response || 
-                        (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) ||
-                        result.content ||
-                        result.message;
-        
-        if (aiResponse) {
-          res.send({ 
-            code: 200, 
-            data: aiResponse
-          });
-          return;
-        } else {
-          console.error("API 返回成功但无法解析响应内容:", result);
-          res.send({ code: 500, msg: "AI 响应格式错误，请联系管理员检查日志" });
-          return;
-        }
-      } else {
-        const errorText = await response.text();
-        console.error(`AnythingLLM API 错误: ${response.status}`, errorText);
-        res.send({ code: 500, msg: `AI 服务错误 (${response.status}): ${errorText}` });
-        return;
-      }
-    } catch (aiError) {
-      console.error("AnythingLLM API 调用失败:", aiError.message);
-      res.send({ code: 500, msg: "AI 服务调用失败: " + aiError.message });
+    const fetch = (await import('node-fetch')).default;
+    if (!DIRECT_AI_KEY) {
+      res.send({ code: 500, msg: "智能查询 API 未配置" });
       return;
     }
-    
+
+    const shareRows = await fetchRelevantShares(prompt, 20);
+    let contextInfo = "你是一名志愿填报与高校信息助手。请结合以下信息回答用户问题，并对「学生分享」相关内容做简明总结。\n";
+    if (profileSummary && profileSummary !== "（未填写）") {
+      contextInfo += `\n【用户基本信息】\n${profileSummary}\n`;
+    }
+    if (isXuanke && xuankeContext) {
+      const combo = [xuankeContext.first, ...(xuankeContext.second || [])].filter(Boolean).join("+");
+      contextInfo += `\n【选科】首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（组合：${combo}），省份：${xuankeContext.province || '未填'}\n`;
+    }
+    if (shareRows.length > 0) {
+      contextInfo += "\n【学生分享（在读生/高考生匿名分享，供参考）】\n";
+      shareRows.forEach((entry, i) => {
+        const author = entry.author_nickname || entry.school || '匿名';
+        const contentSnippet = (entry.content || '').slice(0, 400);
+        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}\n标题：${entry.title || ''}\n内容：${contentSnippet}${(entry.content || '').length > 400 ? '…' : ''}\n`;
+      });
+    } else {
+      contextInfo += "\n【学生分享】暂无相关分享数据。\n";
+    }
+    contextInfo += `\n【用户问题】\n${prompt}\n\n请给出详细、专业的回答，并可根据上述学生分享做简要归纳。`;
+
+    const response = await fetch(DIRECT_AI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DIRECT_AI_KEY}`
+      },
+      body: JSON.stringify({
+        model: DIRECT_AI_MODEL,
+        messages: [
+          { role: 'system', content: contextInfo },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("智能查询 API 错误:", response.status, errorText.slice(0, 300));
+      res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
+      return;
+    }
+    const result = await response.json();
+    const aiResponse =
+      result.choices?.[0]?.message?.content ||
+      result.content ||
+      result.message ||
+      (result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content);
+    if (aiResponse) {
+      res.send({ code: 200, data: aiResponse });
+    } else {
+      res.send({ code: 500, msg: "AI 响应格式错误" });
+    }
   } catch (error) {
-    console.error("AI 查询失败:", error);
-    res.send({ code: 500, msg: "AI 查询失败: " + error.message });
+    console.error("智能查询失败:", error);
+    res.send({ code: 500, msg: "智能查询失败: " + (error.message || String(error)) });
   }
 });
 
@@ -1303,6 +1315,22 @@ function parseAuthToken(authToken) {
   });
 }
 
+// 获取当前认证用户信息（用于恢复学校等，解决认证后无法上传）
+app.get('/api/auth/me', async (req, res) => {
+  const token = req.query.authToken || req.headers['x-auth-token'] || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const verified = await parseAuthToken(token);
+  if (!verified) {
+    res.send({ code: 403, msg: "未登录或已过期" });
+    return;
+  }
+  res.send({
+    code: 200,
+    school: verified.school_name,
+    nickname: verified.nickname,
+    authType: verified.auth_type
+  });
+});
+
 // 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
 app.post('/api/student-shares', async (req, res) => {
   const { school, major, grade, title, content, tags, images, authToken } = req.body;
@@ -1860,6 +1888,6 @@ app.get('/api/news/:id', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
   console.log(`📊 数据目录: ${DATA_DIR}`);
-  console.log(`🤖 AI配置: ${AI_API_KEY ? '已配置' : '未配置'}`);
-  console.log(`🤖 豆包AI: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 智能查询（直连API）: ${DIRECT_AI_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 豆包AI（管理后台）: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
 });

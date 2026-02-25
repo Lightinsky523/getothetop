@@ -1314,6 +1314,28 @@
       if (e.key === 'Enter') searchShares();
     });
 
+    // 恢复认证信息（解决认证后刷新或 school 未写入导致无法上传）
+    async function restoreAuthIfNeeded() {
+      if (!authToken || authType === 'gaokao') return;
+      if (verifiedSchool) return;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+        const data = await res.json();
+        if (data.code === 200 && data.school) {
+          verifiedSchool = data.school;
+          if (data.nickname) verifiedNickname = data.nickname;
+          if (data.authType) authType = data.authType;
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          if (verifiedNickname) localStorage.setItem('verifiedNickname', verifiedNickname);
+          if (authType) localStorage.setItem('authType', authType);
+          document.getElementById('auth-badge').style.display = 'inline';
+          setAuthBadgeText();
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          updateWriteShareButtonVisibility();
+        }
+      } catch (e) {}
+    }
+
     // 页面加载
     window.onload = function() {
       loadShares();
@@ -1325,6 +1347,7 @@
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
       }
       updateWriteShareButtonVisibility();
+      restoreAuthIfNeeded();
     };
 
     // 退出认证
