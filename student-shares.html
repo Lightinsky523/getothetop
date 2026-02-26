@@ -1127,6 +1127,9 @@
 
     // 提交分享
     async function submitShare() {
+      // 提交前强制从 localStorage 同步 token，避免内存与存储不一致导致服务端收不到
+      authToken = localStorage.getItem('authToken') || authToken;
+      authType = localStorage.getItem('authType') || authType;
       const isGaokao = authType === 'gaokao';
       const school = document.getElementById('upload-school').value.trim();
       const major = document.getElementById('upload-major').value;
@@ -1145,13 +1148,11 @@
         return;
       }
 
-      // 发帖前始终从 localStorage 取 token，保证与认证状态一致
-      const tokenToSend = localStorage.getItem('authToken') || authToken;
+      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
       if (!tokenToSend) {
-        showToast('请先完成信息认证', 'error');
+        showToast('认证信息已丢失，请重新认证后再提交', 'error');
         return;
       }
-      // 图片：从 selectedImages 取 base64/dataURL 数组，未选则为空数组
       const imageData = (selectedImages || []).map(function(img) { return img.preview || ''; }).filter(Boolean);
       const data = {
         school: isGaokao ? '' : school,
@@ -1167,7 +1168,10 @@
       try {
         const res = await fetch(API_BASE + '/api/student-shares', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': tokenToSend
+          },
           body: JSON.stringify(data)
         });
         const result = await res.json().catch(function() { return {}; });
@@ -1197,8 +1201,10 @@
             document.getElementById('auth-badge').style.display = 'none';
             document.getElementById('exit-auth-btn').style.display = 'none';
             showListView();
+            showToast(result.msg || '登录已过期，请重新认证后再提交', 'error');
+          } else {
+            showToast(result.msg ? '提交失败：' + result.msg : '提交失败', 'error');
           }
-          showToast(result.msg ? '提交失败：' + result.msg : '提交失败', 'error');
         }
       } catch (err) {
         console.error('提交失败:', err);
