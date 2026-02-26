@@ -1,3 +1,5 @@
+# 魔搭创空间 Docker 部署（参见 https://www.modelscope.cn/docs/studios/quick-create）
+# 要求：服务必须监听 0.0.0.0:7860
 FROM modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/python:3.10
 
 # 安装 Node.js 18
@@ -15,8 +17,9 @@ RUN npm install
 # 创建数据目录并设置权限
 RUN mkdir -p /home/user/app/data && chmod 777 /home/user/app/data
 
-# 声明数据卷，确保数据持久化
-VOLUME ["/home/user/app/data"]
+# 创空间要求端口为 7860
+ENV PORT=7860
 
+VOLUME ["/home/user/app/data"]
 EXPOSE 7860
 ENTRYPOINT ["node", "app.js"]

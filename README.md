@@ -1,26 +1,23 @@
 ---
-# 详细文档见https://modelscope.cn/docs/%E5%88%9B%E7%A9%BA%E9%97%B4%E5%8D%A1%E7%89%87
+# 创空间部署遵循官方文档：https://www.modelscope.cn/docs/studios/quick-create
 domain: #领域：cv/nlp/audio/multi-modal/AutoML
-# - cv
+# - nlp
 tags: #自定义标签
--
-datasets: #关联数据集
-  evaluation:
-  #- iic/ICDAR13_HCTR_Dataset
-  test:
-  #- iic/MTWI
-  train:
-  #- iic/SIBR
-models: #关联模型
-#- iic/ofa_ocr-recognition_general_base_zh
+- 志愿填报
+- 高考
 
-## 启动文件(若SDK为Gradio/Streamlit，默认为app.py, 若为Static HTML, 默认为index.html)
-# deployspec:
-#   entry_file: app.py
+datasets: #关联数据集（可选，用于数据持久化）
+  train:
+  #- taoyao0498/Data_for_GAS
+models: #关联模型
+# （本创空间为 Web 应用，不关联模型）
+
+## 部署方式：Docker（Node.js）。配置见根目录 ms_deploy.json，入口由 Dockerfile 指定（node app.js），端口 7860。
 license: Apache License 2.0
 ---
-#### 魔搭创空间部署说明
-- 端口：7860（已暴露）
+#### 魔搭创空间部署说明（按 [快速创建并部署](https://www.modelscope.cn/docs/studios/quick-create) 配置）
+- **部署类型**：Docker（`ms_deploy.json` 中 `sdk_type: docker`），根目录需有 `Dockerfile`，服务监听 **0.0.0.0:7860**。
+- **端口**：7860（已暴露，与 `ms_deploy.json` 中 `port: 7860` 一致）
 - 数据目录：`DATA_DIR` 默认为 `/home/user/app/data`（重启「从基础镜像开始」时会被清空）
 - 环境变量（可选）：
   - `DOUBAO_KEY` 豆包 API Key（用于信息认证邮箱后缀→学校识别，未设置时使用内置默认值）
