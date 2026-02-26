@@ -1626,12 +1626,22 @@ app.post('/admin/school-programs', verifyAdmin, (req, res) => {
 
 // ========== 豆包AI数据管理功能 ==========
 
-// 调用豆包AI进行院校信息检索和整理（429 时自动重试一次）
-async function callDoubaoAI(prompt, systemPrompt = '', isRetry = false) {
+// 豆包调用节流：单次操作可能触发多次调用（如按学校添加会先拉列表再逐专业调用），
+// 与豆包 QPM 限制叠加后即使用户未“频繁操作”也会 429，故在每次请求前强制间隔。
+const DOUBAO_MIN_GAP_MS = 2500;
+let lastDoubaoCallTime = 0;
+
+// 调用豆包AI（节流 + 429 时自动重试 2 次）
+async function callDoubaoAI(prompt, systemPrompt = '', retryCount = 0) {
   const fetch = (await import('node-fetch')).default;
   if (!DOUBAO_API_KEY) {
     console.error("DOUBAO_KEY 环境变量未设置");
     throw new Error("豆包AI密钥未配置");
+  }
+  const now = Date.now();
+  const elapsed = now - lastDoubaoCallTime;
+  if (lastDoubaoCallTime > 0 && elapsed < DOUBAO_MIN_GAP_MS) {
+    await new Promise((r) => setTimeout(r, DOUBAO_MIN_GAP_MS - elapsed));
   }
   const body = {
     model: DOUBAO_MODEL,
@@ -1653,10 +1663,11 @@ async function callDoubaoAI(prompt, systemPrompt = '', isRetry = false) {
     },
     body: JSON.stringify(body)
   });
-  if (response.status === 429 && !isRetry) {
-    console.warn("豆包API 429 限频，3秒后重试一次");
-    await new Promise((r) => setTimeout(r, 3000));
-    return callDoubaoAI(prompt, systemPrompt, true);
+  if (response.status === 429 && retryCount < 2) {
+    const waitMs = 5000 + retryCount * 3000;
+    console.warn(`豆包API 429 限频，${waitMs / 1000}秒后重试 (${retryCount + 1}/2)`);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return callDoubaoAI(prompt, systemPrompt, retryCount + 1);
   }
   if (!response.ok) {
     const errorText = await response.text();
@@ -1666,6 +1677,7 @@ async function callDoubaoAI(prompt, systemPrompt = '', isRetry = false) {
     }
     throw new Error(`豆包API错误: ${response.status}`);
   }
+  lastDoubaoCallTime = Date.now();
   const result = await response.json();
   return result.choices?.[0]?.message?.content || '';
 }
