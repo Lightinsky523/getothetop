@@ -762,6 +762,13 @@
         showToast('高考生仅可评论，不可发帖', 'error');
         return;
       }
+      // 学生证认证通过后：若有 token 但缺少 school（如刚通过或跨 tab），先从服务端恢复，避免仍显示“未认证”无法发帖
+      if (authToken && !verifiedSchool && authType !== 'gaokao') {
+        await restoreAuthIfNeeded();
+        verifiedSchool = localStorage.getItem('verifiedSchool') || verifiedSchool;
+        authType = localStorage.getItem('authType') || authType;
+        verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
+      }
       const form = document.getElementById('upload-form');
       const verifyPanel = document.getElementById('verification-panel');
       const canPost = authToken && verifiedSchool;

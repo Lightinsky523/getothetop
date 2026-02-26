@@ -1032,7 +1032,7 @@ const IMAGE_SEP = '|||IMAGE_SEP|||';
 
 // ========== 信息认证（学校邮箱验证） ==========
 
-// 常见邮箱后缀 -> 学校名（豆包失败或返回空/未知时回退）
+// 常见邮箱后缀 -> 学校名（AI 失败或返回空/未知时回退）
 const EMAIL_SUFFIX_TO_SCHOOL = {
   'pku.edu.cn': '北京大学',
   'tsinghua.edu.cn': '清华大学',
@@ -1056,7 +1056,7 @@ const EMAIL_SUFFIX_TO_SCHOOL = {
   'seu.edu.cn': '东南大学'
 };
 
-// 豆包：根据邮箱后缀识别学校名称（含解析增强与回退表）
+// 根据邮箱后缀识别学校名称：优先 DeepSeek（避免豆包限频导致无法认证），未配置则回退豆包；含解析增强与回退表
 async function getSchoolFromEmailSuffix(emailSuffix) {
   const suffixLower = (emailSuffix || '').trim().toLowerCase();
   if (suffixLower && EMAIL_SUFFIX_TO_SCHOOL[suffixLower])
@@ -1065,8 +1065,11 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
   const prompt = `请根据中国高校邮箱后缀判断对应的学校中文名称。例如：pku.edu.cn -> 北京大学；tsinghua.edu.cn -> 清华大学；fudan.edu.cn -> 复旦大学。
 邮箱后缀：${emailSuffix}
 只返回学校的中文全称，不要任何标点、解释或换行。如果无法确定，返回"未知"`;
+  const systemPrompt = '你是一个教育数据助手。根据邮箱后缀准确识别中国大陆高校中文名称。';
   try {
-    const result = await callDoubaoAI(prompt, '你是一个教育数据助手。根据邮箱后缀准确识别中国大陆高校中文名称。');
+    const result = DEEPSEEK_API_KEY
+      ? await callDeepSeekAI(prompt, systemPrompt)
+      : await callDoubaoAI(prompt, systemPrompt);
     let name = (result || '').trim();
     // 取第一行或冒号后的内容
     const firstLine = name.split(/\n/)[0].trim();
@@ -1074,7 +1077,7 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
     name = (afterColon || firstLine).trim().replace(/^["']|["']$/g, '').replace(/[\n\r]/g, '').replace(/[。，、]+$/g, '').trim();
     if (name && name !== '未知') return name;
   } catch (e) {
-    console.error("豆包识别学校失败:", e);
+    console.error("邮箱后缀识别学校失败:", e);
   }
   return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 }

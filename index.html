@@ -424,14 +424,14 @@
       }
 
       const output = document.getElementById('ai-output');
-      output.innerHTML = '<div style="color: var(--text-soft);">查询中...</div>';
+      output.innerHTML = '<div style="color: var(--text-soft);">查询中，请稍候（约需 10～60 秒）…</div>';
 
       const profile = getProfileSummary();
       const xuankeContext = queryMode === 'xuanke' ? getXuankeContext() : null;
 
       try {
         const ctrl = new AbortController();
-        const timeoutId = setTimeout(() => ctrl.abort(), 90000);
+        const timeoutId = setTimeout(() => ctrl.abort(), 120000);
         const res = await fetch(API_BASE + '/ai-query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
