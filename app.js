@@ -1429,12 +1429,13 @@ app.get('/api/auth/student-id/status', (req, res) => {
 });
 
 // 解析认证 token，返回 { email, school_name, auth_type, nickname } 或 null
+// 使用 datetime() 包装保证 SQLite 正确比较 ISO 格式的 token_expires_at 与当前时间
 function parseAuthToken(authToken) {
   return new Promise((resolve) => {
     const t = authToken != null ? String(authToken).trim() : '';
     if (!t) return resolve(null);
     db.get(
-      'SELECT email, school_name, auth_type, nickname FROM verified_users WHERE auth_token = ? AND token_expires_at > datetime("now")',
+      'SELECT email, school_name, auth_type, nickname FROM verified_users WHERE auth_token = ? AND datetime(token_expires_at) > datetime("now")',
       [t],
       (err, row) => resolve(err ? null : row)
     );
@@ -1461,11 +1462,12 @@ app.get('/api/auth/me', async (req, res) => {
 app.post('/api/student-shares', async (req, res) => {
   const body = req.body || {};
   const { school, major, grade, title, content, tags, images } = body;
-  // 从多处读取 token，避免 body 未解析或丢失时认证失败（优先请求头，再 body）
-  let token = (req.headers['x-auth-token'] && String(req.headers['x-auth-token']).trim()) ||
-    (req.headers['authorization'] && String(req.headers['authorization']).replace(/^Bearer\s+/i, '').trim()) ||
-    (body.authToken != null ? String(body.authToken).trim() : '') ||
-    (body.auth_token != null ? String(body.auth_token).trim() : '');
+  // 从多处读取 token，避免 body/头被代理截断时认证失败（头 + body + query）
+  const rawHeader = req.headers['x-auth-token'] || req.headers['authorization'];
+  let token = (rawHeader && String(rawHeader).trim()) || '';
+  if (token && token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  if (!token) token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
+  if (!token && req.query && req.query.authToken) token = String(req.query.authToken).trim();
   token = (token || '').trim();
 
   const verified = await parseAuthToken(token || null);
