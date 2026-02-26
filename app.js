@@ -278,11 +278,11 @@ app.get('/get-data', (req, res) => {
 });
 
 // ********** 功能3：智能查询 - 直连 API + 学生分享筛选与总结 **********
-// 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答
-function fetchRelevantShares(prompt, limit = 20) {
+// 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答（限制条数与长度以降低超时）
+function fetchRelevantShares(prompt, limit = 10) {
   return new Promise((resolve) => {
     db.all(
-      `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC LIMIT 100`,
+      `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC LIMIT 80`,
       [],
       (err, rows) => {
         if (err || !rows || rows.length === 0) {
@@ -317,7 +317,9 @@ app.post('/ai-query', async (req, res) => {
       return;
     }
 
-    const shareRows = await fetchRelevantShares(prompt, 20);
+    // 控制上下文长度，减少百炼处理时间，降低超时概率
+    const shareRows = await fetchRelevantShares(prompt, 8);
+    const MAX_SNIPPET = 200;
     let contextInfo = "【参考信息】\n";
     if (profileSummary && profileSummary !== "（未填写）") {
       contextInfo += `用户基本信息：${profileSummary}\n`;
@@ -330,42 +332,68 @@ app.post('/ai-query', async (req, res) => {
       contextInfo += "学生分享（供参考）：\n";
       shareRows.forEach((entry, i) => {
         const author = entry.author_nickname || entry.school || '匿名';
-        const contentSnippet = (entry.content || '').slice(0, 400);
-        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}：${entry.title || ''}\n${contentSnippet}${(entry.content || '').length > 400 ? '…' : ''}\n`;
+        const contentSnippet = (entry.content || '').slice(0, MAX_SNIPPET);
+        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}：${entry.title || ''}\n${contentSnippet}${(entry.content || '').length > MAX_SNIPPET ? '…' : ''}\n`;
       });
     }
     contextInfo += `\n用户问题：${prompt}`;
 
     const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
+    const callBailian = (signal) => fetch(appUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
+      },
+      body: JSON.stringify({
+        input: { prompt: contextInfo },
+        parameters: { result_format: 'message' }
+      }),
+      signal
+    });
+    const BAILIAN_TIMEOUT_MS = 90000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), BAILIAN_TIMEOUT_MS);
     let response;
     try {
-      response = await fetch(appUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${BAILIAN_API_KEY}`
-        },
-        body: JSON.stringify({
-          input: { prompt: contextInfo },
-          parameters: { result_format: 'message' }
-        }),
-        signal: controller.signal
-      });
+      response = await callBailian(controller.signal);
     } catch (fetchErr) {
       clearTimeout(timeoutId);
-      console.error("智能查询 百炼 网络异常:", fetchErr.message);
-      res.send({ code: 500, msg: "AI 服务暂时不可达，请稍后重试" });
+      if (fetchErr.name === 'AbortError') {
+        console.error("智能查询 百炼 请求超时（" + (BAILIAN_TIMEOUT_MS / 1000) + "s）");
+        res.send({ code: 500, msg: "AI 响应超时，请缩短问题或稍后重试" });
+      } else {
+        console.error("智能查询 百炼 网络异常:", fetchErr.message);
+        res.send({ code: 500, msg: "AI 服务暂时不可达，请稍后重试" });
+      }
       return;
     }
     clearTimeout(timeoutId);
-    const rawText = await response.text();
     if (!response.ok) {
-      console.error("智能查询 百炼 API 错误:", response.status, rawText.slice(0, 400));
-      res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
-      return;
+      const rawErr = await response.text();
+      console.error("智能查询 百炼 API 错误:", response.status, rawErr.slice(0, 400));
+      if (response.status >= 500 && response.status < 600) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const retryController = new AbortController();
+        const retryTimeout = setTimeout(() => retryController.abort(), BAILIAN_TIMEOUT_MS);
+        try {
+          response = await callBailian(retryController.signal);
+          clearTimeout(retryTimeout);
+        } catch (retryErr) {
+          clearTimeout(retryTimeout);
+          res.send({ code: 500, msg: "AI 服务繁忙，请稍后重试" });
+          return;
+        }
+        if (!response.ok) {
+          res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
+          return;
+        }
+      } else {
+        res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
+        return;
+      }
     }
+    const rawText = await response.text();
     let result;
     try {
       result = JSON.parse(rawText);
@@ -1598,51 +1626,48 @@ app.post('/admin/school-programs', verifyAdmin, (req, res) => {
 
 // ========== 豆包AI数据管理功能 ==========
 
-// 调用豆包AI进行院校信息检索和整理
-async function callDoubaoAI(prompt, systemPrompt = '') {
-  try {
-    const fetch = (await import('node-fetch')).default;
-    
-    if (!DOUBAO_API_KEY) {
-      console.error("DOUBAO_KEY 环境变量未设置");
-      throw new Error("豆包AI密钥未配置");
-    }
-    
-    const response = await fetch(DOUBAO_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DOUBAO_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: DOUBAO_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt || '你是一个专业的教育数据管理助手，擅长整理和分析高校及专业信息。请根据用户提供的院校或专业名称，从官方网站检索相关信息并以结构化JSON格式返回。'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`豆包AI API错误: ${response.status}`, errorText);
-      throw new Error(`API错误: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    return result.choices?.[0]?.message?.content || '';
-  } catch (error) {
-    console.error("调用豆包AI失败:", error);
-    throw error;
+// 调用豆包AI进行院校信息检索和整理（429 时自动重试一次）
+async function callDoubaoAI(prompt, systemPrompt = '', isRetry = false) {
+  const fetch = (await import('node-fetch')).default;
+  if (!DOUBAO_API_KEY) {
+    console.error("DOUBAO_KEY 环境变量未设置");
+    throw new Error("豆包AI密钥未配置");
   }
+  const body = {
+    model: DOUBAO_MODEL,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt || '你是一个专业的教育数据管理助手，擅长整理和分析高校及专业信息。请根据用户提供的院校或专业名称，从官方网站检索相关信息并以结构化JSON格式返回。'
+      },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.7,
+    max_tokens: 4000
+  };
+  const response = await fetch(DOUBAO_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${DOUBAO_API_KEY}`
+    },
+    body: JSON.stringify(body)
+  });
+  if (response.status === 429 && !isRetry) {
+    console.warn("豆包API 429 限频，3秒后重试一次");
+    await new Promise((r) => setTimeout(r, 3000));
+    return callDoubaoAI(prompt, systemPrompt, true);
+  }
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`豆包AI API错误: ${response.status}`, errorText.slice(0, 300));
+    if (response.status === 429) {
+      throw new Error("豆包API请求过于频繁(429)，请稍后再试");
+    }
+    throw new Error(`豆包API错误: ${response.status}`);
+  }
+  const result = await response.json();
+  return result.choices?.[0]?.message?.content || '';
 }
 
 // 检查该专业下该院校是否已录入（避免重复）
