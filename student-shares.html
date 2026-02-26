@@ -385,7 +385,7 @@
         <!-- 列表视图：搜索 + 分享列表 -->
         <div id="list-view" class="list-view">
         <p class="section-desc">
-          阅读在读学生的真实分享，了解他们的学习经历。完成信息认证后，可使用学校邮箱发帖与评论。
+          阅读在读学生的真实分享。大学在读生需完成认证才可发帖，且只能发布认证学校相关内容（邮箱或学生证认证）；高考生可直接认证，仅可评论不可发帖。认证一次长期有效，除非退出认证。
         </p>
         <div class="search-bar">
           <input type="text" class="input" id="search-keyword" placeholder="搜索学校、专业或关键词..." />
@@ -413,15 +413,15 @@
             <span class="icon-pill">写</span>
             分享你的经历
           </div>
-          <p class="section-desc" id="upload-form-desc">您只能在认证学校下发帖。选择专业，匿名分享你的真实经历（支持上传图片）。</p>
+          <p class="section-desc" id="upload-form-desc">发帖须确定认证学校（已自动填入），可选填专业、年级。一经发布可供所有用户浏览。</p>
           
           <div class="form-grid" id="upload-form-nickname-row" style="display: none;">
             <input type="text" class="input" id="upload-nickname-display" readonly placeholder="昵称" style="background: #f8f7f4; cursor: not-allowed; max-width: 200px;" />
           </div>
           <div class="form-grid" id="upload-form-school-row">
-            <input type="text" class="input" id="upload-school" readonly placeholder="认证学校（自动填入）" style="background: #f8f7f4; cursor: not-allowed;" />
+            <input type="text" class="input" id="upload-school" readonly placeholder="认证学校（必填，已锁定）" style="background: #f8f7f4; cursor: not-allowed;" title="发帖必须为认证学校" />
             <select class="select" id="upload-major">
-              <option value="">选择专业</option>
+              <option value="">专业（选填）</option>
             </select>
             <select class="select" id="upload-grade">
               <option value="">年级（选填）</option>
@@ -472,7 +472,7 @@
           <span class="icon-pill">验</span>
           信息认证
         </div>
-        <p class="section-desc">请选择一种方式完成认证，认证通过后才可发帖与评论。</p>
+        <p class="section-desc">大学在读生：认证通过后可发帖（仅限认证学校内容）与评论；高考生：认证后仅可评论不可发帖。认证一次长期有效，退出认证后需重新认证。</p>
         <div class="pill-switch" style="margin-bottom: 12px;">
           <button type="button" id="auth-tab-current" class="active" onclick="switchAuthCategory('current')">在读生认证</button>
           <button type="button" id="auth-tab-gaokao" onclick="switchAuthCategory('gaokao')">高考生认证</button>
@@ -527,7 +527,7 @@
           </div>
         </div>
         <div id="auth-category-gaokao" style="display: none;">
-          <p class="section-desc">高考生可直接填写昵称完成认证，仅可评论、不可发帖。</p>
+          <p class="section-desc">高考生可直接填写昵称完成认证，认证后仅可评论、不可发帖。</p>
           <div class="form-grid" style="margin-bottom: 12px;">
             <input type="text" class="input" id="gaokao-nickname" placeholder="昵称（必填）" style="max-width: 240px;" />
             <button class="primary-btn" onclick="doGaokaoAuth()">确认认证</button>
@@ -848,7 +848,7 @@
         const nickInput = document.getElementById('upload-nickname-display');
         if (nickInput) nickInput.value = verifiedNickname || (isGaokao ? '高考生' : '在读生');
       }
-      if (descEl) descEl.textContent = isGaokao ? '以高考生身份发布，不显示学校与专业。' : '您只能在认证学校下发帖。选择专业，匿名分享你的真实经历（支持上传图片）。';
+      if (descEl) descEl.textContent = isGaokao ? '高考生仅可评论，不可发帖。' : '发帖须确定认证学校（已自动填入），可选填专业、年级。一经发布可供所有用户浏览。';
       if (!isGaokao) {
         document.getElementById('upload-school').value = verifiedSchool;
         loadMajorsForSchool(verifiedSchool);
@@ -1138,8 +1138,8 @@
       const content = document.getElementById('upload-content').value.trim();
       const tags = document.getElementById('upload-tags').value.trim();
 
-      if (!isGaokao && (!school || !major)) {
-        showToast('请选择学校和专业', 'error');
+      if (!isGaokao && !school) {
+        showToast('请确定认证学校', 'error');
         return;
       }
 
@@ -1267,7 +1267,7 @@
             ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
             <div class="share-footer">
               <span>${formatDate(share.upload_time)}</span>
-              <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();">举报</button>
+              <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
             </div>
             <div class="share-comments" id="comments-${share.id}">
               <div class="comment-list-${share.id}"></div>
@@ -1296,7 +1296,7 @@
         if (data.code === 200 && data.data && data.data.length > 0) {
           list.innerHTML = data.data.map(c => `
             <div class="comment-item">
-              <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button></div>
+              <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button></div>
               <div>${escapeHtml(c.content)}</div>
             </div>
           `).join('');
@@ -1524,7 +1524,7 @@
       document.getElementById('exit-auth-btn').style.display = 'none';
       closeAuthModal();
       showListView();
-      showToast('已退出认证，发帖或评论需重新认证', 'success');
+      showToast('已退出认证，再次发帖或评论需重新认证', 'success');
     }
   </script>
 </body>
