@@ -631,7 +631,9 @@
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          updateWriteShareButtonVisibility();
           showToast('认证成功', 'success');
+          openUploadFormDirectly();
           return;
         }
         if (data.status === 'rejected') {
@@ -669,9 +671,11 @@
             document.getElementById('auth-badge').style.display = 'inline';
             setAuthBadgeText();
             document.getElementById('exit-auth-btn').style.display = 'inline-block';
+            updateWriteShareButtonVisibility();
             msgEl.style.display = 'none';
             document.getElementById('student-id-query-btn').style.display = 'none';
             showToast('认证已通过', 'success');
+            openUploadFormDirectly();
           }
           if (data.status === 'rejected') {
             clearInterval(t);
@@ -709,9 +713,11 @@
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          updateWriteShareButtonVisibility();
           msgEl.style.display = 'none';
           queryBtn.style.display = 'none';
           showToast('认证已通过', 'success');
+          openUploadFormDirectly();
         } else if (data.code === 200 && data.status === 'rejected') {
           msgEl.textContent = '审核未通过。';
         } else {
@@ -749,6 +755,12 @@
       const btn = document.getElementById('btn-write-share');
       if (!btn) return;
       btn.style.display = (authToken && authType === 'gaokao') ? 'none' : '';
+    }
+
+    // 认证成功后直接打开写分享表单，不再展示认证页
+    async function openUploadFormDirectly() {
+      document.getElementById('verification-panel').style.display = 'none';
+      await toggleUploadForm();
     }
 
     // 切换上传表单（高考生仅可评论不可发帖）
@@ -1393,6 +1405,7 @@
         document.getElementById('auth-badge').style.display = 'inline';
         setAuthBadgeText();
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
+        document.getElementById('verification-panel').style.display = 'none';
       }
       if (!authToken && window._lastStudentIdSubmissionId) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
