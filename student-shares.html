@@ -1374,39 +1374,65 @@
       if (e.key === 'Enter') searchShares();
     });
 
+    // 从服务端恢复认证状态（跳转/刷新后仍保持已认证，除非 token 过期或退出认证）
+    async function restoreAuthFromServer(forceRefresh) {
+      if (!authToken) return false;
+      if (!forceRefresh && authType === 'gaokao') return true;
+      if (!forceRefresh && verifiedSchool) return true;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+        const data = await res.json();
+        if (data.code === 200) {
+          if (data.school) verifiedSchool = data.school;
+          if (data.nickname != null) verifiedNickname = data.nickname;
+          if (data.authType) authType = data.authType;
+          localStorage.setItem('verifiedSchool', verifiedSchool || '');
+          localStorage.setItem('verifiedNickname', verifiedNickname || '');
+          localStorage.setItem('authType', authType || '');
+          return true;
+        }
+        authToken = '';
+        verifiedSchool = '';
+        authType = '';
+        verifiedNickname = '';
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('verifiedSchool');
+        localStorage.removeItem('authType');
+        localStorage.removeItem('verifiedNickname');
+        return false;
+      } catch (e) {
+        return true;
+      }
+    }
+
     // 恢复认证信息（解决认证后刷新或 school 未写入导致无法上传）
     async function restoreAuthIfNeeded() {
       if (!authToken || authType === 'gaokao') return;
       if (verifiedSchool) return;
-      try {
-        const res = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
-        const data = await res.json();
-        if (data.code === 200 && data.school) {
-          verifiedSchool = data.school;
-          if (data.nickname) verifiedNickname = data.nickname;
-          if (data.authType) authType = data.authType;
-          localStorage.setItem('verifiedSchool', verifiedSchool);
-          if (verifiedNickname) localStorage.setItem('verifiedNickname', verifiedNickname);
-          if (authType) localStorage.setItem('authType', authType);
-          document.getElementById('auth-badge').style.display = 'inline';
-          setAuthBadgeText();
-          document.getElementById('exit-auth-btn').style.display = 'inline-block';
-          updateWriteShareButtonVisibility();
-        }
-      } catch (e) {}
+      const ok = await restoreAuthFromServer(false);
+      if (ok) {
+        document.getElementById('auth-badge').style.display = 'inline';
+        setAuthBadgeText();
+        document.getElementById('exit-auth-btn').style.display = 'inline-block';
+        updateWriteShareButtonVisibility();
+      }
     }
 
-    // 页面加载
-    window.onload = function() {
+    // 页面加载：从 localStorage 读取后若有 token 则向服务端确认，保持已认证状态
+    window.onload = async function() {
       window._lastStudentIdSubmissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
       loadShares();
       loadSchoolOptions();
       loadMajorOptions();
-      if (authToken && (verifiedSchool || authType === 'gaokao')) {
-        document.getElementById('auth-badge').style.display = 'inline';
-        setAuthBadgeText();
-        document.getElementById('exit-auth-btn').style.display = 'inline-block';
-        document.getElementById('verification-panel').style.display = 'none';
+      if (authToken) {
+        const stillValid = await restoreAuthFromServer(true);
+        if (stillValid && (verifiedSchool || authType === 'gaokao')) {
+          document.getElementById('auth-badge').style.display = 'inline';
+          setAuthBadgeText();
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          document.getElementById('verification-panel').style.display = 'none';
+          document.getElementById('upload-form').style.display = 'none';
+        }
       }
       if (!authToken && window._lastStudentIdSubmissionId) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
