@@ -1,11 +1,1 @@
-{
-  "$schema": "https://modelscope.cn/api/v1/studios/deploy_schema.json",
-  "sdk_type": "docker",
-  "resource_configuration": "platform/2v-cpu-16g-mem",
-  "port": 7860,
-  "environment_variables": [
-    {"name": "DOUBAO_KEY", "value": "04ab8a51-281f-499f-b2a6-7c3782bb30ca"},
-    {"name": "BAILIAN_API_KEY", "value": "sk-67367e61ed2e4e28a49b7b1fd5a346b2"},
-    {"name": "BAILIAN_APP_ID", "value": "1a5d7eb76b1f4c86961d372c6d134b9b"}
-  ]
-}
+{"$schema":"https://modelscope.cn/api/v1/studios/deploy_schema.json","sdk_type":"docker","resource_configuration":"platform/2v-cpu-16g-mem","port":7860,"environment_variables":[{"name":"BAILIAN_API_KEY","value":"sk-67367e61ed2e4e28a49b7b1fd5a346b2"},{"name":"BAILIAN_APP_ID","value":"1a5d7eb76b1f4c86961d372c6d134b9b"}]}

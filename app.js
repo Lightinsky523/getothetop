@@ -55,12 +55,7 @@ const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 const AI_API_KEY = process.env.AI_KEY;
 const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
 
-// 豆包AI配置 - 仅用于验证码邮箱后缀识别（低频）
-const DOUBAO_API_KEY = process.env.DOUBAO_KEY || '04ab8a51-281f-499f-b2a6-7c3782bb30ca';
-const DOUBAO_API_URL = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
-
-// DeepSeek 配置 - 用于专业数据录入（单条/批量/按学校添加），避免豆包限频 429
+// DeepSeek 配置 - 用于邮箱后缀识别学校、专业数据录入（单条/批量/按学校添加）
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -1056,20 +1051,21 @@ const EMAIL_SUFFIX_TO_SCHOOL = {
   'seu.edu.cn': '东南大学'
 };
 
-// 根据邮箱后缀识别学校名称：优先 DeepSeek（避免豆包限频导致无法认证），未配置则回退豆包；含解析增强与回退表
+// 根据邮箱后缀识别学校名称：已配置 DeepSeek 时用 AI 识别，否则仅用内置表；含解析增强与回退表
 async function getSchoolFromEmailSuffix(emailSuffix) {
   const suffixLower = (emailSuffix || '').trim().toLowerCase();
   if (suffixLower && EMAIL_SUFFIX_TO_SCHOOL[suffixLower])
     return EMAIL_SUFFIX_TO_SCHOOL[suffixLower];
+
+  if (!DEEPSEEK_API_KEY)
+    return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 
   const prompt = `请根据中国高校邮箱后缀判断对应的学校中文名称。例如：pku.edu.cn -> 北京大学；tsinghua.edu.cn -> 清华大学；fudan.edu.cn -> 复旦大学。
 邮箱后缀：${emailSuffix}
 只返回学校的中文全称，不要任何标点、解释或换行。如果无法确定，返回"未知"`;
   const systemPrompt = '你是一个教育数据助手。根据邮箱后缀准确识别中国大陆高校中文名称。';
   try {
-    const result = DEEPSEEK_API_KEY
-      ? await callDeepSeekAI(prompt, systemPrompt)
-      : await callDoubaoAI(prompt, systemPrompt);
+    const result = await callDeepSeekAI(prompt, systemPrompt);
     let name = (result || '').trim();
     // 取第一行或冒号后的内容
     const firstLine = name.split(/\n/)[0].trim();
@@ -1462,12 +1458,14 @@ app.get('/api/auth/me', async (req, res) => {
 app.post('/api/student-shares', async (req, res) => {
   const body = req.body || {};
   const { school, major, grade, title, content, tags, images } = body;
-  // 从多处读取 token，避免 body/头被代理截断时认证失败（头 + body + query）
-  const rawHeader = req.headers['x-auth-token'] || req.headers['authorization'];
-  let token = (rawHeader && String(rawHeader).trim()) || '';
-  if (token && token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  // 从多处读取 token：优先 query（前端已放在 URL，大 body 时最可靠），再头、再 body
+  let token = (req.query && req.query.authToken != null) ? String(req.query.authToken).trim() : '';
+  if (!token) {
+    const rawHeader = req.headers['x-auth-token'] || req.headers['authorization'];
+    token = (rawHeader && String(rawHeader).trim()) || '';
+    if (token && token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  }
   if (!token) token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
-  if (!token && req.query && req.query.authToken) token = String(req.query.authToken).trim();
   token = (token || '').trim();
 
   const verified = await parseAuthToken(token || null);
@@ -1669,65 +1667,9 @@ app.post('/admin/school-programs', verifyAdmin, (req, res) => {
   });
 });
 
-// ========== 豆包AI数据管理功能 ==========
+// ========== 数据录入用 AI（DeepSeek）==========
 
-// 豆包调用节流：单次操作可能触发多次调用（如按学校添加会先拉列表再逐专业调用），
-// 与豆包 QPM 限制叠加后即使用户未“频繁操作”也会 429，故在每次请求前强制间隔。
-const DOUBAO_MIN_GAP_MS = 2500;
-let lastDoubaoCallTime = 0;
-
-// 调用豆包AI（节流 + 429 时自动重试 2 次）
-async function callDoubaoAI(prompt, systemPrompt = '', retryCount = 0) {
-  const fetch = (await import('node-fetch')).default;
-  if (!DOUBAO_API_KEY) {
-    console.error("DOUBAO_KEY 环境变量未设置");
-    throw new Error("豆包AI密钥未配置");
-  }
-  const now = Date.now();
-  const elapsed = now - lastDoubaoCallTime;
-  if (lastDoubaoCallTime > 0 && elapsed < DOUBAO_MIN_GAP_MS) {
-    await new Promise((r) => setTimeout(r, DOUBAO_MIN_GAP_MS - elapsed));
-  }
-  const body = {
-    model: DOUBAO_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: systemPrompt || '你是一个专业的教育数据管理助手，擅长整理和分析高校及专业信息。请根据用户提供的院校或专业名称，从官方网站检索相关信息并以结构化JSON格式返回。'
-      },
-      { role: 'user', content: prompt }
-    ],
-    temperature: 0.7,
-    max_tokens: 4000
-  };
-  const response = await fetch(DOUBAO_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DOUBAO_API_KEY}`
-    },
-    body: JSON.stringify(body)
-  });
-  if (response.status === 429 && retryCount < 2) {
-    const waitMs = 5000 + retryCount * 3000;
-    console.warn(`豆包API 429 限频，${waitMs / 1000}秒后重试 (${retryCount + 1}/2)`);
-    await new Promise((r) => setTimeout(r, waitMs));
-    return callDoubaoAI(prompt, systemPrompt, retryCount + 1);
-  }
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`豆包AI API错误: ${response.status}`, errorText.slice(0, 300));
-    if (response.status === 429) {
-      throw new Error("豆包API请求过于频繁(429)，请稍后再试");
-    }
-    throw new Error(`豆包API错误: ${response.status}`);
-  }
-  lastDoubaoCallTime = Date.now();
-  const result = await response.json();
-  return result.choices?.[0]?.message?.content || '';
-}
-
-// 调用 DeepSeek（数据录入用，无节流；429 时重试 2 次）
+// 调用 DeepSeek（数据录入与邮箱后缀识别；429 时重试 2 次）
 async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
   const fetch = (await import('node-fetch')).default;
   if (!DEEPSEEK_API_KEY) {
@@ -1769,10 +1711,11 @@ async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
   return result.choices?.[0]?.message?.content || '';
 }
 
-// 数据录入用 AI：优先 DeepSeek（避免豆包 429），未配置则回退豆包
+// 数据录入用 AI（仅 DeepSeek，未配置时需设置 DEEPSEEK_API_KEY）
 async function callDataEntryAI(prompt, systemPrompt = '') {
-  if (DEEPSEEK_API_KEY) return callDeepSeekAI(prompt, systemPrompt);
-  return callDoubaoAI(prompt, systemPrompt);
+  if (!DEEPSEEK_API_KEY)
+    throw new Error("DeepSeek 未配置，请设置 DEEPSEEK_API_KEY 后进行数据录入");
+  return callDeepSeekAI(prompt, systemPrompt);
 }
 
 // 检查该专业下该院校是否已录入（避免重复）
@@ -2080,6 +2023,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
   console.log(`📊 数据目录: ${DATA_DIR}`);
   console.log(`🤖 智能查询（百炼应用）: ${BAILIAN_API_KEY && BAILIAN_APP_ID ? '已配置' : '未配置'}`);
-  console.log(`🤖 豆包AI（验证码识别）: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
-  console.log(`🤖 DeepSeek（数据录入）: ${DEEPSEEK_API_KEY ? '已配置' : '未配置（将用豆包，可能遇429限频）'}`);
+  console.log(`🤖 DeepSeek（邮箱识别+数据录入）: ${DEEPSEEK_API_KEY ? '已配置' : '未配置'}`);
 });
