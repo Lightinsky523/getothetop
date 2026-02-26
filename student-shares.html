@@ -329,6 +329,27 @@
     .toast.success { background: #38a169; }
     .toast.error { background: var(--error); }
 
+    /* 信息认证弹窗：仅显示认证表单，不显示底部搜索栏等 */
+    .auth-modal {
+      display: none; position: fixed; inset: 0; z-index: 2500;
+      background: rgba(0,0,0,0.45); align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+    }
+    .auth-modal.show { display: flex; }
+    .auth-modal-box {
+      background: #fffef9; border-radius: var(--radius-lg); padding: 28px;
+      max-width: 480px; width: 100%; max-height: 90vh; overflow: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid var(--border-subtle);
+    }
+    .auth-modal-box .upload-section { margin-bottom: 0; background: transparent; border: none; padding: 0; }
+    .auth-modal-box .section-desc { margin-bottom: 16px; }
+
+    /* 列表视图 / 编辑视图 切换 */
+    .list-view { display: block; }
+    .list-view.hidden { display: none !important; }
+    .editor-view { display: none; }
+    .editor-view.active { display: block; }
+
     @media (max-width: 900px) {
       .app-shell { border-radius: 24px; padding: 20px 16px; }
       .header { flex-direction: column; align-items: flex-start; }
@@ -361,85 +382,11 @@
           <span class="icon-pill">享</span>
           学生分享
         </div>
+        <!-- 列表视图：搜索 + 分享列表 -->
+        <div id="list-view" class="list-view">
         <p class="section-desc">
           阅读在读学生的真实分享，了解他们的学习经历。完成信息认证后，可使用学校邮箱发帖与评论。
         </p>
-
-        <!-- 信息认证（未认证时显示） -->
-        <div id="verification-panel" class="upload-section" style="display: none;">
-          <div class="section-title">
-            <span class="icon-pill">验</span>
-            信息认证
-          </div>
-          <p class="section-desc">请选择一种方式完成认证，认证通过后才可发帖与评论。</p>
-          <div class="pill-switch" style="margin-bottom: 12px;">
-            <button type="button" id="auth-tab-current" class="active" onclick="switchAuthCategory('current')">在读生认证</button>
-            <button type="button" id="auth-tab-gaokao" onclick="switchAuthCategory('gaokao')">高考生认证</button>
-          </div>
-          <!-- 在读生认证：邮箱 / 学生证 -->
-          <div id="auth-category-current">
-            <div class="pill-switch" style="margin-bottom: 16px;">
-              <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
-              <button type="button" id="auth-tab-student" onclick="switchAuthMode('student')">学生证认证</button>
-            </div>
-            <!-- 邮箱认证 -->
-            <div id="auth-mode-email">
-              <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
-                <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
-                <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
-                <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
-              </div>
-              <div id="verify-step2" style="display: none;">
-                <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 8px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
-                <div class="form-grid" style="margin-bottom: 8px;">
-                  <input type="text" class="input" id="verify-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
-                </div>
-                <div class="form-grid" style="margin-bottom: 12px;">
-                  <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
-                  <button class="primary-btn" onclick="doVerify()">确认认证</button>
-                  <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
-                </div>
-              </div>
-            </div>
-            <!-- 学生证认证 -->
-            <div id="auth-mode-student" style="display: none;">
-              <p class="section-desc">上传学生证照片，系统将进行鉴伪；存疑时转人工审核。</p>
-              <div class="form-grid" style="margin-bottom: 8px;">
-                <input type="text" class="input" id="student-id-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
-              </div>
-              <div class="form-grid" style="margin-bottom: 12px;">
-                <select class="select" id="student-id-school" style="min-width: 200px;">
-                  <option value="">选择学校</option>
-                </select>
-              </div>
-              <div class="image-upload" style="margin-bottom: 12px;">
-                <label class="image-upload-label">学生证图片（1 张）</label>
-                <div class="image-input-wrapper">
-                  <input type="file" id="student-id-image" accept="image/*" onchange="onStudentIdImageChange(event)" />
-                  <div class="image-upload-btn"><span>📷</span> 选择图片</div>
-                </div>
-                <div id="student-id-preview" class="image-preview-grid"></div>
-              </div>
-              <div class="form-grid">
-                <button class="primary-btn" id="submit-student-id-btn" onclick="submitStudentId()" disabled>提交认证</button>
-                <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
-              </div>
-              <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
-              <button type="button" class="primary-btn secondary" id="student-id-query-btn" style="margin-top: 8px; display: none;" onclick="queryStudentIdStatusOnce()">查询认证结果</button>
-            </div>
-          </div>
-          <!-- 高考生认证 -->
-          <div id="auth-category-gaokao" style="display: none;">
-            <p class="section-desc">高考生可直接填写昵称完成认证，仅可评论、不可发帖。</p>
-            <div class="form-grid" style="margin-bottom: 12px;">
-              <input type="text" class="input" id="gaokao-nickname" placeholder="昵称（必填）" style="max-width: 240px;" />
-              <button class="primary-btn" onclick="doGaokaoAuth()">确认认证</button>
-              <button class="primary-btn secondary" onclick="document.getElementById('verification-panel').style.display='none'">取消</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 搜索栏 -->
         <div class="search-bar">
           <input type="text" class="input" id="search-keyword" placeholder="搜索学校、专业或关键词..." />
           <select class="select" id="search-school">
@@ -449,13 +396,19 @@
             <option value="">全部专业</option>
           </select>
           <button class="primary-btn" onclick="searchShares()">搜索</button>
-          <button class="primary-btn secondary" id="btn-write-share" onclick="toggleUploadForm()">+ 写分享</button>
+          <button class="primary-btn secondary" id="btn-write-share" onclick="onWriteShareClick()">+ 写分享</button>
           <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
           <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
         </div>
 
-        <!-- 上传表单 -->
-        <div id="upload-form" class="upload-section" style="display: none;">
+        <!-- 分享列表 -->
+        <div class="share-list" id="share-list">
+          <div class="loading">正在加载分享...</div>
+        </div>
+        </div>
+
+        <!-- 帖子编辑页（认证后填写内容并上传） -->
+        <div id="upload-form" class="upload-section editor-view">
           <div class="section-title">
             <span class="icon-pill">写</span>
             分享你的经历
@@ -507,10 +460,79 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- 分享列表 -->
-        <div class="share-list" id="share-list">
-          <div class="loading">正在加载分享...</div>
+  <!-- 信息认证弹窗（点击「写分享」且未认证时弹出，不显示底部搜索栏） -->
+  <div id="auth-modal" class="auth-modal" onclick="if(event.target===this) closeAuthModal()">
+    <div class="auth-modal-box" onclick="event.stopPropagation()">
+      <div id="verification-panel" class="upload-section">
+        <div class="section-title">
+          <span class="icon-pill">验</span>
+          信息认证
+        </div>
+        <p class="section-desc">请选择一种方式完成认证，认证通过后才可发帖与评论。</p>
+        <div class="pill-switch" style="margin-bottom: 12px;">
+          <button type="button" id="auth-tab-current" class="active" onclick="switchAuthCategory('current')">在读生认证</button>
+          <button type="button" id="auth-tab-gaokao" onclick="switchAuthCategory('gaokao')">高考生认证</button>
+        </div>
+        <div id="auth-category-current">
+          <div class="pill-switch" style="margin-bottom: 16px;">
+            <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
+            <button type="button" id="auth-tab-student" onclick="switchAuthMode('student')">学生证认证</button>
+          </div>
+          <div id="auth-mode-email">
+            <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
+              <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
+              <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
+              <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
+            </div>
+            <div id="verify-step2" style="display: none;">
+              <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 8px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
+              <div class="form-grid" style="margin-bottom: 8px;">
+                <input type="text" class="input" id="verify-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
+              </div>
+              <div class="form-grid" style="margin-bottom: 12px;">
+                <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
+                <button class="primary-btn" onclick="doVerify()">确认认证</button>
+                <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
+              </div>
+            </div>
+          </div>
+          <div id="auth-mode-student" style="display: none;">
+            <p class="section-desc">上传学生证照片，系统将进行鉴伪；存疑时转人工审核。</p>
+            <div class="form-grid" style="margin-bottom: 8px;">
+              <input type="text" class="input" id="student-id-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
+            </div>
+            <div class="form-grid" style="margin-bottom: 12px;">
+              <select class="select" id="student-id-school" style="min-width: 200px;">
+                <option value="">选择学校</option>
+              </select>
+            </div>
+            <div class="image-upload" style="margin-bottom: 12px;">
+              <label class="image-upload-label">学生证图片（1 张）</label>
+              <div class="image-input-wrapper">
+                <input type="file" id="student-id-image" accept="image/*" onchange="onStudentIdImageChange(event)" />
+                <div class="image-upload-btn"><span>📷</span> 选择图片</div>
+              </div>
+              <div id="student-id-preview" class="image-preview-grid"></div>
+            </div>
+            <div class="form-grid">
+              <button class="primary-btn" id="submit-student-id-btn" onclick="submitStudentId()" disabled>提交认证</button>
+              <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
+            </div>
+            <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
+            <button type="button" class="primary-btn secondary" id="student-id-query-btn" style="margin-top: 8px; display: none;" onclick="queryStudentIdStatusOnce()">查询认证结果</button>
+          </div>
+        </div>
+        <div id="auth-category-gaokao" style="display: none;">
+          <p class="section-desc">高考生可直接填写昵称完成认证，仅可评论、不可发帖。</p>
+          <div class="form-grid" style="margin-bottom: 12px;">
+            <input type="text" class="input" id="gaokao-nickname" placeholder="昵称（必填）" style="max-width: 240px;" />
+            <button class="primary-btn" onclick="doGaokaoAuth()">确认认证</button>
+            <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
+          </div>
         </div>
       </div>
     </div>
@@ -627,7 +649,7 @@
           localStorage.setItem('verifiedSchool', verifiedSchool);
           localStorage.setItem('authType', authType);
           localStorage.setItem('verifiedNickname', verifiedNickname);
-          document.getElementById('verification-panel').style.display = 'none';
+          closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
@@ -667,7 +689,7 @@
             localStorage.setItem('verifiedSchool', verifiedSchool);
             localStorage.setItem('authType', authType);
             localStorage.setItem('verifiedNickname', verifiedNickname);
-            document.getElementById('verification-panel').style.display = 'none';
+            closeAuthModal();
             document.getElementById('auth-badge').style.display = 'inline';
             setAuthBadgeText();
             document.getElementById('exit-auth-btn').style.display = 'inline-block';
@@ -709,7 +731,7 @@
           localStorage.setItem('verifiedSchool', verifiedSchool);
           localStorage.setItem('authType', authType);
           localStorage.setItem('verifiedNickname', verifiedNickname);
-          document.getElementById('verification-panel').style.display = 'none';
+          closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
@@ -757,15 +779,72 @@
       btn.style.display = (authToken && authType === 'gaokao') ? 'none' : '';
     }
 
-    // 认证成功后直接打开写分享表单，不再展示认证页
-    async function openUploadFormDirectly() {
-      document.getElementById('verification-panel').style.display = 'none';
-      await toggleUploadForm();
+    function closeAuthModal() {
+      document.getElementById('auth-modal').classList.remove('show');
+    }
+    function openAuthModal() {
+      document.getElementById('auth-modal').classList.add('show');
+      if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+      }
     }
 
-    // 切换上传表单（高考生仅可评论不可发帖）
-    async function toggleUploadForm() {
-      // 每次打开前从 localStorage 同步，避免学生证通过后 token 未写入内存
+    function showListView() {
+      document.getElementById('list-view').classList.remove('hidden');
+      document.getElementById('upload-form').classList.remove('active');
+    }
+    async function showEditorView() {
+      document.getElementById('list-view').classList.add('hidden');
+      document.getElementById('upload-form').classList.add('active');
+      await fillEditorForm();
+    }
+
+    async function fillEditorForm() {
+      authToken = localStorage.getItem('authToken') || authToken;
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      authType = localStorage.getItem('authType') || authType;
+      verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
+      if (authToken) {
+        try {
+          const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+          const meData = await meRes.json();
+          if (meData.code !== 200) {
+            authToken = '';
+            verifiedSchool = '';
+            authType = '';
+            verifiedNickname = '';
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('verifiedSchool');
+            localStorage.removeItem('authType');
+            localStorage.removeItem('verifiedNickname');
+            showListView();
+            showToast('认证已过期，请重新认证', 'error');
+            return;
+          }
+          verifiedSchool = meData.school || verifiedSchool;
+          authType = meData.authType || authType;
+          verifiedNickname = meData.nickname || verifiedNickname;
+        } catch (e) {}
+      }
+      const isGaokao = authType === 'gaokao';
+      const schoolRow = document.getElementById('upload-form-school-row');
+      const nicknameRow = document.getElementById('upload-form-nickname-row');
+      const descEl = document.getElementById('upload-form-desc');
+      if (schoolRow) schoolRow.style.display = isGaokao ? 'none' : '';
+      if (nicknameRow) {
+        nicknameRow.style.display = '';
+        const nickInput = document.getElementById('upload-nickname-display');
+        if (nickInput) nickInput.value = verifiedNickname || (isGaokao ? '高考生' : '在读生');
+      }
+      if (descEl) descEl.textContent = isGaokao ? '以高考生身份发布，不显示学校与专业。' : '您只能在认证学校下发帖。选择专业，匿名分享你的真实经历（支持上传图片）。';
+      if (!isGaokao) {
+        document.getElementById('upload-school').value = verifiedSchool;
+        loadMajorsForSchool(verifiedSchool);
+      }
+    }
+
+    // 点击「写分享」：未认证则弹出认证弹窗，已认证则进入帖子编辑页
+    async function onWriteShareClick() {
       authToken = localStorage.getItem('authToken') || authToken;
       verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
       authType = localStorage.getItem('authType') || authType;
@@ -774,65 +853,29 @@
         showToast('高考生仅可评论，不可发帖', 'error');
         return;
       }
-      // 在读生：有 token 但缺少 school 或为空时，先从服务端恢复，避免点击「写分享」仍显示认证页
       if (authToken && authType !== 'gaokao' && !verifiedSchool) {
         await restoreAuthIfNeeded();
         verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
         authType = localStorage.getItem('authType') || authType;
         verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
       }
-      const form = document.getElementById('upload-form');
-      const verifyPanel = document.getElementById('verification-panel');
       const canPost = authToken && !!verifiedSchool;
       if (!canPost) {
-        verifyPanel.style.display = verifyPanel.style.display === 'none' ? 'block' : 'none';
-        form.style.display = 'none';
+        openAuthModal();
         return;
       }
-      // 已认证：先立即隐藏认证页，再切换上传表单显示，避免认证页仍残留
-      verifyPanel.style.display = 'none';
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
-      if (form.style.display === 'block') {
-        // 有 token 时校验是否仍有效，过期则清除并提示
-        if (authToken) {
-          try {
-            const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
-            const meData = await meRes.json();
-            if (meData.code !== 200) {
-              authToken = '';
-              verifiedSchool = '';
-              authType = '';
-              verifiedNickname = '';
-              localStorage.removeItem('authToken');
-              localStorage.removeItem('verifiedSchool');
-              localStorage.removeItem('authType');
-              localStorage.removeItem('verifiedNickname');
-              form.style.display = 'none';
-              verifyPanel.style.display = 'block';
-              showToast('认证已过期，请重新认证', 'error');
-              return;
-            }
-            verifiedSchool = meData.school || verifiedSchool;
-            authType = meData.authType || authType;
-            verifiedNickname = meData.nickname || verifiedNickname;
-          } catch (e) {}
-        }
-        const isGaokao = authType === 'gaokao';
-        const schoolRow = document.getElementById('upload-form-school-row');
-        const nicknameRow = document.getElementById('upload-form-nickname-row');
-        const descEl = document.getElementById('upload-form-desc');
-        if (schoolRow) schoolRow.style.display = isGaokao ? 'none' : '';
-        if (nicknameRow) {
-          nicknameRow.style.display = '';
-          const nickInput = document.getElementById('upload-nickname-display');
-          if (nickInput) nickInput.value = verifiedNickname || (isGaokao ? '高考生' : '在读生');
-        }
-        if (descEl) descEl.textContent = isGaokao ? '以高考生身份发布，不显示学校与专业。' : '您只能在认证学校下发帖。选择专业，匿名分享你的真实经历（支持上传图片）。';
-        if (!isGaokao) {
-          document.getElementById('upload-school').value = verifiedSchool;
-          loadMajorsForSchool(verifiedSchool);
-        }
-      }
+      await showEditorView();
+    }
+
+    // 认证成功后关闭弹窗并进入帖子编辑页
+    function openUploadFormDirectly() {
+      closeAuthModal();
+      showEditorView();
+    }
+
+    // 编辑页「取消」返回列表
+    function toggleUploadForm() {
+      showListView();
     }
 
     // 信息认证：发送验证码
@@ -906,13 +949,13 @@
           localStorage.setItem('verifiedSchool', verifiedSchool);
           localStorage.setItem('authType', authType);
           localStorage.setItem('verifiedNickname', verifiedNickname);
-          document.getElementById('verification-panel').style.display = 'none';
+          closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
           updateWriteShareButtonVisibility();
           showToast('认证成功，可在认证学校下发帖', 'success');
-          toggleUploadForm();
+          openUploadFormDirectly();
         } else {
           showToast(data.msg || '验证失败', 'error');
         }
@@ -943,12 +986,11 @@
           localStorage.setItem('verifiedSchool', verifiedSchool);
           localStorage.setItem('authType', authType);
           localStorage.setItem('verifiedNickname', verifiedNickname);
-          document.getElementById('verification-panel').style.display = 'none';
+          closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
-          showToast('认证成功，可以发帖与评论（不显示学校/专业）', 'success');
-          toggleUploadForm();
+          showToast('认证成功（高考生仅可评论，不可发帖）', 'success');
         } else {
           showToast(data.msg || '认证失败', 'error');
         }
@@ -1430,10 +1472,10 @@
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
-          document.getElementById('verification-panel').style.display = 'none';
-          document.getElementById('upload-form').style.display = 'none';
         }
       }
+      closeAuthModal();
+      showListView();
       if (!authToken && window._lastStudentIdSubmissionId) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
       }
@@ -1453,8 +1495,8 @@
       localStorage.removeItem('verifiedNickname');
       document.getElementById('auth-badge').style.display = 'none';
       document.getElementById('exit-auth-btn').style.display = 'none';
-      document.getElementById('upload-form').style.display = 'none';
-      document.getElementById('verification-panel').style.display = 'none';
+      closeAuthModal();
+      showListView();
       showToast('已退出认证，发帖或评论需重新认证', 'success');
     }
   </script>
