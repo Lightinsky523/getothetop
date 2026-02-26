@@ -430,19 +430,33 @@
       const xuankeContext = queryMode === 'xuanke' ? getXuankeContext() : null;
 
       try {
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 90000);
         const res = await fetch(API_BASE + '/ai-query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: content, profileSummary: profile, isXuanke: queryMode === 'xuanke', xuankeContext })
+          body: JSON.stringify({ prompt: content, profileSummary: profile, isXuanke: queryMode === 'xuanke', xuankeContext }),
+          signal: ctrl.signal
         });
-        const data = await res.json();
+        clearTimeout(timeoutId);
+        let data = {};
+        try {
+          const text = await res.text();
+          if (text) data = JSON.parse(text);
+        } catch (_) {
+          data = { code: 500, msg: '服务返回格式异常' };
+        }
         if (data.code === 200) {
           output.innerHTML = formatResponse(data.data);
         } else {
           output.innerHTML = '<div style="color: var(--error);">查询失败：' + (data.msg || '未知错误') + '</div>';
         }
       } catch (err) {
-        output.innerHTML = '<div style="color: var(--error);">网络错误，请稍后重试</div>';
+        if (err.name === 'AbortError') {
+          output.innerHTML = '<div style="color: var(--error);">查询超时，请稍后重试</div>';
+        } else {
+          output.innerHTML = '<div style="color: var(--error);">网络错误，请稍后重试</div>';
+        }
       }
     }
 

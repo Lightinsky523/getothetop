@@ -337,18 +337,29 @@ app.post('/ai-query', async (req, res) => {
     contextInfo += `\n用户问题：${prompt}`;
 
     const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
-    const response = await fetch(appUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BAILIAN_API_KEY}`
-      },
-      body: JSON.stringify({
-        input: { prompt: contextInfo },
-        parameters: { result_format: 'message' }
-      })
-    });
-
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    let response;
+    try {
+      response = await fetch(appUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${BAILIAN_API_KEY}`
+        },
+        body: JSON.stringify({
+          input: { prompt: contextInfo },
+          parameters: { result_format: 'message' }
+        }),
+        signal: controller.signal
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      console.error("智能查询 百炼 网络异常:", fetchErr.message);
+      res.send({ code: 500, msg: "AI 服务暂时不可达，请稍后重试" });
+      return;
+    }
+    clearTimeout(timeoutId);
     const rawText = await response.text();
     if (!response.ok) {
       console.error("智能查询 百炼 API 错误:", response.status, rawText.slice(0, 400));
@@ -1351,10 +1362,11 @@ app.get('/api/auth/student-id/status', (req, res) => {
 // 解析认证 token，返回 { email, school_name, auth_type, nickname } 或 null
 function parseAuthToken(authToken) {
   return new Promise((resolve) => {
-    if (!authToken) return resolve(null);
+    const t = authToken != null ? String(authToken).trim() : '';
+    if (!t) return resolve(null);
     db.get(
       'SELECT email, school_name, auth_type, nickname FROM verified_users WHERE auth_token = ? AND token_expires_at > datetime("now")',
-      [String(authToken).trim()],
+      [t],
       (err, row) => resolve(err ? null : row)
     );
   });
@@ -1379,9 +1391,13 @@ app.get('/api/auth/me', async (req, res) => {
 // 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
 app.post('/api/student-shares', async (req, res) => {
   const { school, major, grade, title, content, tags, images, authToken } = req.body;
-  const token = authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  let token = (authToken != null ? String(authToken) : '') || req.headers['x-auth-token'] || '';
+  if (!token && req.headers['authorization']) {
+    token = String(req.headers['authorization']).replace(/^Bearer\s+/i, '').trim();
+  }
+  token = token.trim();
 
-  const verified = await parseAuthToken(token);
+  const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
     return;

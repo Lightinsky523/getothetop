@@ -1043,7 +1043,11 @@
 
       // 准备图片数据
       const imageData = selectedImages.map(img => img.preview);
-
+      const tokenToSend = localStorage.getItem('authToken') || authToken;
+      if (!tokenToSend) {
+        showToast('请先完成信息认证', 'error');
+        return;
+      }
       const data = {
         school: isGaokao ? '' : school,
         major: isGaokao ? '' : major,
@@ -1052,7 +1056,7 @@
         content,
         tags: tags || '',
         images: imageData,
-        authToken
+        authToken: tokenToSend
       };
 
       try {
