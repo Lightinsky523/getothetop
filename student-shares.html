@@ -642,6 +642,7 @@
         msgEl.textContent = '已提交，等待人工审核。请稍后点击下方按钮查询，或保持本页等待自动刷新。';
         pollStudentIdStatus(data.submissionId, msgEl, btn);
         window._lastStudentIdSubmissionId = data.submissionId;
+        if (data.submissionId) localStorage.setItem('lastStudentIdSubmissionId', String(data.submissionId));
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
       } catch (e) {
         msgEl.textContent = '网络错误';
@@ -683,7 +684,7 @@
     }
 
     async function queryStudentIdStatusOnce() {
-      const submissionId = window._lastStudentIdSubmissionId;
+      const submissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
       if (!submissionId) {
         showToast('请先提交学生证认证', 'error');
         return;
@@ -751,7 +752,12 @@
     }
 
     // 切换上传表单（高考生仅可评论不可发帖）
-    function toggleUploadForm() {
+    async function toggleUploadForm() {
+      // 每次打开前从 localStorage 同步，避免学生证通过后 token 未写入内存
+      authToken = localStorage.getItem('authToken') || authToken;
+      verifiedSchool = localStorage.getItem('verifiedSchool') || verifiedSchool;
+      authType = localStorage.getItem('authType') || authType;
+      verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
       if (authToken && authType === 'gaokao') {
         showToast('高考生仅可评论，不可发帖', 'error');
         return;
@@ -767,6 +773,30 @@
       form.style.display = form.style.display === 'none' ? 'block' : 'none';
       verifyPanel.style.display = 'none';
       if (form.style.display === 'block') {
+        // 有 token 时校验是否仍有效，过期则清除并提示
+        if (authToken) {
+          try {
+            const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+            const meData = await meRes.json();
+            if (meData.code !== 200) {
+              authToken = '';
+              verifiedSchool = '';
+              authType = '';
+              verifiedNickname = '';
+              localStorage.removeItem('authToken');
+              localStorage.removeItem('verifiedSchool');
+              localStorage.removeItem('authType');
+              localStorage.removeItem('verifiedNickname');
+              form.style.display = 'none';
+              verifyPanel.style.display = 'block';
+              showToast('认证已过期，请重新认证', 'error');
+              return;
+            }
+            verifiedSchool = meData.school || verifiedSchool;
+            authType = meData.authType || authType;
+            verifiedNickname = meData.nickname || verifiedNickname;
+          } catch (e) {}
+        }
         const isGaokao = authType === 'gaokao';
         const schoolRow = document.getElementById('upload-form-school-row');
         const nicknameRow = document.getElementById('upload-form-nickname-row');
@@ -1041,8 +1071,7 @@
         return;
       }
 
-      // 准备图片数据
-      const imageData = selectedImages.map(img => img.preview);
+      // 准备图片数据，发帖前再次从 localStorage 取 token（学生证通过后可能刚写入）
       const tokenToSend = localStorage.getItem('authToken') || authToken;
       if (!tokenToSend) {
         showToast('请先完成信息认证', 'error');
@@ -1349,6 +1378,7 @@
 
     // 页面加载
     window.onload = function() {
+      window._lastStudentIdSubmissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
       loadShares();
       loadSchoolOptions();
       loadMajorOptions();
@@ -1356,6 +1386,9 @@
         document.getElementById('auth-badge').style.display = 'inline';
         setAuthBadgeText();
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
+      }
+      if (!authToken && window._lastStudentIdSubmissionId) {
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
       }
       updateWriteShareButtonVisibility();
       restoreAuthIfNeeded();
