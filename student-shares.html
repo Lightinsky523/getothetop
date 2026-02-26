@@ -1170,7 +1170,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Auth-Token': tokenToSend
+            'X-Auth-Token': tokenToSend,
+            'Authorization': 'Bearer ' + tokenToSend
           },
           body: JSON.stringify(data)
         });
@@ -1190,18 +1191,7 @@
           loadShares();
         } else {
           if (result.code === 403) {
-            authToken = '';
-            verifiedSchool = '';
-            authType = '';
-            verifiedNickname = '';
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('verifiedSchool');
-            localStorage.removeItem('authType');
-            localStorage.removeItem('verifiedNickname');
-            document.getElementById('auth-badge').style.display = 'none';
-            document.getElementById('exit-auth-btn').style.display = 'none';
-            showListView();
-            showToast(result.msg || '登录已过期，请重新认证后再提交', 'error');
+            showToast(result.msg || '提交失败：请检查认证是否有效，可尝试退出后重新认证', 'error');
           } else {
             showToast(result.msg ? '提交失败：' + result.msg : '提交失败', 'error');
           }

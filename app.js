@@ -1459,12 +1459,14 @@ app.get('/api/auth/me', async (req, res) => {
 
 // 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
 app.post('/api/student-shares', async (req, res) => {
-  const { school, major, grade, title, content, tags, images, authToken } = req.body;
-  let token = (authToken != null ? String(authToken) : '') || req.headers['x-auth-token'] || '';
-  if (!token && req.headers['authorization']) {
-    token = String(req.headers['authorization']).replace(/^Bearer\s+/i, '').trim();
-  }
-  token = token.trim();
+  const body = req.body || {};
+  const { school, major, grade, title, content, tags, images } = body;
+  // 从多处读取 token，避免 body 未解析或丢失时认证失败（优先请求头，再 body）
+  let token = (req.headers['x-auth-token'] && String(req.headers['x-auth-token']).trim()) ||
+    (req.headers['authorization'] && String(req.headers['authorization']).replace(/^Bearer\s+/i, '').trim()) ||
+    (body.authToken != null ? String(body.authToken).trim() : '') ||
+    (body.auth_token != null ? String(body.auth_token).trim() : '');
+  token = (token || '').trim();
 
   const verified = await parseAuthToken(token || null);
   if (!verified) {
