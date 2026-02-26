@@ -55,10 +55,15 @@ const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 const AI_API_KEY = process.env.AI_KEY;
 const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
 
-// 豆包AI配置 - 用于数据管理和院校信息检索
+// 豆包AI配置 - 仅用于验证码邮箱后缀识别（低频）
 const DOUBAO_API_KEY = process.env.DOUBAO_KEY || '04ab8a51-281f-499f-b2a6-7c3782bb30ca';
 const DOUBAO_API_URL = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-pro-32k';
+
+// DeepSeek 配置 - 用于专业数据录入（单条/批量/按学校添加），避免豆包限频 429
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
+const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -1682,6 +1687,54 @@ async function callDoubaoAI(prompt, systemPrompt = '', retryCount = 0) {
   return result.choices?.[0]?.message?.content || '';
 }
 
+// 调用 DeepSeek（数据录入用，无节流；429 时重试 2 次）
+async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
+  const fetch = (await import('node-fetch')).default;
+  if (!DEEPSEEK_API_KEY) {
+    throw new Error("DeepSeek 密钥未配置（请设置 DEEPSEEK_API_KEY）");
+  }
+  const body = {
+    model: DEEPSEEK_MODEL,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt || '你是一个专业的教育数据管理助手，擅长整理和分析高校及专业信息。请根据用户提供的院校或专业名称，从官方网站检索相关信息并以结构化JSON格式返回。'
+      },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.7,
+    max_tokens: 4000
+  };
+  const response = await fetch(DEEPSEEK_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+    },
+    body: JSON.stringify(body)
+  });
+  if (response.status === 429 && retryCount < 2) {
+    const waitMs = 5000 + retryCount * 3000;
+    console.warn(`DeepSeek API 429，${waitMs / 1000}秒后重试 (${retryCount + 1}/2)`);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return callDeepSeekAI(prompt, systemPrompt, retryCount + 1);
+  }
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`DeepSeek API 错误: ${response.status}`, errorText.slice(0, 300));
+    if (response.status === 429) throw new Error("DeepSeek 请求过于频繁(429)，请稍后再试");
+    throw new Error(`DeepSeek API 错误: ${response.status}`);
+  }
+  const result = await response.json();
+  return result.choices?.[0]?.message?.content || '';
+}
+
+// 数据录入用 AI：优先 DeepSeek（避免豆包 429），未配置则回退豆包
+async function callDataEntryAI(prompt, systemPrompt = '') {
+  if (DEEPSEEK_API_KEY) return callDeepSeekAI(prompt, systemPrompt);
+  return callDoubaoAI(prompt, systemPrompt);
+}
+
 // 检查该专业下该院校是否已录入（避免重复）
 function schoolProgramExists(majorId, schoolName) {
   return new Promise((resolve) => {
@@ -1697,7 +1750,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   if (existing) {
     const prompt = `请从「${schoolName}」官方网站（院校官网）检索「${majorName}」专业在该校的开设信息，以JSON格式返回：
 {"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","course_intros":[{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],"admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式"}`;
-    const aiResponse = await callDoubaoAI(prompt);
+    const aiResponse = await callDataEntryAI(prompt);
     const m = aiResponse.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('AI返回解析失败');
     const raw = JSON.parse(m[0]);
@@ -1738,7 +1791,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   "scholarships": "奖学金",
   "contact_info": "招生办联系方式"
 }`;
-  const aiResponse = await callDoubaoAI(fullPrompt);
+  const aiResponse = await callDataEntryAI(fullPrompt);
   const m = aiResponse.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('AI返回解析失败');
   const data = JSON.parse(m[0]);
@@ -1893,7 +1946,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   
   try {
     const listPrompt = `请列出「${name}」的本科招生专业列表。只返回一个 JSON 数组，格式为 ["专业名称1", "专业名称2", ...]，不要其他说明。`;
-    const listResponse = await callDoubaoAI(listPrompt, '你只输出一个 JSON 数组，不要 markdown 代码块包裹。');
+    const listResponse = await callDataEntryAI(listPrompt, '你只输出一个 JSON 数组，不要 markdown 代码块包裹。');
     let majorNames = [];
     const arrMatch = listResponse.match(/\[[\s\S]*\]/);
     if (arrMatch) {
@@ -1987,5 +2040,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
   console.log(`📊 数据目录: ${DATA_DIR}`);
   console.log(`🤖 智能查询（百炼应用）: ${BAILIAN_API_KEY && BAILIAN_APP_ID ? '已配置' : '未配置'}`);
-  console.log(`🤖 豆包AI（管理后台）: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 豆包AI（验证码识别）: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 DeepSeek（数据录入）: ${DEEPSEEK_API_KEY ? '已配置' : '未配置（将用豆包，可能遇429限频）'}`);
 });

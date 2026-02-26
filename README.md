@@ -20,7 +20,8 @@ license: Apache License 2.0
 - **端口**：7860（已暴露，与 `ms_deploy.json` 中 `port: 7860` 一致）
 - 数据目录：`DATA_DIR` 默认为 `/home/user/app/data`（重启「从基础镜像开始」时会被清空）
 - 环境变量（可选）：
-  - `DOUBAO_KEY` 豆包 API Key（用于信息认证邮箱后缀→学校识别，未设置时使用内置默认值）
+  - `DOUBAO_KEY` 豆包 API Key（仅用于**验证码**邮箱后缀→学校识别，未设置时使用内置默认值）
+  - `DEEPSEEK_API_KEY` DeepSeek API Key（用于**专业数据录入**：单条/批量/按学校添加；未配置时回退豆包，易遇 429 限频，建议配置以快速录入）
   - `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS` 邮件配置（未配置时验证码在响应中返回，便于测试）
   - `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET` 阿里云内容安全（学生证鉴伪；未配置时一律走人工审核）。也支持 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`。RAM 用户需授权 `AliyunYundunGreenWebFullAccess`。
 
