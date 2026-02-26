@@ -1128,7 +1128,7 @@
     // 提交分享
     async function submitShare() {
       const isGaokao = authType === 'gaokao';
-      const school = document.getElementById('upload-school').value;
+      const school = document.getElementById('upload-school').value.trim();
       const major = document.getElementById('upload-major').value;
       const grade = document.getElementById('upload-grade').value;
       const title = document.getElementById('upload-title').value.trim();
@@ -1145,12 +1145,14 @@
         return;
       }
 
-      // 准备图片数据，发帖前再次从 localStorage 取 token（学生证通过后可能刚写入）
+      // 发帖前始终从 localStorage 取 token，保证与认证状态一致
       const tokenToSend = localStorage.getItem('authToken') || authToken;
       if (!tokenToSend) {
         showToast('请先完成信息认证', 'error');
         return;
       }
+      // 图片：从 selectedImages 取 base64/dataURL 数组，未选则为空数组
+      const imageData = (selectedImages || []).map(function(img) { return img.preview || ''; }).filter(Boolean);
       const data = {
         school: isGaokao ? '' : school,
         major: isGaokao ? '' : major,
@@ -1168,11 +1170,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
-        const result = await res.json();
+        const result = await res.json().catch(function() { return {}; });
         
         if (result.code === 200) {
           showToast('分享提交成功！', 'success');
-          // 清空表单
           document.getElementById('upload-school').value = '';
           document.getElementById('upload-major').value = '';
           document.getElementById('upload-grade').value = '';
@@ -1182,10 +1183,22 @@
           selectedImages = [];
           renderImagePreviews();
           toggleUploadForm();
-          // 刷新列表
           loadShares();
         } else {
-          showToast('提交失败：' + result.msg, 'error');
+          if (result.code === 403) {
+            authToken = '';
+            verifiedSchool = '';
+            authType = '';
+            verifiedNickname = '';
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('verifiedSchool');
+            localStorage.removeItem('authType');
+            localStorage.removeItem('verifiedNickname');
+            document.getElementById('auth-badge').style.display = 'none';
+            document.getElementById('exit-auth-btn').style.display = 'none';
+            showListView();
+          }
+          showToast(result.msg ? '提交失败：' + result.msg : '提交失败', 'error');
         }
       } catch (err) {
         console.error('提交失败:', err);
@@ -1475,7 +1488,7 @@
       }
     }
 
-    // 页面加载：先从 localStorage 恢复认证状态（跳转回本页后仍保持已认证），再向服务端确认
+    // 页面加载：仅从 localStorage 恢复认证状态并展示，不向服务端校验（避免切换页面时误清空；只有退出认证或提交时服务端 403 才清空）
     window.onload = async function() {
       authToken = localStorage.getItem('authToken') || '';
       verifiedSchool = (localStorage.getItem('verifiedSchool') || '').trim();
@@ -1485,13 +1498,10 @@
       loadShares();
       loadSchoolOptions();
       loadMajorOptions();
-      if (authToken) {
-        const stillValid = await restoreAuthFromServer(true);
-        if (stillValid && (verifiedSchool || authType === 'gaokao')) {
-          document.getElementById('auth-badge').style.display = 'inline';
-          setAuthBadgeText();
-          document.getElementById('exit-auth-btn').style.display = 'inline-block';
-        }
+      if (authToken && (verifiedSchool || authType === 'gaokao')) {
+        document.getElementById('auth-badge').style.display = 'inline';
+        setAuthBadgeText();
+        document.getElementById('exit-auth-btn').style.display = 'inline-block';
       }
       closeAuthModal();
       showListView();
