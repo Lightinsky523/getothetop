@@ -413,7 +413,7 @@
             <span class="icon-pill">写</span>
             分享你的经历
           </div>
-          <p class="section-desc" id="upload-form-desc">发帖须确定认证学校（已自动填入），可选填专业、年级。一经发布可供所有用户浏览。</p>
+          <p class="section-desc" id="upload-form-desc">本页已视为认证通过，可直接发帖。学校已锁定为认证学校，可选填专业、年级。一经发布可供所有用户浏览。</p>
           
           <div class="form-grid" id="upload-form-nickname-row" style="display: none;">
             <input type="text" class="input" id="upload-nickname-display" readonly placeholder="昵称" style="background: #f8f7f4; cursor: not-allowed; max-width: 200px;" />
@@ -804,9 +804,9 @@
       verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
       authType = localStorage.getItem('authType') || authType;
       verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
-      // 已有完整认证信息时直接填充表单，不再请求 /api/auth/me，避免刚认证完或网络波动误报「认证已过期」
+      // 一旦进入「分享你的经历」页面即视为认证通过，不再发起 /api/auth/me 校验，避免打断直接发帖
       if (authToken && (verifiedSchool || authType === 'gaokao')) {
-        // 直接使用本地状态填充，不发起校验请求
+        // 直接使用本地认证信息填充，不请求服务端，保证可直接发帖
       } else if (authToken) {
         try {
           const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
@@ -834,10 +834,15 @@
         } catch (e) {}
       }
       const isGaokao = authType === 'gaokao';
-      if (!isGaokao && !verifiedSchool) {
+      const formAlreadyVisible = document.getElementById('upload-form').classList.contains('active');
+      // 若本页已显示（分享你的经历），不再因认证信息不完整退回列表，保留页面以便直接发帖
+      if (!isGaokao && !verifiedSchool && !formAlreadyVisible) {
         showListView();
         showToast('认证信息不完整，请重新认证', 'error');
         return;
+      }
+      if (!isGaokao && !verifiedSchool && formAlreadyVisible) {
+        verifiedSchool = document.getElementById('upload-school').value || '';
       }
       const schoolRow = document.getElementById('upload-form-school-row');
       const nicknameRow = document.getElementById('upload-form-nickname-row');
@@ -848,7 +853,7 @@
         const nickInput = document.getElementById('upload-nickname-display');
         if (nickInput) nickInput.value = verifiedNickname || (isGaokao ? '高考生' : '在读生');
       }
-      if (descEl) descEl.textContent = isGaokao ? '高考生仅可评论，不可发帖。' : '发帖须确定认证学校（已自动填入），可选填专业、年级。一经发布可供所有用户浏览。';
+      if (descEl) descEl.textContent = isGaokao ? '高考生仅可评论，不可发帖。' : '本页已视为认证通过，可直接发帖。学校已锁定为认证学校，可选填专业、年级。一经发布可供所有用户浏览。';
       if (!isGaokao) {
         document.getElementById('upload-school').value = verifiedSchool;
         loadMajorsForSchool(verifiedSchool);
@@ -1148,7 +1153,8 @@
         return;
       }
 
-      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      // 优先使用当前页面的认证信息（进入本页即视为认证通过），再兜底 localStorage
+      const tokenToSend = (authToken || localStorage.getItem('authToken') || '').trim();
       if (!tokenToSend) {
         showToast('认证信息已丢失，请重新认证后再提交', 'error');
         return;
