@@ -767,30 +767,31 @@
     async function toggleUploadForm() {
       // 每次打开前从 localStorage 同步，避免学生证通过后 token 未写入内存
       authToken = localStorage.getItem('authToken') || authToken;
-      verifiedSchool = localStorage.getItem('verifiedSchool') || verifiedSchool;
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
       authType = localStorage.getItem('authType') || authType;
       verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
       if (authToken && authType === 'gaokao') {
         showToast('高考生仅可评论，不可发帖', 'error');
         return;
       }
-      // 学生证认证通过后：若有 token 但缺少 school（如刚通过或跨 tab），先从服务端恢复，避免仍显示“未认证”无法发帖
-      if (authToken && !verifiedSchool && authType !== 'gaokao') {
+      // 在读生：有 token 但缺少 school 或为空时，先从服务端恢复，避免点击「写分享」仍显示认证页
+      if (authToken && authType !== 'gaokao' && !verifiedSchool) {
         await restoreAuthIfNeeded();
-        verifiedSchool = localStorage.getItem('verifiedSchool') || verifiedSchool;
+        verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
         authType = localStorage.getItem('authType') || authType;
         verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
       }
       const form = document.getElementById('upload-form');
       const verifyPanel = document.getElementById('verification-panel');
-      const canPost = authToken && verifiedSchool;
+      const canPost = authToken && !!verifiedSchool;
       if (!canPost) {
         verifyPanel.style.display = verifyPanel.style.display === 'none' ? 'block' : 'none';
         form.style.display = 'none';
         return;
       }
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      // 已认证：先立即隐藏认证页，再切换上传表单显示，避免认证页仍残留
       verifyPanel.style.display = 'none';
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
       if (form.style.display === 'block') {
         // 有 token 时校验是否仍有效，过期则清除并提示
         if (authToken) {
