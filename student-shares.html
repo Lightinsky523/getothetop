@@ -634,12 +634,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ school, imageBase64: studentIdImageBase64, nickname })
         });
-        const data = await res.json();
-        if (data.code !== 200) {
-          showToast(data.msg || '提交失败', 'error');
-          btn.disabled = false;
-          return;
-        }
+        const data = await res.json().catch(() => ({}));
         if (data.authToken && data.school) {
           authToken = data.authToken;
           verifiedSchool = data.school;
@@ -656,6 +651,11 @@
           updateWriteShareButtonVisibility();
           showToast('认证成功', 'success');
           openUploadFormDirectly();
+          return;
+        }
+        if (data.code != null && data.code !== 200) {
+          showToast(data.msg || '提交失败', 'error');
+          btn.disabled = false;
           return;
         }
         if (data.status === 'rejected') {
@@ -678,7 +678,7 @@
       const t = setInterval(async () => {
         try {
           const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (data.code === 200 && data.status === 'approved' && data.authToken) {
             clearInterval(t);
             authToken = data.authToken;
@@ -721,7 +721,7 @@
       msgEl.textContent = '正在查询…';
       try {
         const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.code === 200 && data.status === 'approved' && data.authToken) {
           authToken = data.authToken;
           verifiedSchool = data.school || '';
@@ -804,11 +804,21 @@
       verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
       authType = localStorage.getItem('authType') || authType;
       verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
-      if (authToken) {
+      // 已有完整认证信息时直接填充表单，不再请求 /api/auth/me，避免刚认证完或网络波动误报「认证已过期」
+      if (authToken && (verifiedSchool || authType === 'gaokao')) {
+        // 直接使用本地状态填充，不发起校验请求
+      } else if (authToken) {
         try {
           const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
-          const meData = await meRes.json();
-          if (meData.code !== 200) {
+          const meData = await meRes.json().catch(() => ({}));
+          if (meData.code === 200) {
+            verifiedSchool = meData.school || verifiedSchool;
+            authType = meData.authType || authType;
+            verifiedNickname = meData.nickname != null ? meData.nickname : verifiedNickname;
+            localStorage.setItem('verifiedSchool', verifiedSchool || '');
+            localStorage.setItem('authType', authType || '');
+            localStorage.setItem('verifiedNickname', verifiedNickname || '');
+          } else if (meData.code === 403 || meRes.status === 403) {
             authToken = '';
             verifiedSchool = '';
             authType = '';
@@ -821,12 +831,14 @@
             showToast('认证已过期，请重新认证', 'error');
             return;
           }
-          verifiedSchool = meData.school || verifiedSchool;
-          authType = meData.authType || authType;
-          verifiedNickname = meData.nickname || verifiedNickname;
         } catch (e) {}
       }
       const isGaokao = authType === 'gaokao';
+      if (!isGaokao && !verifiedSchool) {
+        showListView();
+        showToast('认证信息不完整，请重新认证', 'error');
+        return;
+      }
       const schoolRow = document.getElementById('upload-form-school-row');
       const nicknameRow = document.getElementById('upload-form-nickname-row');
       const descEl = document.getElementById('upload-form-desc');
@@ -843,7 +855,7 @@
       }
     }
 
-    // 点击「写分享」：未认证则弹出认证弹窗，已认证则进入帖子编辑页
+    // 点击「写分享」：未认证则弹出认证弹窗，已认证则直接进入帖子编辑页
     async function onWriteShareClick() {
       authToken = localStorage.getItem('authToken') || authToken;
       verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
@@ -853,8 +865,8 @@
         showToast('高考生仅可评论，不可发帖', 'error');
         return;
       }
-      if (authToken && authType !== 'gaokao' && !verifiedSchool) {
-        await restoreAuthIfNeeded();
+      if (authToken && !verifiedSchool) {
+        await restoreAuthFromServer(false);
         verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
         authType = localStorage.getItem('authType') || authType;
         verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
@@ -898,7 +910,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.code === 200) {
           showToast(data.msg, 'success');
           document.getElementById('verify-school-name').textContent = data.school || '未知';
@@ -940,7 +952,7 @@
         } catch (_) {
           data = {};
         }
-        if (res.ok && data.code === 200 && data.authToken) {
+        if ((res.ok || data.code === 200) && data.authToken) {
           authToken = data.authToken;
           verifiedSchool = (data.school != null && data.school !== '') ? String(data.school) : '未知';
           authType = 'email';
@@ -957,7 +969,7 @@
           showToast('认证成功，可在认证学校下发帖', 'success');
           openUploadFormDirectly();
         } else {
-          showToast(data.msg || '验证失败', 'error');
+          showToast((data && data.msg) ? data.msg : '验证失败', 'error');
         }
       } catch (e) {
         showToast('网络错误', 'error');
@@ -976,8 +988,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nickname })
         });
-        const data = await res.json();
-        if (data.code === 200) {
+        const data = await res.json().catch(() => ({}));
+        if ((res.ok || data.code === 200) && data.authToken) {
           authToken = data.authToken;
           verifiedSchool = '';
           authType = 'gaokao';
@@ -992,7 +1004,7 @@
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
           showToast('认证成功（高考生仅可评论，不可发帖）', 'success');
         } else {
-          showToast(data.msg || '认证失败', 'error');
+          showToast((data && data.msg) ? data.msg : '认证失败', 'error');
         }
       } catch (e) {
         showToast('网络错误', 'error');
@@ -1423,7 +1435,7 @@
       if (!forceRefresh && verifiedSchool) return true;
       try {
         const res = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.code === 200) {
           if (data.school) verifiedSchool = data.school;
           if (data.nickname != null) verifiedNickname = data.nickname;
@@ -1433,15 +1445,18 @@
           localStorage.setItem('authType', authType || '');
           return true;
         }
-        authToken = '';
-        verifiedSchool = '';
-        authType = '';
-        verifiedNickname = '';
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('verifiedSchool');
-        localStorage.removeItem('authType');
-        localStorage.removeItem('verifiedNickname');
-        return false;
+        if (data.code === 403 || res.status === 403) {
+          authToken = '';
+          verifiedSchool = '';
+          authType = '';
+          verifiedNickname = '';
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('verifiedSchool');
+          localStorage.removeItem('authType');
+          localStorage.removeItem('verifiedNickname');
+          return false;
+        }
+        return true;
       } catch (e) {
         return true;
       }
@@ -1460,8 +1475,12 @@
       }
     }
 
-    // 页面加载：从 localStorage 读取后若有 token 则向服务端确认，保持已认证状态
+    // 页面加载：先从 localStorage 恢复认证状态（跳转回本页后仍保持已认证），再向服务端确认
     window.onload = async function() {
+      authToken = localStorage.getItem('authToken') || '';
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || '').trim();
+      authType = localStorage.getItem('authType') || '';
+      verifiedNickname = localStorage.getItem('verifiedNickname') || '';
       window._lastStudentIdSubmissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
       loadShares();
       loadSchoolOptions();
