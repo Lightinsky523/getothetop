@@ -840,21 +840,28 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, code, nickname })
         });
-        const data = await res.json();
-        if (data.code === 200) {
+        const contentType = res.headers.get('content-type');
+        let data;
+        try {
+          data = contentType && contentType.includes('application/json') ? await res.json() : {};
+        } catch (_) {
+          data = {};
+        }
+        if (res.ok && data.code === 200 && data.authToken) {
           authToken = data.authToken;
-          verifiedSchool = data.school || '';
+          verifiedSchool = (data.school != null && data.school !== '') ? String(data.school) : '未知';
           authType = 'email';
-          verifiedNickname = data.nickname || nickname || '在读生';
+          verifiedNickname = (data.nickname != null && data.nickname !== '') ? String(data.nickname) : (nickname || '在读生');
           localStorage.setItem('authToken', authToken);
           localStorage.setItem('verifiedSchool', verifiedSchool);
           localStorage.setItem('authType', authType);
           localStorage.setItem('verifiedNickname', verifiedNickname);
-          showToast('认证成功，可在认证学校下发帖', 'success');
           document.getElementById('verification-panel').style.display = 'none';
           document.getElementById('auth-badge').style.display = 'inline';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          updateWriteShareButtonVisibility();
+          showToast('认证成功，可在认证学校下发帖', 'success');
           toggleUploadForm();
         } else {
           showToast(data.msg || '验证失败', 'error');

@@ -46,10 +46,10 @@ function resolveDataDir() {
 
 const DATA_DIR = resolveDataDir();
 
-// AI API 配置 - 志愿填报「智能查询」使用直连 API（不再使用阿里云/AnythingLLM）
-const DIRECT_AI_KEY = process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
-const DIRECT_AI_URL = process.env.DIRECT_AI_URL || 'https://api.openai.com/v1/chat/completions';
-const DIRECT_AI_MODEL = process.env.DIRECT_AI_MODEL || 'gpt-3.5-turbo';
+// 阿里云百炼 - 志愿填报「智能查询」+ 学生证 AI 鉴伪（千问）
+const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
+const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID || '1a5d7eb76b1f4c86961d372c6d134b9b';
+const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 
 // 旧配置保留（管理后台等如仍用可读环境变量）
 const AI_API_KEY = process.env.AI_KEY;
@@ -306,70 +306,71 @@ function fetchRelevantShares(prompt, limit = 20) {
   });
 }
 
+// 智能查询：调用阿里云百炼「应用」API（千问 + 知识库 + 自建 prompt）
 app.post('/ai-query', async (req, res) => {
   const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
   try {
     const fetch = (await import('node-fetch')).default;
-    if (!DIRECT_AI_KEY) {
-      res.send({ code: 500, msg: "智能查询 API 未配置" });
+    if (!BAILIAN_API_KEY || !BAILIAN_APP_ID) {
+      res.send({ code: 500, msg: "智能查询未配置（需 BAILIAN_API_KEY 与 BAILIAN_APP_ID）" });
       return;
     }
 
     const shareRows = await fetchRelevantShares(prompt, 20);
-    let contextInfo = "你是一名志愿填报与高校信息助手。请结合以下信息回答用户问题，并对「学生分享」相关内容做简明总结。\n";
+    let contextInfo = "【参考信息】\n";
     if (profileSummary && profileSummary !== "（未填写）") {
-      contextInfo += `\n【用户基本信息】\n${profileSummary}\n`;
+      contextInfo += `用户基本信息：${profileSummary}\n`;
     }
     if (isXuanke && xuankeContext) {
       const combo = [xuankeContext.first, ...(xuankeContext.second || [])].filter(Boolean).join("+");
-      contextInfo += `\n【选科】首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（组合：${combo}），省份：${xuankeContext.province || '未填'}\n`;
+      contextInfo += `选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}\n`;
     }
     if (shareRows.length > 0) {
-      contextInfo += "\n【学生分享（在读生/高考生匿名分享，供参考）】\n";
+      contextInfo += "学生分享（供参考）：\n";
       shareRows.forEach((entry, i) => {
         const author = entry.author_nickname || entry.school || '匿名';
         const contentSnippet = (entry.content || '').slice(0, 400);
-        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}\n标题：${entry.title || ''}\n内容：${contentSnippet}${(entry.content || '').length > 400 ? '…' : ''}\n`;
+        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}：${entry.title || ''}\n${contentSnippet}${(entry.content || '').length > 400 ? '…' : ''}\n`;
       });
-    } else {
-      contextInfo += "\n【学生分享】暂无相关分享数据。\n";
     }
-    contextInfo += `\n【用户问题】\n${prompt}\n\n请给出详细、专业的回答，并可根据上述学生分享做简要归纳。`;
+    contextInfo += `\n用户问题：${prompt}`;
 
-    const response = await fetch(DIRECT_AI_URL, {
+    const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
+    const response = await fetch(appUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DIRECT_AI_KEY}`
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
       },
       body: JSON.stringify({
-        model: DIRECT_AI_MODEL,
-        messages: [
-          { role: 'system', content: contextInfo },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000
+        input: { prompt: contextInfo },
+        parameters: { result_format: 'message' }
       })
     });
 
+    const rawText = await response.text();
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("智能查询 API 错误:", response.status, errorText.slice(0, 300));
+      console.error("智能查询 百炼 API 错误:", response.status, rawText.slice(0, 400));
       res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
       return;
     }
-    const result = await response.json();
-    const aiResponse =
-      result.choices?.[0]?.message?.content ||
-      result.content ||
-      result.message ||
-      (result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content);
-    if (aiResponse) {
-      res.send({ code: 200, data: aiResponse });
+    let result;
+    try {
+      result = JSON.parse(rawText);
+    } catch (e) {
+      res.send({ code: 500, msg: "AI 响应非 JSON" });
+      return;
+    }
+    const aiText =
+      result.output?.text ||
+      result.output?.choices?.[0]?.message?.content ||
+      result.data?.output?.text ||
+      result.choices?.[0]?.message?.content;
+    if (aiText) {
+      res.send({ code: 200, data: aiText });
     } else {
-      res.send({ code: 500, msg: "AI 响应格式错误" });
+      res.send({ code: 500, msg: "AI 未返回有效内容" });
     }
   } catch (error) {
     console.error("智能查询失败:", error);
@@ -1103,6 +1104,43 @@ app.post('/api/auth/verify', (req, res) => {
   );
 });
 
+// 学生证图片发给 AI（百炼千问视觉）做鉴伪
+async function callBailianVisionStudentId(imageBase64) {
+  if (!BAILIAN_API_KEY) return 'review';
+  const fetch = (await import('node-fetch')).default;
+  const imageUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
+  try {
+    const response = await fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'qwen-vl-plus',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '请判断这张图片是否为真实的学生证/校园卡照片（含学校名称、个人信息等）。仅回答一个字：是 或 否。' },
+              { type: 'image_url', image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        max_tokens: 50
+      })
+    });
+    if (!response.ok) return 'review';
+    const result = await response.json();
+    const text = (result.choices?.[0]?.message?.content || result.output?.text || '').trim();
+    if (/是|真实|有效|学生证/.test(text) && !/否|不|假|非/.test(text)) return 'pass';
+    if (/否|不|假|非|非学生证/.test(text)) return 'rejected';
+  } catch (e) {
+    console.error('学生证 AI 视觉鉴伪失败:', e.message);
+  }
+  return 'review';
+}
+
 // 阿里云内容安全配置（可选，用于学生证鉴伪）。环境变量名支持 ALIYUN_* 或 ALIBABA_CLOUD_*
 const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALIBABA_CLOUD_ACCESS_KEY_ID;
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
@@ -1151,15 +1189,22 @@ app.post('/api/auth/student-id', async (req, res) => {
   }
 
   let status = 'pending_manual';
-  if (ALIYUN_ACCESS_KEY_ID && ALIYUN_ACCESS_KEY_SECRET) {
+  // 1) 学生证图片发给 AI（百炼千问视觉）鉴伪
+  try {
+    const aiResult = await callBailianVisionStudentId(rawBase64);
+    if (aiResult === 'pass') status = 'approved';
+    else if (aiResult === 'rejected') status = 'rejected';
+  } catch (e) {
+    console.error("学生证 AI 鉴伪异常，转人工:", e.message);
+  }
+  // 2) 若已配置阿里云内容安全，再走一遍鉴伪（可与 AI 结果合并）
+  if (status === 'pending_manual' && ALIYUN_ACCESS_KEY_ID && ALIYUN_ACCESS_KEY_SECRET) {
     try {
-      const result = await callAliyunImageScan(rawBase64);
-      if (result === 'pass') status = 'approved';
-      else if (result === 'rejected') status = 'rejected';
-      else status = 'pending_manual';
+      const greenResult = await callAliyunImageScan(rawBase64);
+      if (greenResult === 'pass') status = 'approved';
+      else if (greenResult === 'rejected') status = 'rejected';
     } catch (e) {
       console.error("阿里云图片鉴伪失败，转人工:", e.message);
-      status = 'pending_manual';
     }
   }
 
@@ -1888,6 +1933,6 @@ app.get('/api/news/:id', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
   console.log(`📊 数据目录: ${DATA_DIR}`);
-  console.log(`🤖 智能查询（直连API）: ${DIRECT_AI_KEY ? '已配置' : '未配置'}`);
+  console.log(`🤖 智能查询（百炼应用）: ${BAILIAN_API_KEY && BAILIAN_APP_ID ? '已配置' : '未配置'}`);
   console.log(`🤖 豆包AI（管理后台）: ${DOUBAO_API_KEY ? '已配置' : '未配置'}`);
 });
