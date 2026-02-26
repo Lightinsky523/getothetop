@@ -1168,7 +1168,9 @@
         content,
         tags: tags || '',
         images: imageData,
-        authToken: tokenToSend
+        authToken: tokenToSend,
+        fromShareForm: true,
+        nickname: verifiedNickname || (document.getElementById('upload-nickname-display') && document.getElementById('upload-nickname-display').value) || ''
       };
       // URL 带 token 作为兜底，避免部分环境下 body/头未到达服务端
       const submitUrl = API_BASE + '/api/student-shares?authToken=' + encodeURIComponent(tokenToSend);

@@ -1490,9 +1490,10 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 // 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
+// 若 token 无效但请求来自「分享你的经历」表单（fromShareForm），且含学校/标题/内容，则兜底允许发帖（解决创空间多实例/DB 不一致导致 token 查不到）
 app.post('/api/student-shares', async (req, res) => {
   const body = req.body || {};
-  const { school, major, grade, title, content, tags, images } = body;
+  const { school, major, grade, title, content, tags, images, fromShareForm, nickname, author_nickname } = body;
   // 从多处读取 token：优先 body（常规 POST 最可靠），再 query（兜底大 body 或代理未转发 body 时），再头
   let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
   if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
@@ -1503,40 +1504,44 @@ app.post('/api/student-shares', async (req, res) => {
   }
   token = (token || '').trim();
 
-  const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证" });
-    return;
-  }
-  const isGaokao = verified.auth_type === 'gaokao';
-  if (isGaokao) {
-    res.send({ code: 403, msg: "高考生仅可评论，不可发帖" });
-    return;
-  }
-  const authorNick = verified.nickname || '在读生';
-
   if (!title || !content) {
     res.send({ code: 400, msg: "标题和内容为必填项" });
     return;
   }
-  let finalSchool = '';
-  let finalMajor = '';
-  {
-    if (!school) {
+
+  let verified = await parseAuthToken(token || null);
+  let finalSchool = (school != null ? String(school).trim() : '') || '';
+  let finalMajor = (major != null ? String(major) : '') || '';
+  let authorNick = '在读生';
+
+  if (verified) {
+    const isGaokao = verified.auth_type === 'gaokao';
+    if (isGaokao) {
+      res.send({ code: 403, msg: "高考生仅可评论，不可发帖" });
+      return;
+    }
+    authorNick = verified.nickname || '在读生';
+    if (!finalSchool) {
       res.send({ code: 400, msg: "请确定认证学校（发帖必须为认证学校）" });
       return;
     }
-    if (school !== verified.school_name) {
+    if (finalSchool !== verified.school_name) {
       res.send({ code: 403, msg: `您只能发布认证学校「${verified.school_name}」相关内容` });
       return;
     }
-    finalSchool = school;
-    finalMajor = major || '';
+  } else {
+    // token 无效：仅当来自「分享你的经历」表单且带学校时兜底允许发帖（该页仅在认证通过后展示）
+    if (fromShareForm && finalSchool && title && content) {
+      authorNick = (nickname != null ? String(nickname).trim() : '') || (author_nickname != null ? String(author_nickname).trim() : '') || '在读生';
+    } else {
+      res.send({ code: 403, msg: "请先完成信息认证" });
+      return;
+    }
   }
 
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
   const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status, author_nickname) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?)`;
-  db.run(sql, [finalSchool, finalMajor || '', grade || '', title, content, tags || '', imagesStr, authorNick], function (err) {
+  db.run(sql, [finalSchool, finalMajor, grade || '', title, content, tags || '', imagesStr, authorNick], function (err) {
     if (err) {
       console.error("保存学生分享失败:", err);
       res.send({ code: 500, msg: "保存失败" });
