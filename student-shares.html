@@ -1333,7 +1333,8 @@
         return;
       }
       try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
+        const commentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments?authToken=' + encodeURIComponent(tokenToSend);
+        const res = await fetch(commentUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1363,7 +1364,8 @@
         return;
       }
       try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
+        const reportUrl = API_BASE + '/api/student-shares/' + shareId + '/report?authToken=' + encodeURIComponent(tokenToSend);
+        const res = await fetch(reportUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1387,7 +1389,8 @@
         return;
       }
       try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
+        const reportCommentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report?authToken=' + encodeURIComponent(tokenToSend);
+        const res = await fetch(reportCommentUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

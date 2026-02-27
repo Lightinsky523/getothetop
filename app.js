@@ -1526,10 +1526,23 @@ function parseAuthToken(authToken) {
   });
 }
 
+// 学生分享相关接口统一从请求中读取 token：body.authToken / body.auth_token → query.authToken → header X-Auth-Token / Authorization
+function getTokenFromRequest(req) {
+  const body = req.body || {};
+  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
+  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
+  if (!token) {
+    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
+    token = (raw && String(raw).trim()) || '';
+    if (token && token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  }
+  return (token || '').trim();
+}
+
 // 获取当前认证用户信息（用于恢复学校等，解决认证后无法上传）
 app.get('/api/auth/me', async (req, res) => {
-  const token = req.query.authToken || req.headers['x-auth-token'] || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
-  const verified = await parseAuthToken(token);
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "未登录或已过期" });
     return;
@@ -1547,15 +1560,7 @@ app.get('/api/auth/me', async (req, res) => {
 app.post('/api/student-shares', async (req, res) => {
   const body = req.body || {};
   const { school, major, grade, title, content, tags, images, fromShareForm, nickname, author_nickname } = body;
-  // 从多处读取 token：优先 body（常规 POST 最可靠），再 query（兜底大 body 或代理未转发 body 时），再头
-  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
-  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
-  if (!token) {
-    const rawHeader = req.headers['x-auth-token'] || req.headers['authorization'];
-    token = (rawHeader && String(rawHeader).trim()) || '';
-    if (token && token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
-  }
-  token = (token || '').trim();
+  const token = getTokenFromRequest(req);
 
   if (!title || !content) {
     res.send({ code: 400, msg: "标题和内容为必填项" });
@@ -1635,20 +1640,12 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
   );
 });
 
-// 发表评论（需信息认证）；token 与发帖一致：body / query / header 多路读取
+// 发表评论（需信息认证）
 app.post('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = req.params.id;
   const body = req.body || {};
   const { content } = body;
-  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
-  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
-  if (!token) {
-    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
-    token = (raw && String(raw).trim()) || '';
-    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
-  }
-  token = (token || '').trim();
-
+  const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
@@ -1674,20 +1671,11 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   );
 });
 
-// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）；token 与发帖一致多路读取
+// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
   const shareId = req.params.id;
-  const body = req.body || {};
-  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
-  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
-  if (!token) {
-    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
-    token = (raw && String(raw).trim()) || '';
-    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
-  }
-  token = (token || '').trim();
-
+  const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
@@ -1707,19 +1695,10 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 举报评论（需认证）；token 与发帖一致多路读取
+// 举报评论（需认证）
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const { shareId, commentId } = req.params;
-  const body = req.body || {};
-  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
-  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
-  if (!token) {
-    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
-    token = (raw && String(raw).trim()) || '';
-    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
-  }
-  token = (token || '').trim();
-
+  const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
