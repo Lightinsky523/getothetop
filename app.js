@@ -1600,8 +1600,9 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
     res.send({ code: 400, msg: "参数错误" });
     return;
   }
+  // 不依赖 status 列，兼容旧表无该列；有该列时在内存中过滤仅展示通过
   db.all(
-    "SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? AND (status IS NULL OR status = 'approved') ORDER BY created_at ASC",
+    "SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC",
     [shareId],
     (err, rows) => {
       if (err) {
@@ -1609,7 +1610,8 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
         res.send({ code: 500, msg: "获取评论失败" });
         return;
       }
-      res.send({ code: 200, data: rows || [] });
+      const list = (rows || []).filter(r => r.status == null || r.status === 'approved');
+      res.send({ code: 200, data: list });
     }
   );
 });
@@ -1643,8 +1645,9 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
       return;
     }
+    // 不插入 status，兼容旧表无 status 列；有该列时 DEFAULT 或 NULL 均会被 SELECT (status IS NULL OR status = 'approved') 展示
     db.run(
-      "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, 'approved')",
+      "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?)",
       [shareId, userEmail, schoolName, nick, content],
       function (runErr) {
         if (runErr) {
