@@ -1210,6 +1210,7 @@
             <div class="share-footer">
               <span>${formatDate(share.upload_time)}</span>
               <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
+              ${ (verifiedSchool && share.school === verifiedSchool && (share.author_nickname || '在读生') === (verifiedNickname || '在读生')) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteShare(${share.id}); event.preventDefault();" title="删除自己的帖子">删除</button>` : '' }
             </div>
             <div class="share-comments" id="comments-wrap-${share.id}">
               <div class="comment-list" data-share-id="${share.id}"></div>
@@ -1251,12 +1252,24 @@
           list.innerHTML = '';
           return;
         }
-        list.innerHTML = rows.map(c => `
+        list.innerHTML = rows.map(c => {
+          const isGuest = !c.school_name || c.school_name === '游客';
+          const authorLabel = isGuest
+            ? '游客'
+            : (escapeHtml(c.school_name) + ' · ' + escapeHtml(c.nickname || '在读生'));
+          const isOwner = !isGuest &&
+            verifiedSchool &&
+            c.school_name === verifiedSchool &&
+            (c.nickname || '在读生') === (verifiedNickname || '在读生');
+          const ownerActions = isOwner
+            ? ` <button type="button" class="report-link" style="color: var(--error);" onclick="deleteComment(${shareId}, ${c.id}); event.preventDefault();" title="删除自己的评论">删除</button>`
+            : '';
+          return `
           <div class="comment-item">
-            <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button></div>
+            <div class="comment-author">${authorLabel} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>${ownerActions}</div>
             <div>${escapeHtml(c.content)}</div>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       } catch (e) {
         list.innerHTML = '';
       }
@@ -1287,6 +1300,59 @@
           loadComments(shareId);
         } else {
           showToast(data.msg || '评论失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+
+    // 删除自己的帖子
+    async function deleteShare(shareId) {
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!auth) {
+        showToast('删除帖子前请先完成认证', 'error');
+        return;
+      }
+      if (!confirm('确定要删除这条分享吗？删除后将无法恢复。')) return;
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authToken: auth })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('帖子已删除', 'success');
+          await loadShares();
+        } else {
+          showToast(data.msg || '删除失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 删除自己的评论
+    async function deleteComment(shareId, commentId) {
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!auth) {
+        showToast('删除评论前请先完成认证', 'error');
+        return;
+      }
+      if (!confirm('确定要删除这条评论吗？删除后将无法恢复。')) return;
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authToken: auth })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('评论已删除', 'success');
+          await loadComments(shareId);
+        } else {
+          showToast(data.msg || '删除失败', 'error');
         }
       } catch (e) {
         showToast('网络错误', 'error');
