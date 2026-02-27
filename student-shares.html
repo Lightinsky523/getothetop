@@ -1319,9 +1319,10 @@
       return d.innerHTML;
     }
 
-    // 发表评论
+    // 发表评论（与发帖一致：优先 localStorage 再内存，并带 header 兜底）
     async function submitComment(shareId) {
-      if (!authToken) {
+      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!tokenToSend) {
         showToast('请先完成信息认证（点击「写分享」进行认证）', 'error');
         return;
       }
@@ -1334,8 +1335,12 @@
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, authToken })
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': tokenToSend,
+            'Authorization': 'Bearer ' + tokenToSend
+          },
+          body: JSON.stringify({ content, authToken: tokenToSend })
         });
         const data = await res.json();
         if (data.code === 200) {
@@ -1350,17 +1355,22 @@
       }
     }
 
-    // 举报帖子
+    // 举报帖子（与发帖一致：优先 localStorage，并带 header 兜底）
     async function reportShare(shareId) {
-      if (!authToken) {
+      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!tokenToSend) {
         showToast('请先完成信息认证', 'error');
         return;
       }
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authToken })
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': tokenToSend,
+            'Authorization': 'Bearer ' + tokenToSend
+          },
+          body: JSON.stringify({ authToken: tokenToSend })
         });
         const data = await res.json();
         showToast(data.msg || (data.code === 200 ? '举报已提交' : '举报失败'), data.code === 200 ? 'success' : 'error');
@@ -1369,17 +1379,22 @@
       }
     }
 
-    // 举报评论
+    // 举报评论（与发帖一致：优先 localStorage，并带 header 兜底）
     async function reportComment(shareId, commentId) {
-      if (!authToken) {
+      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!tokenToSend) {
         showToast('请先完成信息认证', 'error');
         return;
       }
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authToken })
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': tokenToSend,
+            'Authorization': 'Bearer ' + tokenToSend
+          },
+          body: JSON.stringify({ authToken: tokenToSend })
         });
         const data = await res.json();
         showToast(data.msg || (data.code === 200 ? '举报已提交' : '举报失败'), data.code === 200 ? 'success' : 'error');

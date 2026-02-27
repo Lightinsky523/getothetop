@@ -1635,13 +1635,21 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
   );
 });
 
-// 发表评论（需信息认证）
+// 发表评论（需信息认证）；token 与发帖一致：body / query / header 多路读取
 app.post('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = req.params.id;
-  const { content, authToken } = req.body;
-  const token = authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  const body = req.body || {};
+  const { content } = body;
+  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
+  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
+  if (!token) {
+    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
+    token = (raw && String(raw).trim()) || '';
+    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  }
+  token = (token || '').trim();
 
-  const verified = await parseAuthToken(token);
+  const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
     return;
@@ -1666,12 +1674,21 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   );
 });
 
-// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）
+// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）；token 与发帖一致多路读取
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
   const shareId = req.params.id;
-  const token = req.body.authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
-  const verified = await parseAuthToken(token);
+  const body = req.body || {};
+  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
+  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
+  if (!token) {
+    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
+    token = (raw && String(raw).trim()) || '';
+    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  }
+  token = (token || '').trim();
+
+  const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
     return;
@@ -1690,11 +1707,20 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 举报评论（需认证）
+// 举报评论（需认证）；token 与发帖一致多路读取
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const { shareId, commentId } = req.params;
-  const token = req.body.authToken || req.headers['x-auth-token'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
-  const verified = await parseAuthToken(token);
+  const body = req.body || {};
+  let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
+  if (!token && req.query && req.query.authToken != null) token = String(req.query.authToken).trim();
+  if (!token) {
+    const raw = req.headers['x-auth-token'] || req.headers['authorization'];
+    token = (raw && String(raw).trim()) || '';
+    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
+  }
+  token = (token || '').trim();
+
+  const verified = await parseAuthToken(token || null);
   if (!verified) {
     res.send({ code: 403, msg: "请先完成信息认证" });
     return;
