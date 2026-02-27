@@ -1211,11 +1211,11 @@
               <span>${formatDate(share.upload_time)}</span>
               <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
             </div>
-            <div class="share-comments" id="comments-${share.id}">
-              <div class="comment-list-${share.id}"></div>
-              <div class="comment-form" id="comment-form-${share.id}">
-                <input type="text" class="input" id="comment-input-${share.id}" placeholder="发表评论" />
-                <button class="primary-btn" onclick="submitComment(${share.id})">评论</button>
+            <div class="share-comments" id="comments-wrap-${share.id}">
+              <div class="comment-list" data-share-id="${share.id}"></div>
+              <div class="comment-form">
+                <input type="text" class="input" id="comment-input-${share.id}" placeholder="发表评论（无需认证）" maxlength="500" />
+                <button type="button" class="primary-btn" onclick="submitComment(${share.id})">评论</button>
               </div>
             </div>
           </div>
@@ -1228,46 +1228,57 @@
       shares.forEach(share => loadComments(share.id));
     }
 
-    // 加载评论
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    // 加载评论（重做：统一用 data-share-id 选择列表容器）
     async function loadComments(shareId) {
-      const list = document.querySelector('.comment-list-' + shareId);
+      const list = document.querySelector('.comment-list[data-share-id="' + shareId + '"]');
       if (!list) return;
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments');
         const data = await res.json();
-        if (data.code === 200 && data.data && data.data.length > 0) {
-          list.innerHTML = data.data.map(c => `
-            <div class="comment-item">
-              <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button></div>
-              <div>${escapeHtml(c.content)}</div>
-            </div>
-          `).join('');
+        if (data.code !== 200 || !Array.isArray(data.data)) {
+          list.innerHTML = '';
+          return;
         }
-      } catch (e) {}
+        const rows = data.data;
+        if (rows.length === 0) {
+          list.innerHTML = '';
+          return;
+        }
+        list.innerHTML = rows.map(c => `
+          <div class="comment-item">
+            <div class="comment-author">${escapeHtml(c.nickname || c.school_name)} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button></div>
+            <div>${escapeHtml(c.content)}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = '';
+      }
     }
 
-    function escapeHtml(s) {
-      if (!s) return '';
-      const d = document.createElement('div');
-      d.textContent = s;
-      return d.innerHTML;
-    }
-
-    // 发表评论（无需认证，所有人可评论）
+    // 发表评论（重做：仅传 content，可选 authToken 放 body）
     async function submitComment(shareId) {
       const input = document.getElementById('comment-input-' + shareId);
-      const content = (input && input.value || '').trim();
+      if (!input) return;
+      const content = (input.value || '').trim();
       if (!content) {
         showToast('请输入评论内容', 'error');
         return;
       }
-      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      const body = { content };
+      if (auth) body.authToken = auth;
       try {
-        const commentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments' + (tokenToSend ? '?authToken=' + encodeURIComponent(tokenToSend) : '');
-        const res = await fetch(commentUrl, {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tokenToSend ? { content, authToken: tokenToSend } : { content })
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         if (data.code === 200) {
@@ -1282,15 +1293,15 @@
       }
     }
 
-    // 举报帖子（无需认证，所有人可举报）
+    // 举报帖子（重做：authToken 放 body）
     async function reportShare(shareId) {
-      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      const body = auth ? { authToken: auth } : {};
       try {
-        const reportUrl = API_BASE + '/api/student-shares/' + shareId + '/report' + (tokenToSend ? '?authToken=' + encodeURIComponent(tokenToSend) : '');
-        const res = await fetch(reportUrl, {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tokenToSend ? { authToken: tokenToSend } : {})
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');
@@ -1299,15 +1310,15 @@
       }
     }
 
-    // 举报评论（无需认证，所有人可举报）
+    // 举报评论（重做：authToken 放 body，与后端 getTokenFromRequest 一致）
     async function reportComment(shareId, commentId) {
-      const tokenToSend = (localStorage.getItem('authToken') || authToken || '').trim();
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      const body = auth ? { authToken: auth } : {};
       try {
-        const reportCommentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report' + (tokenToSend ? '?authToken=' + encodeURIComponent(tokenToSend) : '');
-        const res = await fetch(reportCommentUrl, {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tokenToSend ? { authToken: tokenToSend } : {})
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');

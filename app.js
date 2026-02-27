@@ -1592,34 +1592,38 @@ app.post('/api/student-shares', async (req, res) => {
   });
 });
 
-// 获取帖子评论（仅展示 status 为 approved 或未设 status 的评论）
+// ========== 评论（重做：简洁实现，所有人可评论/举报，无需认证）==========
+// 获取某帖子的评论列表（仅展示已通过）
 app.get('/api/student-shares/:id/comments', (req, res) => {
-  const shareId = req.params.id;
+  const shareId = parseInt(String(req.params.id), 10);
+  if (Number.isNaN(shareId) || shareId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
   db.all(
     "SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? AND (status IS NULL OR status = 'approved') ORDER BY created_at ASC",
     [shareId],
     (err, rows) => {
       if (err) {
+        console.error('get comments err', err);
         res.send({ code: 500, msg: "获取评论失败" });
         return;
       }
-      res.send({ code: 200, data: rows });
+      res.send({ code: 200, data: rows || [] });
     }
   );
 });
 
-// 发表评论（无需认证，所有人可评论；有 token 则展示认证昵称/学校）
+// 发表评论（body 仅需 content；有 token 则展示认证昵称/学校）
 app.post('/api/student-shares/:id/comments', async (req, res) => {
-  const shareIdRaw = req.params.id;
-  const shareId = parseInt(shareIdRaw, 10);
-  if (Number.isNaN(shareId) || shareId <= 0) {
+  const shareId = parseInt(String(req.params.id), 10);
+  if (Number.isNaN(shareId) || shareId < 1) {
     res.send({ code: 400, msg: "帖子不存在" });
     return;
   }
-  const body = req.body || {};
-  const { content, nickname: bodyNick } = body;
-  const contentTrimmed = (content || '').trim();
-  if (!contentTrimmed) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const content = typeof body.content === 'string' ? body.content.trim() : '';
+  if (!content) {
     res.send({ code: 400, msg: "请输入评论内容" });
     return;
   }
@@ -1627,9 +1631,8 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   const verified = await parseAuthToken(token || null);
   const userEmail = verified ? verified.email : 'anonymous';
   const schoolName = verified ? verified.school_name : '游客';
-  const nick = verified ? (verified.nickname || '在读生') : ((bodyNick != null ? String(bodyNick).trim() : '') || '游客');
+  const nick = verified ? (verified.nickname || '在读生') : (body.nickname && typeof body.nickname === 'string' ? body.nickname.trim() : '') || '游客';
 
-  // 先确认帖子存在，避免外键或无效 id 导致插入失败
   db.get("SELECT id FROM student_shares WHERE id = ?", [shareId], (err, row) => {
     if (err) {
       console.error('comment check share err', err);
@@ -1642,7 +1645,7 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     }
     db.run(
       "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, 'approved')",
-      [shareId, userEmail, schoolName, nick, contentTrimmed],
+      [shareId, userEmail, schoolName, nick, content],
       function (runErr) {
         if (runErr) {
           console.error('comment insert err', runErr);
@@ -1655,7 +1658,7 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   });
 });
 
-// 举报帖子（无需认证，所有人可举报；举报次数>50 进入后台审核）
+// 举报帖子（举报次数>50 进入后台审核）
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
   const shareId = req.params.id;
@@ -1676,9 +1679,9 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 举报评论（无需认证，所有人可举报）
+// 举报评论
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
-  const { shareId, commentId } = req.params;
+  const { commentId } = req.params;
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   const userEmail = verified ? verified.email : 'anonymous';
