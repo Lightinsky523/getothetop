@@ -1610,7 +1610,12 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
 
 // 发表评论（无需认证，所有人可评论；有 token 则展示认证昵称/学校）
 app.post('/api/student-shares/:id/comments', async (req, res) => {
-  const shareId = req.params.id;
+  const shareIdRaw = req.params.id;
+  const shareId = parseInt(shareIdRaw, 10);
+  if (Number.isNaN(shareId) || shareId <= 0) {
+    res.send({ code: 400, msg: "帖子不存在" });
+    return;
+  }
   const body = req.body || {};
   const { content, nickname: bodyNick } = body;
   const contentTrimmed = (content || '').trim();
@@ -1624,17 +1629,30 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   const schoolName = verified ? verified.school_name : '游客';
   const nick = verified ? (verified.nickname || '在读生') : ((bodyNick != null ? String(bodyNick).trim() : '') || '游客');
 
-  db.run(
-    "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, 'approved')",
-    [shareId, userEmail, schoolName, nick, contentTrimmed],
-    function (err) {
-      if (err) {
-        res.send({ code: 500, msg: "评论失败" });
-        return;
-      }
-      res.send({ code: 200, msg: "评论成功", id: this.lastID });
+  // 先确认帖子存在，避免外键或无效 id 导致插入失败
+  db.get("SELECT id FROM student_shares WHERE id = ?", [shareId], (err, row) => {
+    if (err) {
+      console.error('comment check share err', err);
+      res.send({ code: 500, msg: "评论失败" });
+      return;
     }
-  );
+    if (!row) {
+      res.send({ code: 404, msg: "帖子不存在或已删除" });
+      return;
+    }
+    db.run(
+      "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, 'approved')",
+      [shareId, userEmail, schoolName, nick, contentTrimmed],
+      function (runErr) {
+        if (runErr) {
+          console.error('comment insert err', runErr);
+          res.send({ code: 500, msg: "评论失败" });
+          return;
+        }
+        res.send({ code: 200, msg: "评论成功", id: this.lastID });
+      }
+    );
+  });
 });
 
 // 举报帖子（无需认证，所有人可举报；举报次数>50 进入后台审核）
