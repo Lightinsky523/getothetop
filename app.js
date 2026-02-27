@@ -1310,33 +1310,6 @@ const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALI
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 
-// 高考生认证：仅昵称即可获得 token（仅可评论不可发帖）
-// 先插入必填列，再更新昵称，避免 nickname 列未就绪导致失败
-app.post('/api/auth/gaokao', (req, res) => {
-  const { nickname } = req.body;
-  const nick = (nickname || '').trim();
-  if (!nick) {
-    res.send({ code: 400, msg: "请填写昵称" });
-    return;
-  }
-  const email = 'gaokao_' + require('crypto').randomBytes(16).toString('hex');
-  const schoolName = '高考生';
-  const authToken = require('crypto').randomBytes(32).toString('hex');
-  const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
-  db.run(
-    'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-    [email, schoolName, 'gaokao', authToken, tokenExpiresAt],
-    function (err) {
-      if (err) {
-        res.send({ code: 500, msg: "认证失败" });
-        return;
-      }
-      db.run('UPDATE verified_users SET nickname = ? WHERE auth_token = ?', [nick, authToken], () => {});
-      res.send({ code: 200, msg: "认证成功", authToken, nickname: nick, authType: 'gaokao', expiresAt: tokenExpiresAt });
-    }
-  );
-});
-
 // 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审（在读生认证）
 app.post('/api/auth/student-id', async (req, res) => {
   const { school, imageBase64, nickname } = req.body;
@@ -1573,11 +1546,6 @@ app.post('/api/student-shares', async (req, res) => {
   let authorNick = '在读生';
 
   if (verified) {
-    const isGaokao = verified.auth_type === 'gaokao';
-    if (isGaokao) {
-      res.send({ code: 403, msg: "高考生仅可评论，不可发帖" });
-      return;
-    }
     authorNick = verified.nickname || '在读生';
     if (!finalSchool) {
       res.send({ code: 400, msg: "请确定认证学校（发帖必须为认证学校）" });
@@ -1640,27 +1608,25 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
   );
 });
 
-// 发表评论（需信息认证）
+// 发表评论（无需认证，所有人可评论；有 token 则展示认证昵称/学校）
 app.post('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = req.params.id;
   const body = req.body || {};
-  const { content } = body;
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证" });
-    return;
-  }
+  const { content, nickname: bodyNick } = body;
   const contentTrimmed = (content || '').trim();
   if (!contentTrimmed) {
     res.send({ code: 400, msg: "请输入评论内容" });
     return;
   }
-  const nick = verified.nickname || (verified.auth_type === 'gaokao' ? '高考生' : '在读生');
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  const userEmail = verified ? verified.email : 'anonymous';
+  const schoolName = verified ? verified.school_name : '游客';
+  const nick = verified ? (verified.nickname || '在读生') : ((bodyNick != null ? String(bodyNick).trim() : '') || '游客');
 
   db.run(
     "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, 'approved')",
-    [shareId, verified.email, verified.school_name, nick, contentTrimmed],
+    [shareId, userEmail, schoolName, nick, contentTrimmed],
     function (err) {
       if (err) {
         res.send({ code: 500, msg: "评论失败" });
@@ -1671,17 +1637,14 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   );
 });
 
-// 举报帖子（需认证；举报次数>50 的帖子进入后台审核）
+// 举报帖子（无需认证，所有人可举报；举报次数>50 进入后台审核）
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
   const shareId = req.params.id;
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证" });
-    return;
-  }
-  db.run('INSERT INTO share_reports (share_id, user_email) VALUES (?, ?)', [shareId, verified.email], function (err) {
+  const userEmail = verified ? verified.email : 'anonymous';
+  db.run('INSERT INTO share_reports (share_id, user_email) VALUES (?, ?)', [shareId, userEmail], function (err) {
     if (err) {
       res.send({ code: 500, msg: "举报失败" });
       return;
@@ -1695,16 +1658,13 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 举报评论（需认证）
+// 举报评论（无需认证，所有人可举报）
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const { shareId, commentId } = req.params;
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成信息认证" });
-    return;
-  }
-  db.run('INSERT INTO comment_reports (comment_id, user_email) VALUES (?, ?)', [commentId, verified.email], function (err) {
+  const userEmail = verified ? verified.email : 'anonymous';
+  db.run('INSERT INTO comment_reports (comment_id, user_email) VALUES (?, ?)', [commentId, userEmail], function (err) {
     if (err) {
       res.send({ code: 500, msg: "举报失败" });
       return;
