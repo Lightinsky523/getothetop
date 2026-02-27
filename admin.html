@@ -410,6 +410,7 @@
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
         <button class="tab" onclick="switchTab('ai')">数据检索录入</button>
         <button class="tab" onclick="switchTab('studentId')">学生证审核</button>
+        <button class="tab" onclick="switchTab('shareReview')">分享内容审核</button>
       </div>
 
       <!-- 专业概览管理 -->
@@ -592,6 +593,36 @@
         </div>
         <div class="empty-state" id="studentIdEmpty" style="display: none;">
           <p>暂无待审核记录</p>
+        </div>
+      </div>
+
+      <!-- 分享内容审核：AI 无法辨别或举报次数过多的帖子 -->
+      <div class="tab-content" id="shareReviewTab">
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">分享内容审核</h4>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">人工处理 AI 无法判定的帖子及举报次数过多的帖子，通过后公开展示或删除</p>
+        </div>
+        <div class="toolbar">
+          <button class="btn btn-secondary" onclick="loadShareReviewPending()">刷新</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>学校</th>
+                <th>标题</th>
+                <th>内容摘要</th>
+                <th>举报次数</th>
+                <th>发布时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="shareReviewTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="shareReviewEmpty" style="display: none;">
+          <p>暂无待审核分享</p>
         </div>
       </div>
     </div>
@@ -832,6 +863,8 @@
         loadNewsMajorSelect();
       } else if (tab === 'studentId') {
         loadStudentIdPending();
+      } else if (tab === 'shareReview') {
+        loadShareReviewPending();
       }
     }
 
@@ -1613,6 +1646,91 @@
 
     document.getElementById('studentIdApproveBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'approve'); };
     document.getElementById('studentIdRejectBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'reject'); };
+
+    // 分享内容审核
+    async function loadShareReviewPending() {
+      try {
+        const res = await fetch(API_BASE + '/admin/reported-shares?password=' + encodeURIComponent(adminPassword));
+        const data = await res.json();
+        const tbody = document.getElementById('shareReviewTableBody');
+        const empty = document.getElementById('shareReviewEmpty');
+        if (data.code !== 200 || !data.data || data.data.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = data.data.map(r => {
+          const contentSnippet = (r.content || '').slice(0, 80) + ((r.content || '').length > 80 ? '…' : '');
+          return `
+          <tr>
+            <td>${r.id}</td>
+            <td>${escapeHtml(r.school || '-')}</td>
+            <td>${escapeHtml((r.title || '-').slice(0, 30))}</td>
+            <td>${escapeHtml(contentSnippet)}</td>
+            <td>${r.report_count != null ? r.report_count : '-'}</td>
+            <td>${r.upload_time || '-'}</td>
+            <td>
+              <button class="btn btn-primary" onclick="approveShare(${r.id})">通过</button>
+              <button class="btn btn-secondary" style="margin-left:6px;" onclick="deleteShare(${r.id})">删除</button>
+            </td>
+          </tr>
+        `;
+        }).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+    async function approveShare(id) {
+      if (!confirm('确认通过该帖子？通过后将公开展示。')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg || '已通过', 'success');
+          loadShareReviewPending();
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+    async function deleteShare(id) {
+      if (!confirm('确认删除该帖子？删除后不可恢复。')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg || '已删除', 'success');
+          loadShareReviewPending();
+        } else if (data.code === 403) {
+          showToast('密码错误，请重新登录', 'error');
+          location.reload();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
 
     // 关闭弹窗
     function closeModal(id) {

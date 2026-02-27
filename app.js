@@ -50,6 +50,8 @@ const DATA_DIR = resolveDataDir();
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
 const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID || '1a5d7eb76b1f4c86961d372c6d134b9b';
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
+// 认证 token 与认证状态一致：一旦认证则长期有效（10 年），持有有效 token 即可发帖、评论、举报
+const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 // 旧配置保留（管理后台等如仍用可读环境变量）
 const AI_API_KEY = process.env.AI_KEY;
@@ -675,7 +677,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
       return;
     }
     const authToken = require('crypto').randomBytes(32).toString('hex');
-    const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
     const sid = 'sid_' + id;
     const nick = (row.nickname || '').trim() || '在读生';
     db.run(
@@ -707,7 +709,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
         };
         db.run(
           'INSERT OR REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-          [sid, row.school_name, 'student_id', authToken, tokenExpiresAt, nick],
+          [sid, row.school_name, 'student_id', authToken, new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString(), nick],
           insertCb
         );
       }
@@ -746,6 +748,18 @@ app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
       return;
     }
     res.send({ code: 200, msg: this.changes ? "已删除" : "记录不存在或已删除" });
+  });
+});
+
+// 管理员：通过待审帖子（分享内容审核：AI 无法辨别或举报过多）
+app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
+  const id = req.params.id;
+  db.run("UPDATE student_shares SET status = 'approved' WHERE id = ? AND status = 'pending_review'", [id], function (err) {
+    if (err) {
+      res.send({ code: 500, msg: "操作失败" });
+      return;
+    }
+    res.send({ code: 200, msg: this.changes ? "已通过，帖子将公开展示" : "记录不存在或已处理" });
   });
 });
 
@@ -1189,7 +1203,7 @@ app.post('/api/auth/verify', (req, res) => {
       }
       const schoolName = row.school_name || '未知';
       const authToken = require('crypto').randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
 
       // 先插入必填列，避免因 nickname 列未就绪导致失败；再单独更新昵称
       db.run(
@@ -1252,6 +1266,45 @@ async function callBailianVisionStudentId(imageBase64) {
   return 'review';
 }
 
+// 百炼文本内容审核：判断帖子标题+内容是否违规，返回 'pass' | 'block' | 'review'
+async function callBailianTextModeration(title, content, tags) {
+  if (!BAILIAN_API_KEY) return 'review';
+  const fetch = (await import('node-fetch')).default;
+  const text = [title, content, tags].filter(Boolean).join('\n').slice(0, 3000);
+  if (!text.trim()) return 'pass';
+  try {
+    const response = await fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'qwen-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个内容安全审核助手。仅根据规则判断用户输入是否违规。违规包括：色情低俗、暴力恐怖、违法信息、人身攻击、恶意广告、违禁品等。仅回答 exactly 以下之一：通过、违规、无法判断。不要解释。'
+          },
+          {
+            role: 'user',
+            content: `请判断以下内容是否违规：\n${text}`
+          }
+        ],
+        max_tokens: 20
+      })
+    });
+    if (!response.ok) return 'review';
+    const result = await response.json();
+    const answer = (result.choices?.[0]?.message?.content || result.output?.text || '').trim();
+    if (/通过|合规|正常/.test(answer) && !/违规|不通过/.test(answer)) return 'pass';
+    if (/违规|不通过|违禁|拒绝/.test(answer)) return 'block';
+  } catch (e) {
+    console.error('百炼文本审核失败:', e.message);
+  }
+  return 'review';
+}
+
 // 阿里云内容安全配置（可选，用于学生证鉴伪）。环境变量名支持 ALIYUN_* 或 ALIBABA_CLOUD_*
 const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALIBABA_CLOUD_ACCESS_KEY_ID;
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
@@ -1269,7 +1322,7 @@ app.post('/api/auth/gaokao', (req, res) => {
   const email = 'gaokao_' + require('crypto').randomBytes(16).toString('hex');
   const schoolName = '高考生';
   const authToken = require('crypto').randomBytes(32).toString('hex');
-  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
   db.run(
     'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
     [email, schoolName, 'gaokao', authToken, tokenExpiresAt],
@@ -1330,7 +1383,7 @@ app.post('/api/auth/student-id', async (req, res) => {
       const id = this.lastID;
       if (status === 'approved') {
         const authToken = require('crypto').randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
         db.run(
           'UPDATE student_id_verifications SET auth_token = ?, token_expires_at = ? WHERE id = ?',
           [authToken, tokenExpiresAt, id],
@@ -1539,15 +1592,30 @@ app.post('/api/student-shares', async (req, res) => {
     }
   }
 
+  // 每条帖子经阿里云百炼审核：违规拒绝，无法辨别则送后台人工审核
+  let postStatus = 'approved';
+  try {
+    const modResult = await callBailianTextModeration(title, content, tags || '');
+    if (modResult === 'block') {
+      res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
+      return;
+    }
+    if (modResult === 'review') postStatus = 'pending_review';
+  } catch (e) {
+    console.error("发帖内容审核异常，转后台审核:", e.message);
+    postStatus = 'pending_review';
+  }
+
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
-  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status, author_nickname) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?)`;
-  db.run(sql, [finalSchool, finalMajor, grade || '', title, content, tags || '', imagesStr, authorNick], function (err) {
+  const sql = `INSERT INTO student_shares (school, major, grade, title, content, tags, images, status, author_nickname) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [finalSchool, finalMajor, grade || '', title, content, tags || '', imagesStr, postStatus, authorNick], function (err) {
     if (err) {
       console.error("保存学生分享失败:", err);
       res.send({ code: 500, msg: "保存失败" });
       return;
     }
-    res.send({ code: 200, msg: "分享提交成功！", id: this.lastID });
+    const msg = postStatus === 'pending_review' ? "分享已提交，待人工审核通过后展示" : "分享提交成功！";
+    res.send({ code: 200, msg, id: this.lastID, status: postStatus });
   });
 });
 
