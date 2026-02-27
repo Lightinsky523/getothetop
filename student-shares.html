@@ -1275,7 +1275,7 @@
       }
     }
 
-    // 发表评论（重做：仅传 content，可选 authToken 放 body）
+    // 发表评论（content + authToken；URL 也带 authToken 以防创空间未解析 body）
     async function submitComment(shareId) {
       const input = document.getElementById('comment-input-' + shareId);
       if (!input) return;
@@ -1287,8 +1287,9 @@
       const auth = (localStorage.getItem('authToken') || authToken || '').trim();
       const body = { content };
       if (auth) body.authToken = auth;
+      const commentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments' + (auth ? '?authToken=' + encodeURIComponent(auth) : '');
       try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
+        const res = await fetch(commentUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)

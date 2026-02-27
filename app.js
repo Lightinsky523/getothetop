@@ -1629,12 +1629,12 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     res.send({ code: 400, msg: "请输入评论内容" });
     return;
   }
+  // 优先 body，再 query，再 header（创空间等环境可能未解析 POST body）
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   const userEmail = verified ? verified.email : 'anonymous';
   const schoolName = verified ? (verified.school_name || '游客') : '游客';
   const nick = verified ? (verified.nickname || '在读生') : '游客';
-
   db.get("SELECT id FROM student_shares WHERE id = ?", [shareId], (err, row) => {
     if (err) {
       console.error('comment check share err', err);
