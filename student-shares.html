@@ -1392,8 +1392,8 @@
         return `
           <div class="comment-item" data-comment-id="${c.id}">
             <div class="comment-meta">
-              <span class="comment-nickname">${escapeHtml(c.nickname || '')}</span>
-              <span class="comment-school">${escapeHtml(c.school_name || '')}</span>
+              <span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span>
+              <span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span>
             </div>
             <div class="comment-content">${escapeHtml(c.content || '')}</div>
             <div class="comment-actions">
@@ -1448,7 +1448,7 @@
         });
         const data = await res.json();
         if (data.code === 200) {
-          showToast('评论成功', 'success');
+          showToast(data.msg || '评论成功', 'success');
           if (textarea) textarea.value = '';
           const replyWrap = parentId ? document.getElementById('reply-input-' + shareId + '-' + parentId) : null;
           if (replyWrap) replyWrap.style.display = 'none';

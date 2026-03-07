@@ -1563,21 +1563,18 @@ app.post('/api/student-shares', async (req, res) => {
     }
   }
 
-  // 已认证用户发帖直接通过并显示昵称与认证学校；未认证兜底发帖仍走 AI 审核
+  // 分享的所有内容均发送给 AI 审核
   let postStatus = 'approved';
-  if (!verified) {
-    // 每条帖子经阿里云百炼审核：违规拒绝，无法辨别则送后台人工审核
-    try {
-      const modResult = await callBailianTextModeration(title, content, tags || '');
-      if (modResult === 'block') {
-        res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
-        return;
-      }
-      if (modResult === 'review') postStatus = 'pending_review';
-    } catch (e) {
-      console.error("发帖内容审核异常，转后台审核:", e.message);
-      postStatus = 'pending_review';
+  try {
+    const modResult = await callBailianTextModeration(title, content, tags || '');
+    if (modResult === 'block') {
+      res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
+      return;
     }
+    if (modResult === 'review') postStatus = 'pending_review';
+  } catch (e) {
+    console.error("发帖内容审核异常，转后台审核:", e.message);
+    postStatus = 'pending_review';
   }
 
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
@@ -1724,31 +1721,47 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     const nickname = verified.nickname || '在读生';
     const userEmail = verified.email;
     const finalParentId = parentId != null ? parseInt(String(parentId), 10) : null;
-    if (finalParentId != null && !Number.isNaN(finalParentId)) {
-      db.get('SELECT id FROM share_comments WHERE id = ? AND share_id = ?', [finalParentId, shareId], (e, pr) => {
-        if (e || !pr) {
-          res.send({ code: 400, msg: "回复的评论不存在" });
+    function checkParentThenSubmit() {
+      if (finalParentId != null && !Number.isNaN(finalParentId)) {
+        db.get('SELECT id FROM share_comments WHERE id = ? AND share_id = ?', [finalParentId, shareId], (e, pr) => {
+          if (e || !pr) {
+            res.send({ code: 400, msg: "回复的评论不存在" });
+            return;
+          }
+          submitCommentAfterModeration();
+        });
+      } else {
+        submitCommentAfterModeration();
+      }
+    }
+    // 已认证用户（页面上显示「退出认证」）的评论内容发送给 AI 审核，通过后可发布
+    async function submitCommentAfterModeration() {
+      let commentStatus = 'approved';
+      try {
+        const modResult = await callBailianTextModeration('', contentTrim, '');
+        if (modResult === 'block') {
+          res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
           return;
         }
-        insertComment();
-        return;
-      });
-    } else {
-      insertComment();
-    }
-    function insertComment() {
+        if (modResult === 'review') commentStatus = 'pending_review';
+      } catch (e) {
+        console.error("评论内容审核异常，转待审:", e.message);
+        commentStatus = 'pending_review';
+      }
       db.run(
-        'INSERT INTO share_comments (share_id, parent_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?, ?)',
-        [shareId, (finalParentId != null && !Number.isNaN(finalParentId)) ? finalParentId : null, userEmail, schoolName, nickname, contentTrim],
+        'INSERT INTO share_comments (share_id, parent_id, user_email, school_name, nickname, content, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [shareId, (finalParentId != null && !Number.isNaN(finalParentId)) ? finalParentId : null, userEmail, schoolName, nickname, contentTrim, commentStatus],
         function (insErr) {
           if (insErr) {
             res.send({ code: 500, msg: "发表失败" });
             return;
           }
-          res.send({ code: 200, msg: "评论成功", id: this.lastID });
+          const msg = commentStatus === 'pending_review' ? "评论已提交，待审核通过后展示" : "评论成功";
+          res.send({ code: 200, msg, id: this.lastID, status: commentStatus });
         }
       );
     }
+    checkParentThenSubmit();
   });
 });
 
