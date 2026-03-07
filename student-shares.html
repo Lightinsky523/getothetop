@@ -303,6 +303,7 @@
       font-size: 11px; padding: 2px 6px; border-radius: 4px;
       background: #fef3c7; color: #92400e;
     }
+    .comment-time { font-size: 11px; color: var(--text-soft); margin-left: auto; }
     .comment-content { color: var(--text-soft); line-height: 1.5; margin-bottom: 6px; }
     .comment-actions {
       display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-soft);
@@ -1308,11 +1309,16 @@
       }
     }
 
-    // 帖子点赞/取消点赞
+    // 帖子点赞：直接读如图三位置，若显示「已认证」则可点赞，并带 token 发送
     async function likeShare(shareId, btn) {
+      const authBadge = document.getElementById('auth-badge');
+      if (!authBadge || authBadge.style.display === 'none') {
+        showToast('请先完成认证后再点赞', 'error');
+        return;
+      }
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
       if (!token) {
-        showToast('请先完成认证后再点赞', 'error');
+        showToast('认证信息已丢失，请刷新页面或重新认证', 'error');
         return;
       }
       try {
@@ -1388,6 +1394,7 @@
             <div class="comment-meta">
               <span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span>
               <span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span>
+              <span class="comment-time">${formatCommentDate(c.created_at)}</span>
             </div>
             <div class="comment-content">${escapeHtml(c.content || '')}</div>
             <div class="comment-actions">
@@ -1411,11 +1418,6 @@
     }
 
     function toggleReplyInput(shareId, parentCommentId) {
-      const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!token) {
-        showToast('请先完成认证后再回复', 'error');
-        return;
-      }
       const wrap = document.getElementById('reply-input-' + shareId + '-' + parentCommentId);
       if (!wrap) return;
       wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
@@ -1429,24 +1431,24 @@
         showToast('请输入评论内容', 'error');
         return;
       }
-      // 按页面认证区域：显示「已认证」则带 token，显示「游客」则不带，后端据此显示认证学校/昵称或游客
+      // 直接读取如图三位置：认证区域显示「游客」则身份为游客，显示「已认证」则传昵称和认证学校
       const authBadge = document.getElementById('auth-badge');
       const isAuthenticated = authBadge && authBadge.style.display !== 'none';
-      const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      const sendToken = isAuthenticated && token;
-      const url = API_BASE + '/api/student-shares/' + shareId + '/comments' + (sendToken ? '?authToken=' + encodeURIComponent(token) : '');
-      const headers = { 'Content-Type': 'application/json' };
-      if (sendToken) {
-        headers['X-Auth-Token'] = token;
-        headers['Authorization'] = 'Bearer ' + token;
+      const nick = (localStorage.getItem('verifiedNickname') || verifiedNickname || '').trim();
+      const school = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      const payload = { content, parent_id: parentId || null };
+      if (isAuthenticated && (nick || school)) {
+        payload.identity = 'verified';
+        payload.nickname = nick || '在读生';
+        payload.school_name = school || '';
+      } else {
+        payload.identity = 'guest';
       }
-      const body = { content, parent_id: parentId || null };
-      if (sendToken) body.authToken = token;
       try {
-        const res = await fetch(url, {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
           method: 'POST',
-          headers: headers,
-          body: JSON.stringify(body)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.code === 200) {
@@ -1479,9 +1481,14 @@
     }
 
     async function likeComment(shareId, commentId, btn) {
+      const authBadge = document.getElementById('auth-badge');
+      if (!authBadge || authBadge.style.display === 'none') {
+        showToast('请先完成认证后再点赞', 'error');
+        return;
+      }
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
       if (!token) {
-        showToast('请先完成认证后再点赞', 'error');
+        showToast('认证信息已丢失，请刷新页面或重新认证', 'error');
         return;
       }
       try {
@@ -1565,6 +1572,11 @@
       if (!dateStr) return '';
       const date = new Date(dateStr);
       return date.toLocaleDateString('zh-CN');
+    }
+    function formatCommentDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
     // 显示提示

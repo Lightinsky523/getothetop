@@ -1693,25 +1693,25 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   );
 });
 
-// 发表评论或回复（需认证；显示昵称和认证学校）
+// 发表评论或回复（不校验 token，身份由前端页面认证区域决定：identity=guest 显示游客，identity=verified 用 nickname/school_name）
 app.post('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = parseInt(String(req.params.id), 10);
   if (Number.isNaN(shareId) || shareId < 1) {
     res.send({ code: 400, msg: "参数错误" });
     return;
   }
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  // 无论是否认证均可评论：页面上显示「已认证」则用认证学校和昵称，显示「游客」则身份为游客
-  const schoolName = verified ? (verified.school_name || '') : '游客';
-  const nickname = verified ? (verified.nickname || '在读生') : '游客';
-  const userEmail = verified ? verified.email : '游客';
-  const { content, parent_id: parentId } = req.body || {};
+  const body = req.body || {};
+  const { content, parent_id: parentId, identity, nickname: bodyNickname, school_name: bodySchool } = body;
   const contentTrim = (content != null ? String(content).trim() : '') || '';
   if (!contentTrim) {
     res.send({ code: 400, msg: "评论内容不能为空" });
     return;
   }
+  // 直接采用前端传来的身份：identity=guest 为游客，identity=verified 为昵称+认证学校
+  const isVerified = identity === 'verified';
+  const schoolName = isVerified ? (String(bodySchool != null ? bodySchool : '').trim() || '') : '游客';
+  const nickname = isVerified ? (String(bodyNickname != null ? bodyNickname : '').trim() || '在读生') : '游客';
+  const userEmail = isVerified ? (nickname + '_' + schoolName || 'verified') : '游客';
   db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, shareRow) => {
     if (err || !shareRow) {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
