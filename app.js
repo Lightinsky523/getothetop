@@ -1563,18 +1563,21 @@ app.post('/api/student-shares', async (req, res) => {
     }
   }
 
-  // 每条帖子经阿里云百炼审核：违规拒绝，无法辨别则送后台人工审核
+  // 已认证用户发帖直接通过并显示昵称与认证学校；未认证兜底发帖仍走 AI 审核
   let postStatus = 'approved';
-  try {
-    const modResult = await callBailianTextModeration(title, content, tags || '');
-    if (modResult === 'block') {
-      res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
-      return;
+  if (!verified) {
+    // 每条帖子经阿里云百炼审核：违规拒绝，无法辨别则送后台人工审核
+    try {
+      const modResult = await callBailianTextModeration(title, content, tags || '');
+      if (modResult === 'block') {
+        res.send({ code: 400, msg: "内容涉嫌违规，无法发布" });
+        return;
+      }
+      if (modResult === 'review') postStatus = 'pending_review';
+    } catch (e) {
+      console.error("发帖内容审核异常，转后台审核:", e.message);
+      postStatus = 'pending_review';
     }
-    if (modResult === 'review') postStatus = 'pending_review';
-  } catch (e) {
-    console.error("发帖内容审核异常，转后台审核:", e.message);
-    postStatus = 'pending_review';
   }
 
   const imagesStr = images && Array.isArray(images) ? images.join(IMAGE_SEP) : '';
