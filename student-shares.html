@@ -264,12 +264,65 @@
       margin-top: 12px; padding-top: 12px;
       border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-soft);
     }
+    .share-actions {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .action-btn {
+      background: none; border: none; color: var(--text-soft);
+      font-size: 12px; cursor: pointer; padding: 0 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .action-btn:hover { color: var(--accent); }
+    .action-btn.liked { color: #c53030; }
     .report-link {
       background: none; border: none; color: var(--text-soft);
       font-size: 12px; cursor: pointer; padding: 0 4px;
       text-decoration: none;
     }
     .report-link:hover { color: var(--error); text-decoration: underline; }
+    /* 评论区 */
+    .comments-section {
+      margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .comments-header {
+      font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-soft);
+    }
+    .comment-list { list-style: none; margin: 0; padding: 0; }
+    .comment-item {
+      padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
+      font-size: 13px;
+    }
+    .comment-item:last-child { border-bottom: none; }
+    .comment-replies { margin-left: 24px; margin-top: 8px; }
+    .comment-meta {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    .comment-nickname { font-weight: 600; color: var(--text); }
+    .comment-school {
+      font-size: 11px; padding: 2px 6px; border-radius: 4px;
+      background: #fef3c7; color: #92400e;
+    }
+    .comment-content { color: var(--text-soft); line-height: 1.5; margin-bottom: 6px; }
+    .comment-actions {
+      display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-soft);
+    }
+    .comment-actions button {
+      background: none; border: none; cursor: pointer; color: inherit; padding: 0;
+    }
+    .comment-actions button:hover { color: var(--accent); }
+    .comment-input-wrap {
+      margin-top: 12px; display: flex; gap: 8px; align-items: flex-start;
+    }
+    .comment-input-wrap textarea {
+      flex: 1; min-height: 60px; resize: vertical;
+      border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      padding: 8px 12px; font-size: 13px; font-family: inherit;
+    }
+    .reply-input-wrap { margin-top: 8px; margin-left: 24px; }
+    .reply-input-wrap textarea { width: 100%; min-height: 50px; resize: vertical; font-size: 13px; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border-subtle); }
+    .btn-toggle-comments { background: none; border: none; color: var(--text-soft); font-size: 12px; cursor: pointer; padding: 0 4px; }
+    .btn-toggle-comments:hover { color: var(--accent); }
 
     .loading {
       text-align: center; padding: 60px 20px; color: var(--text-soft);
@@ -1130,10 +1183,12 @@
       }
     }
 
-    // 加载分享列表
+    // 加载分享列表（带 token 时返回点赞状态）
     async function loadShares() {
       try {
-        const res = await fetch(API_BASE + '/api/student-shares');
+        const token = (localStorage.getItem('authToken') || authToken || '').trim();
+        const url = token ? API_BASE + '/api/student-shares?authToken=' + encodeURIComponent(token) : API_BASE + '/api/student-shares';
+        const res = await fetch(url);
         const data = await res.json();
         
         if (data.code === 200) {
@@ -1193,8 +1248,24 @@
             ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
             <div class="share-footer">
               <span>${formatDate(share.upload_time)}</span>
-              <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
-              ${ (verifiedSchool && share.school === verifiedSchool && (share.author_nickname || '在读生') === (verifiedNickname || '在读生')) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteShare(${share.id}); event.preventDefault();" title="删除自己的帖子">删除</button>` : '' }
+              <div class="share-actions">
+                <button type="button" class="action-btn ${share.user_has_liked ? 'liked' : ''}" onclick="likeShare(${share.id}, this); event.preventDefault();" title="点赞" data-share-id="${share.id}">
+                  <span aria-hidden="true">${share.user_has_liked ? '❤️' : '🤍'}</span>
+                  <span class="like-count">${share.like_count != null ? share.like_count : 0}</span>
+                </button>
+                <button type="button" class="btn-toggle-comments" onclick="toggleComments(${share.id}); event.preventDefault();" data-share-id="${share.id}">评论</button>
+                <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
+                ${ (verifiedSchool && share.school === verifiedSchool && (share.author_nickname || '在读生') === (verifiedNickname || '在读生')) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteShare(${share.id}); event.preventDefault();" title="删除自己的帖子">删除</button>` : '' }
+              </div>
+            </div>
+            <div id="comments-wrap-${share.id}" class="comments-section" style="display: none;">
+              <div class="comments-header">评论</div>
+              <div id="comments-list-${share.id}" class="comment-list"></div>
+              <div id="comment-form-${share.id}" class="comment-input-wrap" style="${authToken ? '' : 'display: none;'}">
+                <textarea id="comment-text-${share.id}" placeholder="写下你的评论…" rows="2"></textarea>
+                <button type="button" class="primary-btn" onclick="submitComment(${share.id}, null)">发送</button>
+              </div>
+              <p id="comment-login-hint-${share.id}" class="section-desc" style="margin-top: 8px; ${authToken ? 'display: none;' : ''}">认证后可评论</p>
             </div>
           </div>
         `;
@@ -1232,6 +1303,194 @@
           await loadShares();
         } else {
           showToast(data.msg || '删除失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 帖子点赞/取消点赞
+    async function likeShare(shareId, btn) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!token) {
+        showToast('请先完成认证后再点赞', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/like', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ authToken: token })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          const span = btn ? btn.querySelector('span[aria-hidden="true"]') : null;
+          const countEl = btn ? btn.querySelector('.like-count') : null;
+          if (span) span.textContent = data.liked ? '❤️' : '🤍';
+          if (countEl) countEl.textContent = data.like_count != null ? data.like_count : 0;
+          btn.classList.toggle('liked', data.liked);
+          const share = allShares.find(s => s.id === shareId);
+          if (share) {
+            share.user_has_liked = data.liked;
+            share.like_count = data.like_count;
+          }
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 展开/收起评论区并加载评论
+    async function toggleComments(shareId) {
+      const wrap = document.getElementById('comments-wrap-' + shareId);
+      if (!wrap) return;
+      const isHidden = wrap.style.display === 'none';
+      wrap.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) await loadComments(shareId);
+    }
+
+    async function loadComments(shareId) {
+      const listEl = document.getElementById('comments-list-' + shareId);
+      if (!listEl) return;
+      listEl.innerHTML = '<div class="loading">加载评论中…</div>';
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const url = API_BASE + '/api/student-shares/' + shareId + '/comments' + (token ? '?authToken=' + encodeURIComponent(token) : '');
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.code === 200) {
+          renderComments(shareId, data.data || []);
+        } else {
+          listEl.innerHTML = '<div class="empty-state">加载失败</div>';
+        }
+      } catch (e) {
+        listEl.innerHTML = '<div class="empty-state">加载失败</div>';
+      }
+    }
+
+    function renderComments(shareId, comments) {
+      const listEl = document.getElementById('comments-list-' + shareId);
+      if (!listEl) return;
+      const topLevel = (comments || []).filter(c => !c.parent_id);
+      const byParent = {};
+      (comments || []).forEach(c => {
+        if (c.parent_id) {
+          if (!byParent[c.parent_id]) byParent[c.parent_id] = [];
+          byParent[c.parent_id].push(c);
+        }
+      });
+      function renderOne(c) {
+        const replies = byParent[c.id] || [];
+        const repliesHtml = replies.length ? '<div class="comment-replies">' + replies.map(r => renderOne(r)).join('') + '</div>' : '';
+        return `
+          <div class="comment-item" data-comment-id="${c.id}">
+            <div class="comment-meta">
+              <span class="comment-nickname">${escapeHtml(c.nickname || '')}</span>
+              <span class="comment-school">${escapeHtml(c.school_name || '')}</span>
+            </div>
+            <div class="comment-content">${escapeHtml(c.content || '')}</div>
+            <div class="comment-actions">
+              <button type="button" onclick="likeComment(${shareId}, ${c.id}, this)"><span class="comment-like-icon">${c.user_has_liked ? '❤️' : '🤍'}</span> <span class="comment-like-count">${c.like_count != null ? c.like_count : 0}</span></button>
+              <button type="button" onclick="toggleReplyInput(${shareId}, ${c.id})">回复</button>
+              <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button>
+            </div>
+            <div id="reply-input-${shareId}-${c.id}" class="reply-input-wrap" style="display: none;">
+              <textarea id="reply-text-${shareId}-${c.id}" placeholder="回复 ${escapeHtml(c.nickname || '')}…" rows="2"></textarea>
+              <button type="button" class="primary-btn" style="margin-top: 6px;" onclick="submitComment(${shareId}, ${c.id})">发送</button>
+            </div>
+            ${repliesHtml}
+          </div>
+        `;
+      }
+      if (topLevel.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">暂无评论</div>';
+        return;
+      }
+      listEl.innerHTML = topLevel.map(renderOne).join('');
+    }
+
+    function toggleReplyInput(shareId, parentCommentId) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!token) {
+        showToast('请先完成认证后再回复', 'error');
+        return;
+      }
+      const wrap = document.getElementById('reply-input-' + shareId + '-' + parentCommentId);
+      if (!wrap) return;
+      wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function submitComment(shareId, parentId) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!token) {
+        showToast('请先完成认证后再评论', 'error');
+        return;
+      }
+      const textId = parentId ? 'reply-text-' + shareId + '-' + parentId : 'comment-text-' + shareId;
+      const textarea = document.getElementById(textId);
+      const content = (textarea && textarea.value || '').trim();
+      if (!content) {
+        showToast('请输入评论内容', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments?authToken=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ content, parent_id: parentId || null, authToken: token })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('评论成功', 'success');
+          if (textarea) textarea.value = '';
+          const replyWrap = parentId ? document.getElementById('reply-input-' + shareId + '-' + parentId) : null;
+          if (replyWrap) replyWrap.style.display = 'none';
+          await loadComments(shareId);
+        } else {
+          showToast(data.msg || '评论失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    async function reportComment(shareId, commentId) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(token ? { authToken: token } : {})
+        });
+        const data = await res.json();
+        showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    async function likeComment(shareId, commentId, btn) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      if (!token) {
+        showToast('请先完成认证后再点赞', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/like', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ authToken: token })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          const iconEl = btn ? btn.querySelector('.comment-like-icon') : null;
+          const countEl = btn ? btn.querySelector('.comment-like-count') : null;
+          if (iconEl) iconEl.textContent = data.liked ? '❤️' : '🤍';
+          if (countEl) countEl.textContent = data.like_count != null ? data.like_count : 0;
+        } else {
+          showToast(data.msg || '操作失败', 'error');
         }
       } catch (e) {
         showToast('网络错误', 'error');

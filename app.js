@@ -188,6 +188,49 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (share_id) REFERENCES student_shares(id)
     )`, () => {});
 
+    // 帖子点赞表
+    db.run(`CREATE TABLE IF NOT EXISTS share_likes (
+      share_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (share_id, user_email),
+      FOREIGN KEY (share_id) REFERENCES student_shares(id)
+    )`, () => {});
+
+    // 评论表（parent_id 为 NULL 表示一级评论，非空表示回复）
+    db.run(`CREATE TABLE IF NOT EXISTS share_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      share_id INTEGER NOT NULL,
+      parent_id INTEGER,
+      user_email TEXT NOT NULL,
+      school_name TEXT NOT NULL,
+      nickname TEXT NOT NULL,
+      content TEXT NOT NULL,
+      status TEXT DEFAULT 'approved',
+      like_count INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (share_id) REFERENCES student_shares(id),
+      FOREIGN KEY (parent_id) REFERENCES share_comments(id)
+    )`, () => {});
+
+    // 评论举报表
+    db.run(`CREATE TABLE IF NOT EXISTS comment_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comment_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comment_id) REFERENCES share_comments(id)
+    )`, () => {});
+
+    // 评论点赞表
+    db.run(`CREATE TABLE IF NOT EXISTS comment_likes (
+      comment_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (comment_id, user_email),
+      FOREIGN KEY (comment_id) REFERENCES share_comments(id)
+    )`, () => {});
+
     // 创建学校信息表
     db.run(`CREATE TABLE IF NOT EXISTS schools (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -980,34 +1023,47 @@ app.post('/api/majors/search', (req, res) => {
 
 // ========== 新的学生分享 API ==========
 
-// 获取学生分享列表（支持搜索）
-app.get('/api/student-shares', (req, res) => {
+// 获取学生分享列表（支持搜索；含点赞数，带 token 时返回当前用户是否已点赞）
+app.get('/api/student-shares', async (req, res) => {
   const { school, major, keyword } = req.query;
-  let sql = `SELECT * FROM student_shares WHERE status = 'approved'`;
+  let sql = `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.status = 'approved'`;
   const params = [];
   
   if (school) {
-    sql += ` AND school = ?`;
+    sql += ` AND s.school = ?`;
     params.push(school);
   }
   
   if (major) {
-    sql += ` AND major = ?`;
+    sql += ` AND s.major = ?`;
     params.push(major);
   }
   
   if (keyword) {
-    sql += ` AND (title LIKE ? OR content LIKE ? OR tags LIKE ?)`;
+    sql += ` AND (s.title LIKE ? OR s.content LIKE ? OR s.tags LIKE ?)`;
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
   
-  sql += ` ORDER BY upload_time DESC`;
+  sql += ` ORDER BY s.upload_time DESC`;
   
-  db.all(sql, params, (err, rows) => {
+  db.all(sql, params, async (err, rows) => {
     if (err) {
       console.error("获取学生分享失败:", err);
       res.send({ code: 500, msg: "获取失败" });
       return;
+    }
+    const token = getTokenFromRequest(req);
+    const verified = await parseAuthToken(token || null);
+    const userEmail = verified ? verified.email : null;
+    if (userEmail && rows && rows.length > 0) {
+      const ids = rows.map((r) => r.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const liked = await new Promise((resolve) => {
+        db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
+      });
+      rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
+    } else {
+      rows.forEach((r) => { r.user_has_liked = false; });
     }
     res.send({ code: 200, data: rows });
   });
@@ -1551,6 +1607,215 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
         db.run("UPDATE student_shares SET status = 'pending_review' WHERE id = ?", [shareId], () => {});
       }
       res.send({ code: 200, msg: "举报已提交" });
+    });
+  });
+});
+
+// 帖子点赞/取消点赞（需认证）
+app.post('/api/student-shares/:id/like', async (req, res) => {
+  const shareId = parseInt(String(req.params.id), 10);
+  if (Number.isNaN(shareId) || shareId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成认证后再点赞" });
+    return;
+  }
+  const userEmail = verified.email;
+  db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "帖子不存在或已删除" });
+      return;
+    }
+    db.get('SELECT 1 FROM share_likes WHERE share_id = ? AND user_email = ?', [shareId, userEmail], (e, likeRow) => {
+      if (likeRow) {
+        db.run('DELETE FROM share_likes WHERE share_id = ? AND user_email = ?', [shareId, userEmail], function (delErr) {
+          if (delErr) {
+            res.send({ code: 500, msg: "操作失败" });
+            return;
+          }
+          db.get('SELECT COUNT(*) AS cnt FROM share_likes WHERE share_id = ?', [shareId], (_, c) => {
+            res.send({ code: 200, liked: false, like_count: (c && c.cnt) || 0 });
+          });
+        });
+      } else {
+        db.run('INSERT INTO share_likes (share_id, user_email) VALUES (?, ?)', [shareId, userEmail], function (insErr) {
+          if (insErr) {
+            res.send({ code: 500, msg: "操作失败" });
+            return;
+          }
+          db.get('SELECT COUNT(*) AS cnt FROM share_likes WHERE share_id = ?', [shareId], (_, c) => {
+            res.send({ code: 200, liked: true, like_count: (c && c.cnt) || 0 });
+          });
+        });
+      }
+    });
+  });
+});
+
+// 获取某帖子的评论列表（一级评论 + 回复，仅 approved；带 token 时每条带 user_has_liked）
+app.get('/api/student-shares/:id/comments', async (req, res) => {
+  const shareId = parseInt(String(req.params.id), 10);
+  if (Number.isNaN(shareId) || shareId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  const userEmail = verified ? verified.email : null;
+  db.all(
+    'SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = ? ORDER BY created_at ASC',
+    [shareId, 'approved'],
+    async (err, rows) => {
+      if (err) {
+        res.send({ code: 500, msg: "获取评论失败" });
+        return;
+      }
+      if (!rows || rows.length === 0) {
+        return res.send({ code: 200, data: [] });
+      }
+      const commentIds = rows.map((r) => r.id);
+      let userLikedIds = [];
+      if (userEmail) {
+        const placeholders = commentIds.map(() => '?').join(',');
+        userLikedIds = await new Promise((resolve) => {
+          db.all(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${placeholders}) AND user_email = ?`, [...commentIds, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.comment_id)));
+        });
+      }
+      rows.forEach((r) => {
+        r.user_has_liked = userLikedIds.indexOf(r.id) !== -1;
+      });
+      res.send({ code: 200, data: rows });
+    }
+  );
+});
+
+// 发表评论或回复（需认证；显示昵称和认证学校）
+app.post('/api/student-shares/:id/comments', async (req, res) => {
+  const shareId = parseInt(String(req.params.id), 10);
+  if (Number.isNaN(shareId) || shareId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成认证后再评论" });
+    return;
+  }
+  const { content, parent_id: parentId } = req.body || {};
+  const contentTrim = (content != null ? String(content).trim() : '') || '';
+  if (!contentTrim) {
+    res.send({ code: 400, msg: "评论内容不能为空" });
+    return;
+  }
+  db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, shareRow) => {
+    if (err || !shareRow) {
+      res.send({ code: 404, msg: "帖子不存在或已删除" });
+      return;
+    }
+    const schoolName = verified.school_name || '';
+    const nickname = verified.nickname || '在读生';
+    const userEmail = verified.email;
+    const finalParentId = parentId != null ? parseInt(String(parentId), 10) : null;
+    if (finalParentId != null && !Number.isNaN(finalParentId)) {
+      db.get('SELECT id FROM share_comments WHERE id = ? AND share_id = ?', [finalParentId, shareId], (e, pr) => {
+        if (e || !pr) {
+          res.send({ code: 400, msg: "回复的评论不存在" });
+          return;
+        }
+        insertComment();
+        return;
+      });
+    } else {
+      insertComment();
+    }
+    function insertComment() {
+      db.run(
+        'INSERT INTO share_comments (share_id, parent_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?, ?)',
+        [shareId, (finalParentId != null && !Number.isNaN(finalParentId)) ? finalParentId : null, userEmail, schoolName, nickname, contentTrim],
+        function (insErr) {
+          if (insErr) {
+            res.send({ code: 500, msg: "发表失败" });
+            return;
+          }
+          res.send({ code: 200, msg: "评论成功", id: this.lastID });
+        }
+      );
+    }
+  });
+});
+
+// 举报评论（举报次数≥50 进入后台审核）
+app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
+  const commentId = parseInt(String(req.params.commentId), 10);
+  if (Number.isNaN(commentId) || commentId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  const userEmail = verified ? verified.email : 'anonymous';
+  db.run('INSERT INTO comment_reports (comment_id, user_email) VALUES (?, ?)', [commentId, userEmail], function (err) {
+    if (err) {
+      res.send({ code: 500, msg: "举报失败" });
+      return;
+    }
+    db.get('SELECT COUNT(*) AS cnt FROM comment_reports WHERE comment_id = ?', [commentId], (e, row) => {
+      if (!e && row && row.cnt >= REPORT_THRESHOLD) {
+        db.run("UPDATE share_comments SET status = 'pending_review' WHERE id = ?", [commentId], () => {});
+      }
+      res.send({ code: 200, msg: "举报已提交" });
+    });
+  });
+});
+
+// 评论点赞/取消点赞（需认证）
+app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, res) => {
+  const commentId = parseInt(String(req.params.commentId), 10);
+  if (Number.isNaN(commentId) || commentId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  if (!verified) {
+    res.send({ code: 403, msg: "请先完成认证后再点赞" });
+    return;
+  }
+  const userEmail = verified.email;
+  db.get('SELECT id, like_count FROM share_comments WHERE id = ? AND status = ?', [commentId, 'approved'], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "评论不存在或已删除" });
+      return;
+    }
+    db.get('SELECT 1 FROM comment_likes WHERE comment_id = ? AND user_email = ?', [commentId, userEmail], (e, likeRow) => {
+      if (likeRow) {
+        db.run('DELETE FROM comment_likes WHERE comment_id = ? AND user_email = ?', [commentId, userEmail], function (delErr) {
+          if (delErr) {
+            res.send({ code: 500, msg: "操作失败" });
+            return;
+          }
+          db.run('UPDATE share_comments SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END WHERE id = ?', [commentId], () => {});
+          db.get('SELECT like_count FROM share_comments WHERE id = ?', [commentId], (_, c) => {
+            res.send({ code: 200, liked: false, like_count: (c && c.like_count) || 0 });
+          });
+        });
+      } else {
+        db.run('INSERT INTO comment_likes (comment_id, user_email) VALUES (?, ?)', [commentId, userEmail], function (insErr) {
+          if (insErr) {
+            res.send({ code: 500, msg: "操作失败" });
+            return;
+          }
+          db.run('UPDATE share_comments SET like_count = like_count + 1 WHERE id = ?', [commentId], () => {});
+          db.get('SELECT like_count FROM share_comments WHERE id = ?', [commentId], (_, c) => {
+            res.send({ code: 200, liked: true, like_count: (c && c.like_count) || 0 });
+          });
+        });
+      }
     });
   });
 });
