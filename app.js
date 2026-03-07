@@ -310,6 +310,54 @@ app.get('/get-data', (req, res) => {
 });
 
 // ********** 功能3：智能查询 - 直连 API + 学生分享筛选与总结 **********
+const SHARE_LIST_WHERE = `s.status = 'approved'
+  AND (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= 40)
+  AND (s.is_emotional IS NULL OR s.is_emotional = 0)
+  AND (s.delete_after IS NULL OR datetime(s.delete_after) > datetime('now'))`;
+
+// 从学生分享中出现的学校名里检测用户问题是否涉及具体学校，返回 { school, keyword } 或 null
+function getSchoolFromPrompt(prompt) {
+  return new Promise((resolve) => {
+    db.all(
+      `SELECT DISTINCT s.school FROM student_shares s WHERE ${SHARE_LIST_WHERE.replace(/s\./g, 's.')} AND s.school IS NOT NULL AND TRIM(s.school) != ''`,
+      [],
+      (err, rows) => {
+        if (err || !rows || rows.length === 0) return resolve(null);
+        const p = (prompt || '').trim();
+        const sorted = rows.map((r) => (r.school || '').trim()).filter(Boolean).sort((a, b) => b.length - a.length);
+        for (const school of sorted) {
+          if (school && p.includes(school)) {
+            const keyword = p.replace(school, '').replace(/[？?]\s*$/, '').trim();
+            return resolve({ school, keyword: keyword.length >= 1 ? keyword : '' });
+          }
+        }
+        resolve(null);
+      }
+    );
+  });
+}
+
+// 按学校（及可选关键词）取点赞数最高的最多 limit 条帖子
+function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
+  return new Promise((resolve) => {
+    let sql = `SELECT s.id, s.school, s.major, s.title, s.content, s.tags, s.author_nickname, s.upload_time,
+      (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count
+      FROM student_shares s WHERE ${SHARE_LIST_WHERE} AND s.school = ?`;
+    const params = [schoolName];
+    if (keyword && keyword.trim()) {
+      const k = '%' + keyword.trim() + '%';
+      sql += ` AND (s.title LIKE ? OR s.content LIKE ? OR s.tags LIKE ?)`;
+      params.push(k, k, k);
+    }
+    sql += ` ORDER BY like_count DESC LIMIT ?`;
+    params.push(limit);
+    db.all(sql, params, (err, rows) => {
+      if (err) return resolve([]);
+      resolve(rows || []);
+    });
+  });
+}
+
 // 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答（限制条数与长度以降低超时）
 function fetchRelevantShares(prompt, limit = 10) {
   return new Promise((resolve) => {
@@ -339,6 +387,7 @@ function fetchRelevantShares(prompt, limit = 10) {
 }
 
 // 智能查询：调用阿里云百炼「应用」API（千问 + 知识库 + 自建 prompt）
+// 若用户问题涉及具体学校，则先对该校学生分享点赞最高的最多 100 条做百炼总结，再与综合回答一起返回
 app.post('/ai-query', async (req, res) => {
   const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
@@ -349,9 +398,44 @@ app.post('/ai-query', async (req, res) => {
       return;
     }
 
+    const MAX_SNIPPET = 200;
+    const MAX_SUMMARY_SNIPPET = 350;
+    let shareSummary = '';
+
+    // 若涉及具体学校：取该校（及关键词）点赞最高的最多 100 条，用百炼总结
+    const detected = await getSchoolFromPrompt(prompt);
+    if (detected && detected.school) {
+      const topShares = await fetchTopSharesBySchool(detected.school, detected.keyword, 100);
+      if (topShares.length > 0) {
+        const postsText = topShares.map((entry, i) => {
+          const contentSnippet = (entry.content || '').slice(0, MAX_SUMMARY_SNIPPET);
+          return `[${i + 1}] 点赞${entry.like_count || 0} · ${entry.title || '无标题'}\n${contentSnippet}${(entry.content || '').length > MAX_SUMMARY_SNIPPET ? '…' : ''}`;
+        }).join('\n\n');
+        const summaryPrompt = `用户问题：${prompt}\n\n请对以下「${detected.school}」学生分享帖子进行总结，围绕用户问题的关注点归纳（如学习压力、宿舍、就业、保研等）。每条帖子已按点赞数从高到低排列，共 ${topShares.length} 条。总结控制在 500 字以内，条理清晰。\n\n帖子内容：\n${postsText.slice(0, 28000)}`;
+        const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
+        try {
+          const sumController = new AbortController();
+          const sumTimeout = setTimeout(() => sumController.abort(), 60000);
+          const sumRes = await fetch(appUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BAILIAN_API_KEY}` },
+            body: JSON.stringify({ input: { prompt: summaryPrompt }, parameters: { result_format: 'message' } }),
+            signal: sumController.signal
+          });
+          clearTimeout(sumTimeout);
+          if (sumRes.ok) {
+            const sumJson = await sumRes.json();
+            const text = sumJson.output?.text || sumJson.output?.choices?.[0]?.message?.content || sumJson.data?.output?.text || sumJson.choices?.[0]?.message?.content;
+            if (text && typeof text === 'string') shareSummary = text.trim();
+          }
+        } catch (e) {
+          console.error('该校学生分享总结调用失败:', e.message);
+        }
+      }
+    }
+
     // 控制上下文长度，减少百炼处理时间，降低超时概率
     const shareRows = await fetchRelevantShares(prompt, 8);
-    const MAX_SNIPPET = 200;
     let contextInfo = "【参考信息】\n";
     if (profileSummary && profileSummary !== "（未填写）") {
       contextInfo += `用户基本信息：${profileSummary}\n`;
@@ -359,6 +443,9 @@ app.post('/ai-query', async (req, res) => {
     if (isXuanke && xuankeContext) {
       const combo = [xuankeContext.first, ...(xuankeContext.second || [])].filter(Boolean).join("+");
       contextInfo += `选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}\n`;
+    }
+    if (shareSummary) {
+      contextInfo += "【基于该校学生分享高赞帖的总结】\n" + shareSummary + "\n";
     }
     if (shareRows.length > 0) {
       contextInfo += "学生分享（供参考）：\n";
@@ -439,7 +526,10 @@ app.post('/ai-query', async (req, res) => {
       result.data?.output?.text ||
       result.choices?.[0]?.message?.content;
     if (aiText) {
-      res.send({ code: 200, data: aiText });
+      const finalData = shareSummary
+        ? `【基于该校学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
+        : aiText;
+      res.send({ code: 200, data: finalData });
     } else {
       res.send({ code: 500, msg: "AI 未返回有效内容" });
     }
