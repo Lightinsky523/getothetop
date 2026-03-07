@@ -195,7 +195,6 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     });
     db.run(`ALTER TABLE share_comments ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment nickname:", err); });
     db.run(`ALTER TABLE share_comments ADD COLUMN status TEXT DEFAULT 'approved'`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment status:", err); });
-    db.run(`ALTER TABLE share_comments ADD COLUMN parent_comment_id INTEGER`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add parent_comment_id:", err); });
 
     // 帖子/评论举报表（举报次数>50的帖子/评论进入后台审核可删）
     db.run(`CREATE TABLE IF NOT EXISTS share_reports (
@@ -571,7 +570,6 @@ db.run(`CREATE TABLE IF NOT EXISTS school_programs (
 });
 // 兼容旧库：开设院校表增加课程介绍字段（不删除任何已有数据）
 db.run(`ALTER TABLE school_programs ADD COLUMN course_intros TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 course_intros 列:", err); });
-db.run(`ALTER TABLE school_programs ADD COLUMN enrollment_category TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 enrollment_category(大类招生) 列:", err); });
 
 // 创建专业动态趣闻表
 db.run(`CREATE TABLE IF NOT EXISTS major_news (
@@ -875,10 +873,10 @@ app.get('/admin/majors/:id/programs', (req, res) => {
 
 // 添加开设院校
 app.post('/admin/programs', verifyAdmin, (req, res) => {
-  const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category } = req.body;
+  const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   
-  const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-  db.run(sql, [major_id, school_name, school_level, location, program_features, courses, '', admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category || ''], function(err) {
+  const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [major_id, school_name, school_level, location, program_features, courses, '', admission_requirements, tuition_fee, scholarships, contact_info], function(err) {
     if (err) {
       console.error("添加开设院校失败:", err);
       res.send({ code: 500, msg: "添加失败: " + err.message });
@@ -1604,7 +1602,7 @@ app.get('/api/student-shares/:id/comments', (req, res) => {
   }
   // 不依赖 status 列，兼容旧表无该列；有该列时在内存中过滤仅展示通过
   db.all(
-    "SELECT id, share_id, user_email, school_name, nickname, content, created_at, status, parent_comment_id FROM share_comments WHERE share_id = ? ORDER BY created_at ASC",
+    "SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC",
     [shareId],
     (err, rows) => {
       if (err) {
@@ -1631,7 +1629,6 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     res.send({ code: 400, msg: "请输入评论内容" });
     return;
   }
-  const parentCommentId = body.parent_comment_id != null ? parseInt(String(body.parent_comment_id), 10) : null;
   // 优先 body，再 query，再 header（创空间等环境可能未解析 POST body）
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
@@ -1648,31 +1645,19 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
       return;
     }
-    const doInsert = () => {
-      db.run(
-        "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content, parent_comment_id) VALUES (?, ?, ?, ?, ?, ?)",
-        [shareId, userEmail, schoolName, nick, content, parentCommentId || null],
-        function (runErr) {
-          if (runErr) {
-            console.error('comment insert err', runErr);
-            res.send({ code: 500, msg: "评论失败" });
-            return;
-          }
-          res.send({ code: 200, msg: "评论成功", id: this.lastID });
-        }
-      );
-    };
-    if (parentCommentId != null && parentCommentId > 0) {
-      db.get("SELECT id FROM share_comments WHERE id = ? AND share_id = ?", [parentCommentId, shareId], (e, parentRow) => {
-        if (e || !parentRow) {
-          res.send({ code: 400, msg: "回复的评论不存在" });
+    // 不插入 status，兼容旧表无 status 列
+    db.run(
+      "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?)",
+      [shareId, userEmail, schoolName, nick, content],
+      function (runErr) {
+        if (runErr) {
+          console.error('comment insert err', runErr);
+          res.send({ code: 500, msg: "评论失败" });
           return;
         }
-        doInsert();
-      });
-    } else {
-      doInsert();
-    }
+        res.send({ code: 200, msg: "评论成功", id: this.lastID });
+      }
+    );
   });
 });
 
@@ -1831,18 +1816,7 @@ app.get('/api/schools', (req, res) => {
   });
 });
 
-// 专业名规范化：将「计算机科学与技术（拔尖班）」等合并为同一专业，返回 { baseName, variant }
-function normalizeMajorName(majorName) {
-  if (!majorName || typeof majorName !== 'string') return { baseName: majorName || '', variant: null };
-  const name = majorName.trim();
-  const match = name.match(/^(.+?)(?:\s*[（(]?(拔尖班|基地班|卓越班|强基班|试验班|菁英班|创新班)[）)]?\s*)$/);
-  if (match) return { baseName: match[1].trim(), variant: match[2] };
-  const suffixMatch = name.match(/^(.+?)(拔尖班|基地班|卓越班|强基班|试验班|菁英班|创新班)\s*$/);
-  if (suffixMatch) return { baseName: suffixMatch[1].trim(), variant: suffixMatch[2] };
-  return { baseName: name, variant: null };
-}
-
-// 获取某学校的所有专业（合并同一专业不同教学形式为一条，如计算机拔尖班与计算机科学与技术合并）
+// 获取某学校的所有专业（从 school_programs 读取，与 AI/管理后台录入一致）
 app.get('/api/schools/:schoolName/majors', (req, res) => {
   const schoolName = req.params.schoolName;
   const sql = `SELECT sp.id, sp.major_id, sp.school_name, sp.school_level, sp.location, sp.program_features, sp.courses, sp.admission_requirements, sp.tuition_fee, sp.scholarships, sp.contact_info, mo.major_name, mo.category, mo.degree_type 
@@ -1855,26 +1829,7 @@ app.get('/api/schools/:schoolName/majors', (req, res) => {
       res.send({ code: 500, msg: "获取失败" });
       return;
     }
-    const merged = [];
-    const byBase = {};
-    (rows || []).forEach((r) => {
-      const { baseName } = normalizeMajorName(r.major_name || '');
-      const key = baseName || r.major_name || String(r.major_id);
-      if (!byBase[key]) {
-        byBase[key] = { ...r, program_features: r.program_features ? [r.program_features] : [] };
-      } else {
-        if (r.program_features && r.program_features.trim()) byBase[key].program_features.push(r.program_features.trim());
-        if (r.major_id && !byBase[key].major_id) byBase[key].major_id = r.major_id;
-        if (r.major_name && baseName) byBase[key].major_name = baseName;
-      }
-    });
-    Object.keys(byBase).forEach((k) => {
-      const row = byBase[k];
-      row.program_features = Array.isArray(row.program_features) ? row.program_features.filter(Boolean).join('；') : (row.program_features || '');
-      merged.push(row);
-    });
-    merged.sort((a, b) => (a.major_name || '').localeCompare(b.major_name || ''));
-    res.send({ code: 200, data: merged });
+    res.send({ code: 200, data: rows });
   });
 });
 
@@ -1971,38 +1926,33 @@ function schoolProgramExists(majorId, schoolName) {
   });
 }
 
-// 根据专业名获取或由 AI 自动创建专业；专业概况从阳光高考查，院校情况从院校官网查。同一专业不同教学形式（拔尖班、基地班等）合并为同一专业名。
+// 根据专业名获取或由 AI 自动创建专业；专业概况从阳光高考查，院校情况从院校官网查
 async function getOrCreateMajorAndProgramData(majorName, schoolName) {
-  const { baseName, variant } = normalizeMajorName(majorName);
-  const lookupName = baseName || majorName;
   const existing = await new Promise((resolve) => {
-    db.get('SELECT id FROM major_overviews WHERE major_name = ?', [lookupName], (err, row) => resolve(err ? null : row));
+    db.get('SELECT id FROM major_overviews WHERE major_name = ?', [majorName], (err, row) => resolve(err ? null : row));
   });
   if (existing) {
     const prompt = `请从「${schoolName}」官方网站（院校官网）检索「${majorName}」专业在该校的开设信息，以JSON格式返回：
-{"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","course_intros":[{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],"admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式","enrollment_category":"是否大类招生及大类名称，如：按计算机类招生、按大类招生后分流等，非大类招生填空字符串"}`;
+{"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","course_intros":[{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],"admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式"}`;
     const aiResponse = await callDataEntryAI(prompt);
     const m = aiResponse.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('AI返回解析失败');
     const raw = JSON.parse(m[0]);
-    let programFeatures = raw.program_features || '';
-    if (variant) programFeatures = (programFeatures ? programFeatures + '；' : '') + '教学形式：' + variant;
     const programData = {
       school_level: raw.school_level || '',
       location: raw.location || '',
-      program_features: programFeatures,
+      program_features: raw.program_features || '',
       courses: raw.courses || '',
       course_intros: Array.isArray(raw.course_intros) ? JSON.stringify(raw.course_intros) : '',
       admission_requirements: raw.admission_requirements || '',
       tuition_fee: raw.tuition_fee || '',
       scholarships: raw.scholarships || '',
-      contact_info: raw.contact_info || '',
-      enrollment_category: raw.enrollment_category || ''
+      contact_info: raw.contact_info || ''
     };
     return { majorId: existing.id, programData };
   }
   const fullPrompt = `请按以下两个数据源分别检索并合并为一条JSON（用于系统录入，缺项填空字符串）：
-1）专业概况（介绍、培养方案、修读课程、招生计划、学科门类、学位、学制、就业、相关专业）请前往阳光高考平台（gaokao.chsi.com.cn）查询「${lookupName}」专业。
+1）专业概况（介绍、培养方案、修读课程、招生计划、学科门类、学位、学制、就业、相关专业）请前往阳光高考平台（gaokao.chsi.com.cn）查询「${majorName}」专业。
 2）该校该专业的开设情况（院校层次、所在城市、培养特色、课程、招生要求、学费、奖学金、联系方式）请从「${schoolName}」官方网站（院校官网）查询。
 严格按以下JSON格式返回：
 {
@@ -2023,8 +1973,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   "admission_requirements": "招生要求",
   "tuition_fee": "学费",
   "scholarships": "奖学金",
-  "contact_info": "招生办联系方式",
-  "enrollment_category": "是否大类招生及大类名称，如：按计算机类招生、按大类招生后分流等，非大类招生填空字符串"
+  "contact_info": "招生办联系方式"
 }`;
   const aiResponse = await callDataEntryAI(fullPrompt);
   const m = aiResponse.match(/\{[\s\S]*\}/);
@@ -2034,7 +1983,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
     db.run(
       `INSERT INTO major_overviews (major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors, training_plan, admission_plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        lookupName,
+        majorName,
         data.category || '',
         data.degree_type || '',
         data.duration || '',
@@ -2051,19 +2000,16 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
       }
     );
   });
-  let programFeatures = data.program_features || '';
-  if (variant) programFeatures = (programFeatures ? programFeatures + '；' : '') + '教学形式：' + variant;
   const programData = {
     school_level: data.school_level || '',
     location: data.location || '',
-    program_features: programFeatures,
+    program_features: data.program_features || '',
     courses: data.courses || '',
     course_intros: Array.isArray(data.course_intros) ? JSON.stringify(data.course_intros) : '',
     admission_requirements: data.admission_requirements || '',
     tuition_fee: data.tuition_fee || '',
     scholarships: data.scholarships || '',
-    contact_info: data.contact_info || '',
-    enrollment_category: data.enrollment_category || ''
+    contact_info: data.contact_info || ''
   };
   return { majorId, programData };
 }
@@ -2087,7 +2033,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
       return;
     }
     await new Promise((resolve, reject) => {
-      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
       db.run(sql, [
         majorId,
         sName,
@@ -2099,8 +2045,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
         programData.admission_requirements || '',
         programData.tuition_fee || '',
         programData.scholarships || '',
-        programData.contact_info || '',
-        programData.enrollment_category || ''
+        programData.contact_info || ''
       ], function (insertErr) {
         if (insertErr) reject(insertErr);
         else resolve(this.lastID);
@@ -2137,7 +2082,7 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
         continue;
       }
       await new Promise((resolve, reject) => {
-        const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         db.run(sql, [
           majorId,
           name,
@@ -2149,8 +2094,7 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
           programData.admission_requirements || '',
           programData.tuition_fee || '',
           programData.scholarships || '',
-          programData.contact_info || '',
-          programData.enrollment_category || ''
+          programData.contact_info || ''
         ], function (err) {
           if (err) reject(err);
           else resolve(this.lastID);
@@ -2210,7 +2154,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
           continue;
         }
         await new Promise((resolve, reject) => {
-          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info, enrollment_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+          const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
           db.run(sql, [
             majorId,
             name,
@@ -2222,8 +2166,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
             programData.admission_requirements || '',
             programData.tuition_fee || '',
             programData.scholarships || '',
-            programData.contact_info || '',
-            programData.enrollment_category || ''
+            programData.contact_info || ''
           ], function (err) {
             if (err) reject(err);
             else resolve(this.lastID);
