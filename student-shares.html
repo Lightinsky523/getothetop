@@ -435,8 +435,8 @@
           <button class="primary-btn" onclick="searchShares()">搜索</button>
           <button class="primary-btn secondary" id="btn-write-share" onclick="onWriteShareClick()">+ 写分享</button>
           <button type="button" class="primary-btn secondary" id="quick-auth-btn" style="margin-left: 6px;" onclick="openAuthModal()">立即认证</button>
+          <span id="guest-badge" style="font-size: 12px; color: var(--text-soft); margin-left: 8px;">游客</span>
           <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
-          <button type="button" class="primary-btn secondary" id="reauth-btn" style="display: none; margin-left: 6px;" onclick="openAuthModal()">重新认证</button>
           <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
         </div>
 
@@ -664,13 +664,13 @@
           localStorage.setItem('verifiedNickname', verifiedNickname);
           closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
           var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-          var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
           updateWriteShareButtonVisibility();
           showToast('认证成功', 'success');
-          openUploadFormDirectly();
+          closeAuthModal();
           return;
         }
         if (data.code != null && data.code !== 200) {
@@ -711,15 +711,15 @@
             localStorage.setItem('verifiedNickname', verifiedNickname);
             closeAuthModal();
             document.getElementById('auth-badge').style.display = 'inline';
+            document.getElementById('guest-badge').style.display = 'none';
             setAuthBadgeText();
             document.getElementById('exit-auth-btn').style.display = 'inline-block';
             var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-            var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
             updateWriteShareButtonVisibility();
             msgEl.style.display = 'none';
             document.getElementById('student-id-query-btn').style.display = 'none';
             showToast('认证已通过', 'success');
-            openUploadFormDirectly();
+            closeAuthModal();
           }
           if (data.status === 'rejected') {
             clearInterval(t);
@@ -755,15 +755,15 @@
           localStorage.setItem('verifiedNickname', verifiedNickname);
           closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
           var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-          var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
           updateWriteShareButtonVisibility();
           msgEl.style.display = 'none';
           queryBtn.style.display = 'none';
           showToast('认证已通过', 'success');
-          openUploadFormDirectly();
+          closeAuthModal();
         } else if (data.code === 200 && data.status === 'rejected') {
           msgEl.textContent = '审核未通过。';
         } else {
@@ -894,12 +894,6 @@
       await showEditorView();
     }
 
-    // 认证成功后关闭弹窗并进入帖子编辑页
-    function openUploadFormDirectly() {
-      closeAuthModal();
-      showEditorView();
-    }
-
     // 编辑页「取消」返回列表
     function toggleUploadForm() {
       showListView();
@@ -978,13 +972,13 @@
           localStorage.setItem('verifiedNickname', verifiedNickname);
           closeAuthModal();
           document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
           setAuthBadgeText();
           document.getElementById('exit-auth-btn').style.display = 'inline-block';
           var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-          var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
           updateWriteShareButtonVisibility();
           showToast('认证成功，可在认证学校下发帖', 'success');
-          openUploadFormDirectly();
+          closeAuthModal();
         } else {
           showToast((data && data.msg) ? data.msg : '验证失败', 'error');
         }
@@ -1618,10 +1612,10 @@
       const ok = await restoreAuthFromServer(false);
       if (ok) {
         document.getElementById('auth-badge').style.display = 'inline';
+        document.getElementById('guest-badge').style.display = 'none';
         setAuthBadgeText();
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
         var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-        var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
         updateWriteShareButtonVisibility();
       }
     }
@@ -1638,14 +1632,15 @@
       loadMajorOptions();
       if (authToken && verifiedSchool) {
         document.getElementById('auth-badge').style.display = 'inline';
+        document.getElementById('guest-badge').style.display = 'none';
         setAuthBadgeText();
         document.getElementById('exit-auth-btn').style.display = 'inline-block';
         var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
-        var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'inline-block';
       } else {
+        document.getElementById('guest-badge').style.display = 'inline';
+        document.getElementById('auth-badge').style.display = 'none';
         var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'inline-block';
         document.getElementById('exit-auth-btn').style.display = 'none';
-        var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'none';
       }
       closeAuthModal();
       showListView();
@@ -1656,7 +1651,7 @@
       restoreAuthIfNeeded();
     };
 
-    // 退出认证：隐藏退出认证/重新认证，显示「立即认证」
+    // 退出认证：显示游客与「立即认证」，隐藏已认证与「退出认证」
     function exitVerification() {
       authToken = '';
       verifiedSchool = '';
@@ -1667,8 +1662,8 @@
       localStorage.removeItem('authType');
       localStorage.removeItem('verifiedNickname');
       document.getElementById('auth-badge').style.display = 'none';
+      document.getElementById('guest-badge').style.display = 'inline';
       document.getElementById('exit-auth-btn').style.display = 'none';
-      var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'none';
       var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'inline-block';
       closeAuthModal();
       showListView();
