@@ -190,6 +190,10 @@
 
     .tab-content { display: none; }
     .tab-content.active { display: block; }
+    .sub-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .sub-tab { padding: 8px 16px; font-size: 13px; }
+    .info-entry-panel { display: none; }
+    .info-entry-panel.active { display: block; }
 
     .toolbar {
       display: flex;
@@ -405,76 +409,131 @@
     <!-- 管理面板 -->
     <div class="admin-panel" id="adminPanel">
       <div class="tabs">
-        <button class="tab active" onclick="switchTab('majors')">专业概览管理</button>
-        <button class="tab" onclick="switchTab('programs')">开设院校管理</button>
+        <button class="tab active" onclick="switchTab('infoEntry')">信息录入</button>
         <button class="tab" onclick="switchTab('news')">专业动态管理</button>
-        <button class="tab" onclick="switchTab('ai')">数据检索录入</button>
         <button class="tab" onclick="switchTab('studentId')">学生证审核</button>
         <button class="tab" onclick="switchTab('shareReview')">分享内容审核</button>
       </div>
 
-      <!-- 专业概览管理 -->
-      <div class="tab-content active" id="majorsTab">
-        <div style="margin-bottom: 16px;">
-          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">专业概览</h4>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">管理专业代码、名称、类别、学制及简介等</p>
+      <!-- 信息录入（合并：专业概览 + 开设院校 + 数据检索录入） -->
+      <div class="tab-content active" id="infoEntryTab">
+        <div class="sub-tabs">
+          <button class="tab sub-tab active" onclick="switchInfoSubTab('majors')">专业概览</button>
+          <button class="tab sub-tab" onclick="switchInfoSubTab('programs')">开设院校</button>
+          <button class="tab sub-tab" onclick="switchInfoSubTab('ai')">数据检索录入</button>
         </div>
-        <div class="toolbar">
-          <div class="search-box">
-            <input type="text" class="input" id="majorSearch" placeholder="搜索专业名称或类别..." />
-            <button class="btn btn-secondary" onclick="searchMajors()">搜索</button>
+        <div id="infoEntryMajors" class="info-entry-panel active">
+          <div style="margin-bottom: 16px;">
+            <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">专业概览</h4>
+            <p style="margin: 0; font-size: 13px; color: var(--text-soft);">管理专业代码、名称、类别、学制及简介等</p>
           </div>
-          <button class="btn btn-primary" onclick="openMajorModal()">+ 添加专业</button>
+          <div class="toolbar">
+            <div class="search-box">
+              <input type="text" class="input" id="majorSearch" placeholder="搜索专业名称或类别..." />
+              <button class="btn btn-secondary" onclick="searchMajors()">搜索</button>
+            </div>
+            <button class="btn btn-primary" onclick="openMajorModal()">+ 添加专业</button>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>专业代码</th>
+                  <th>专业名称</th>
+                  <th>所属类别</th>
+                  <th>学位类型</th>
+                  <th>学制</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="majorsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="majorsEmpty" style="display: none;">
+            <p>暂无专业数据，点击上方按钮添加</p>
+          </div>
         </div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>专业代码</th>
-                <th>专业名称</th>
-                <th>所属类别</th>
-                <th>学位类型</th>
-                <th>学制</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="majorsTableBody"></tbody>
-          </table>
+        <div id="infoEntryPrograms" class="info-entry-panel">
+          <div style="margin-bottom: 16px;">
+            <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">开设院校</h4>
+            <p style="margin: 0; font-size: 13px; color: var(--text-soft);">按专业管理各院校的培养特色、课程、学费等</p>
+          </div>
+          <div class="toolbar">
+            <select class="input" id="programMajorSelect" style="max-width: 300px;" onchange="loadPrograms()">
+              <option value="">请选择专业</option>
+            </select>
+            <button class="btn btn-primary" onclick="openProgramModal()" id="addProgramBtn">+ 添加开设院校</button>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>院校名称</th>
+                  <th>院校层次</th>
+                  <th>所在地区</th>
+                  <th>专业特色</th>
+                  <th>学费</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="programsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="programsEmpty" style="display: none;">
+            <p>请选择专业或添加开设院校</p>
+          </div>
         </div>
-        <div class="empty-state" id="majorsEmpty" style="display: none;">
-          <p>暂无专业数据，点击上方按钮添加</p>
-        </div>
-      </div>
-
-      <!-- 开设院校管理 -->
-      <div class="tab-content" id="programsTab">
-        <div style="margin-bottom: 16px;">
-          <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">开设院校</h4>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">按专业管理各院校的培养特色、课程、学费等</p>
-        </div>
-        <div class="toolbar">
-          <select class="input" id="programMajorSelect" style="max-width: 300px;" onchange="loadPrograms()">
-            <option value="">请选择专业</option>
-          </select>
-          <button class="btn btn-primary" onclick="openProgramModal()" id="addProgramBtn">+ 添加开设院校</button>
-        </div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>院校名称</th>
-                <th>院校层次</th>
-                <th>所在地区</th>
-                <th>专业特色</th>
-                <th>学费</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="programsTableBody"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="programsEmpty" style="display: none;">
-          <p>请选择专业或添加开设院校</p>
+        <div id="infoEntryAi" class="info-entry-panel">
+          <div style="background: #f8f7f4; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+            <h4 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600;">数据检索录入</h4>
+            <p style="margin: 0; font-size: 13px; color: var(--text-soft);">从院校官网与阳光高考检索专业与开设信息，自动写入专业概览与开设院校</p>
+          </div>
+          <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+            <h4 style="margin: 0 0 16px 0;">按学校添加所有招生专业</h4>
+            <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft);">填写学校名称，系统将检索该校招生专业并逐条创建专业与开设信息</p>
+            <div class="form-group">
+              <label>院校名称</label>
+              <input type="text" id="aiSchoolOnlyName" class="input" placeholder="如：清华大学" />
+            </div>
+            <div style="margin-top: 16px;">
+              <button class="btn btn-primary" onclick="aiAddSchoolAllMajors()">检索并添加该校所有专业</button>
+            </div>
+            <div id="aiSchoolOnlyResult" style="margin-top: 16px; display: none;"></div>
+          </div>
+          <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
+            <h4 style="margin: 0 0 16px 0;">单条检索添加</h4>
+            <div class="form-row">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>院校名称</label>
+                <input type="text" id="aiSchoolName" class="input" placeholder="如：清华大学" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>专业名称</label>
+                <input type="text" id="aiMajorName" class="input" placeholder="如：计算机科学与技术" />
+              </div>
+            </div>
+            <div style="margin-top: 16px;">
+              <button class="btn btn-primary" onclick="aiAddProgram()">检索并添加</button>
+              <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入介绍、培养方案、课程、招生计划</span>
+            </div>
+            <div id="aiAddResult" style="margin-top: 16px; display: none;"></div>
+          </div>
+          <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; border: 1px solid var(--border-subtle);">
+            <h4 style="margin: 0 0 16px 0;">批量检索添加</h4>
+            <div class="form-group">
+              <label>院校名称</label>
+              <input type="text" id="aiBatchSchool" class="input" placeholder="如：北京大学" />
+            </div>
+            <div class="form-group">
+              <label>专业列表（每行一个，可不事先存在）</label>
+              <textarea id="aiBatchMajors" class="input" style="min-height: 120px;" placeholder="计算机科学与技术&#10;软件工程&#10;人工智能"></textarea>
+            </div>
+            <div style="margin-top: 16px;">
+              <button class="btn btn-primary" onclick="aiBatchAdd()">批量检索并添加</button>
+              <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入</span>
+            </div>
+            <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
+          </div>
         </div>
       </div>
 
@@ -506,66 +565,6 @@
         </div>
         <div class="empty-state" id="newsEmpty" style="display: none;">
           <p>请选择专业或添加动态趣闻</p>
-        </div>
-      </div>
-
-      <!-- 数据检索录入（原 AI 数据管理，降 AI 表述） -->
-      <div class="tab-content" id="aiTab">
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
-          <h4 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600;">数据检索录入</h4>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">从院校官网与阳光高考检索专业与开设信息，自动写入专业概览与开设院校</p>
-        </div>
-
-        <!-- 按学校添加所有招生专业 -->
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
-          <h4 style="margin: 0 0 16px 0;">按学校添加所有招生专业</h4>
-          <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft);">填写学校名称，系统将检索该校招生专业并逐条创建专业与开设信息</p>
-          <div class="form-group">
-            <label>院校名称</label>
-            <input type="text" id="aiSchoolOnlyName" class="input" placeholder="如：清华大学" />
-          </div>
-          <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiAddSchoolAllMajors()">检索并添加该校所有专业</button>
-          </div>
-          <div id="aiSchoolOnlyResult" style="margin-top: 16px; display: none;"></div>
-        </div>
-
-        <!-- 单条检索添加 -->
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-subtle);">
-          <h4 style="margin: 0 0 16px 0;">单条检索添加</h4>
-          <div class="form-row">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>院校名称</label>
-              <input type="text" id="aiSchoolName" class="input" placeholder="如：清华大学" />
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>专业名称</label>
-              <input type="text" id="aiMajorName" class="input" placeholder="如：计算机科学与技术" />
-            </div>
-          </div>
-          <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiAddProgram()">检索并添加</button>
-            <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入介绍、培养方案、课程、招生计划</span>
-          </div>
-          <div id="aiAddResult" style="margin-top: 16px; display: none;"></div>
-        </div>
-
-        <!-- 批量检索添加 -->
-        <div style="background: #f8f7f4; border-radius: 8px; padding: 20px; border: 1px solid var(--border-subtle);">
-          <h4 style="margin: 0 0 16px 0;">批量检索添加</h4>
-          <div class="form-group">
-            <label>院校名称</label>
-            <input type="text" id="aiBatchSchool" class="input" placeholder="如：北京大学" />
-          </div>
-          <div class="form-group">
-            <label>专业列表（每行一个，可不事先存在）</label>
-            <textarea id="aiBatchMajors" class="input" style="min-height: 120px;" placeholder="计算机科学与技术&#10;软件工程&#10;人工智能"></textarea>
-          </div>
-          <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="aiBatchAdd()">批量检索并添加</button>
-            <span style="font-size: 12px; color: var(--text-soft); margin-left: 12px;">专业不存在时自动创建并录入</span>
-          </div>
-          <div id="aiBatchResult" style="margin-top: 16px; display: none;"></div>
         </div>
       </div>
 
@@ -853,11 +852,13 @@
     function switchTab(tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-      
-      event.target.classList.add('active');
-      document.getElementById(tab + 'Tab').classList.add('active');
-      
-      if (tab === 'programs') {
+      if (event && event.target) event.target.classList.add('active');
+      const contentEl = document.getElementById(tab + 'Tab');
+      if (contentEl) contentEl.classList.add('active');
+      if (tab === 'infoEntry') {
+        switchInfoSubTab('majors');
+        loadMajors();
+      } else if (tab === 'programs') {
         loadMajorSelect();
       } else if (tab === 'news') {
         loadNewsMajorSelect();
@@ -866,6 +867,17 @@
       } else if (tab === 'shareReview') {
         loadShareReviewPending();
       }
+    }
+    function switchInfoSubTab(sub) {
+      document.querySelectorAll('.info-entry-panel').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.sub-tab').forEach(el => el.classList.remove('active'));
+      const panel = document.getElementById('infoEntry' + (sub === 'majors' ? 'Majors' : sub === 'programs' ? 'Programs' : 'Ai'));
+      if (panel) panel.classList.add('active');
+      const subTabs = document.querySelectorAll('.sub-tab');
+      const idx = sub === 'majors' ? 0 : sub === 'programs' ? 1 : 2;
+      if (subTabs[idx]) subTabs[idx].classList.add('active');
+      if (sub === 'majors') loadMajors();
+      else if (sub === 'programs') loadMajorSelect();
     }
 
     // 加载专业列表

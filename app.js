@@ -50,7 +50,7 @@ const DATA_DIR = resolveDataDir();
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
 const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID || '1a5d7eb76b1f4c86961d372c6d134b9b';
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
-// 认证 token 与认证状态一致：一旦认证则长期有效（10 年），持有有效 token 即可发帖、评论、举报
+// 认证 token 与认证状态一致：一旦认证则长期有效（10 年），持有有效 token 即可发帖、举报
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 // 旧配置保留（管理后台等如仍用可读环境变量）
@@ -179,37 +179,13 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       db.run(`ALTER TABLE student_id_verifications ADD COLUMN nickname TEXT`, () => {});
     });
 
-    // 帖子评论表（评论需认证）
-    db.run(`CREATE TABLE IF NOT EXISTS share_comments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      share_id INTEGER NOT NULL,
-      user_email TEXT NOT NULL,
-      school_name TEXT NOT NULL,
-      nickname TEXT,
-      content TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (share_id) REFERENCES student_shares(id)
-    )`, (err) => {
-      if (err) console.error("创建评论表失败:", err);
-      else console.log("✅ 评论表初始化成功！");
-    });
-    db.run(`ALTER TABLE share_comments ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment nickname:", err); });
-    db.run(`ALTER TABLE share_comments ADD COLUMN status TEXT DEFAULT 'approved'`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add comment status:", err); });
-
-    // 帖子/评论举报表（举报次数>50的帖子/评论进入后台审核可删）
+    // 帖子举报表（举报次数>50的帖子进入后台审核可删）
     db.run(`CREATE TABLE IF NOT EXISTS share_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       share_id INTEGER NOT NULL,
       user_email TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (share_id) REFERENCES student_shares(id)
-    )`, () => {});
-    db.run(`CREATE TABLE IF NOT EXISTS comment_reports (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      comment_id INTEGER NOT NULL,
-      user_email TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (comment_id) REFERENCES share_comments(id)
     )`, () => {});
 
     // 创建学校信息表
@@ -760,40 +736,6 @@ app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
       return;
     }
     res.send({ code: 200, msg: this.changes ? "已通过，帖子将公开展示" : "记录不存在或已处理" });
-  });
-});
-
-// 管理员：获取被举报待审核的评论（举报次数>50 后 status=pending_review）
-app.get('/admin/reported-comments', (req, res) => {
-  const pwd = req.query.password || (req.body && req.body.password);
-  if (pwd !== ADMIN_PASSWORD) {
-    res.send({ code: 403, msg: "无权限" });
-    return;
-  }
-  db.all(
-    `SELECT c.id, c.share_id, c.user_email, c.school_name, c.nickname, c.content, c.created_at, c.status,
-      (SELECT COUNT(*) FROM comment_reports r WHERE r.comment_id = c.id) AS report_count
-     FROM share_comments c WHERE c.status = 'pending_review' ORDER BY report_count DESC, c.created_at DESC`,
-    [],
-    (err, rows) => {
-      if (err) {
-        res.send({ code: 500, msg: "获取失败" });
-        return;
-      }
-      res.send({ code: 200, data: rows });
-    }
-  );
-});
-
-// 管理员：删除/隐藏评论（举报审核后）
-app.post('/admin/comments/:id/delete', verifyAdmin, (req, res) => {
-  const id = req.params.id;
-  db.run("UPDATE share_comments SET status = 'deleted' WHERE id = ?", [id], function (err) {
-    if (err) {
-      res.send({ code: 500, msg: "操作失败" });
-      return;
-    }
-    res.send({ code: 200, msg: this.changes ? "已删除" : "记录不存在或已删除" });
   });
 });
 
@@ -1592,75 +1534,6 @@ app.post('/api/student-shares', async (req, res) => {
   });
 });
 
-// ========== 评论（重做：简洁实现，所有人可评论/举报，无需认证）==========
-// 获取某帖子的评论列表（仅展示已通过）
-app.get('/api/student-shares/:id/comments', (req, res) => {
-  const shareId = parseInt(String(req.params.id), 10);
-  if (Number.isNaN(shareId) || shareId < 1) {
-    res.send({ code: 400, msg: "参数错误" });
-    return;
-  }
-  // 不依赖 status 列，兼容旧表无该列；有该列时在内存中过滤仅展示通过
-  db.all(
-    "SELECT id, share_id, user_email, school_name, nickname, content, created_at FROM share_comments WHERE share_id = ? ORDER BY created_at ASC",
-    [shareId],
-    (err, rows) => {
-      if (err) {
-        console.error('get comments err', err);
-        res.send({ code: 500, msg: "获取评论失败" });
-        return;
-      }
-      const list = (rows || []).filter(r => r.status == null || r.status === 'approved');
-      res.send({ code: 200, data: list });
-    }
-  );
-});
-
-// 发表评论（body 仅需 content；有 token 则展示认证学校 + 昵称，未认证统一为「游客」）
-app.post('/api/student-shares/:id/comments', async (req, res) => {
-  const shareId = parseInt(String(req.params.id), 10);
-  if (Number.isNaN(shareId) || shareId < 1) {
-    res.send({ code: 400, msg: "帖子不存在" });
-    return;
-  }
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const content = typeof body.content === 'string' ? body.content.trim() : '';
-  if (!content) {
-    res.send({ code: 400, msg: "请输入评论内容" });
-    return;
-  }
-  // 优先 body，再 query，再 header（创空间等环境可能未解析 POST body）
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  const userEmail = verified ? verified.email : 'anonymous';
-  const schoolName = verified ? (verified.school_name || '游客') : '游客';
-  const nick = verified ? (verified.nickname || '在读生') : '游客';
-  db.get("SELECT id FROM student_shares WHERE id = ?", [shareId], (err, row) => {
-    if (err) {
-      console.error('comment check share err', err);
-      res.send({ code: 500, msg: "评论失败" });
-      return;
-    }
-    if (!row) {
-      res.send({ code: 404, msg: "帖子不存在或已删除" });
-      return;
-    }
-    // 不插入 status，兼容旧表无 status 列
-    db.run(
-      "INSERT INTO share_comments (share_id, user_email, school_name, nickname, content) VALUES (?, ?, ?, ?, ?)",
-      [shareId, userEmail, schoolName, nick, content],
-      function (runErr) {
-        if (runErr) {
-          console.error('comment insert err', runErr);
-          res.send({ code: 500, msg: "评论失败" });
-          return;
-        }
-        res.send({ code: 200, msg: "评论成功", id: this.lastID });
-      }
-    );
-  });
-});
-
 // 举报帖子（举报次数>50 进入后台审核）
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
@@ -1676,26 +1549,6 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
     db.get('SELECT COUNT(*) AS cnt FROM share_reports WHERE share_id = ?', [shareId], (e, row) => {
       if (!e && row && row.cnt >= REPORT_THRESHOLD) {
         db.run("UPDATE student_shares SET status = 'pending_review' WHERE id = ?", [shareId], () => {});
-      }
-      res.send({ code: 200, msg: "举报已提交" });
-    });
-  });
-});
-
-// 举报评论
-app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
-  const { commentId } = req.params;
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  const userEmail = verified ? verified.email : 'anonymous';
-  db.run('INSERT INTO comment_reports (comment_id, user_email) VALUES (?, ?)', [commentId, userEmail], function (err) {
-    if (err) {
-      res.send({ code: 500, msg: "举报失败" });
-      return;
-    }
-    db.get('SELECT COUNT(*) AS cnt FROM comment_reports WHERE comment_id = ?', [commentId], (e, row) => {
-      if (!e && row && row.cnt >= REPORT_THRESHOLD) {
-        db.run("UPDATE share_comments SET status = 'pending_review' WHERE id = ?", [commentId], () => {});
       }
       res.send({ code: 200, msg: "举报已提交" });
     });
@@ -1736,58 +1589,10 @@ app.delete('/api/student-shares/:id', async (req, res) => {
         res.send({ code: 403, msg: "只能删除自己发布的帖子" });
         return;
       }
-      // 软删帖子本身，并尝试删除关联评论
+      // 软删帖子本身
       db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [shareId], function (uErr) {
         if (uErr) {
           console.error('delete share update err', uErr);
-          res.send({ code: 500, msg: "删除失败" });
-          return;
-        }
-        db.run("DELETE FROM share_comments WHERE share_id = ?", [shareId], () => {});
-        res.send({ code: 200, msg: "删除成功" });
-      });
-    }
-  );
-});
-
-// 用户删除自己发布的评论（硬删：仅限认证用户且学校/昵称匹配）
-app.delete('/api/student-shares/:shareId/comments/:commentId', async (req, res) => {
-  const shareId = parseInt(String(req.params.shareId), 10);
-  const commentId = parseInt(String(req.params.commentId), 10);
-  if (Number.isNaN(shareId) || shareId < 1 || Number.isNaN(commentId) || commentId < 1) {
-    res.send({ code: 400, msg: "参数错误" });
-    return;
-  }
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成认证后再删除评论" });
-    return;
-  }
-  const verifiedSchool = verified.school_name || '';
-  const verifiedNick = verified.nickname || '在读生';
-
-  db.get(
-    "SELECT id, share_id, school_name, nickname FROM share_comments WHERE id = ? AND share_id = ?",
-    [commentId, shareId],
-    (err, row) => {
-      if (err) {
-        console.error('delete comment get err', err);
-        res.send({ code: 500, msg: "删除失败" });
-        return;
-      }
-      if (!row) {
-        res.send({ code: 404, msg: "评论不存在或已删除" });
-        return;
-      }
-      const commentNick = row.nickname || '在读生';
-      if (row.school_name !== verifiedSchool || commentNick !== verifiedNick) {
-        res.send({ code: 403, msg: "只能删除自己发布的评论" });
-        return;
-      }
-      db.run("DELETE FROM share_comments WHERE id = ?", [commentId], function (dErr) {
-        if (dErr) {
-          console.error('delete comment err', dErr);
           res.send({ code: 500, msg: "删除失败" });
           return;
         }

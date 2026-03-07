@@ -271,22 +271,6 @@
     }
     .report-link:hover { color: var(--error); text-decoration: underline; }
 
-    /* 评论区域 */
-    .share-comments {
-      margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-subtle);
-    }
-    .comment-item {
-      padding: 8px 0; font-size: 13px; color: var(--text);
-      border-bottom: 1px solid #f0ede8;
-    }
-    .comment-item:last-child { border-bottom: none; }
-    .comment-author { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
-    .comment-form {
-      margin-top: 12px; display: flex; gap: 8px; align-items: flex-start;
-    }
-    .comment-form .input { flex: 1; min-height: 36px; }
-    .comment-form .primary-btn { flex-shrink: 0; }
-
     .loading {
       text-align: center; padding: 60px 20px; color: var(--text-soft);
     }
@@ -385,7 +369,7 @@
         <!-- 列表视图：搜索 + 分享列表 -->
         <div id="list-view" class="list-view">
         <p class="section-desc">
-          阅读在读学生的真实分享。所有人可直接评论与举报，无需认证；仅大学在读生完成认证（邮箱或学生证）后才可发帖，且只能发布认证学校相关内容。
+          阅读在读学生的真实分享。仅大学在读生完成认证（邮箱或学生证）后才可发帖，且只能发布认证学校相关内容。可举报不当帖子。
         </p>
         <div class="search-bar">
           <input type="text" class="input" id="search-keyword" placeholder="搜索学校、专业或关键词..." />
@@ -473,7 +457,7 @@
           <span class="icon-pill">验</span>
           信息认证
         </div>
-        <p class="section-desc">仅在读生需认证，认证通过后可发帖（仅限认证学校内容）。评论与举报无需认证。</p>
+        <p class="section-desc">仅在读生需认证，认证通过后可发帖（仅限认证学校内容）。</p>
         <div id="auth-category-current">
           <div class="pill-switch" style="margin-bottom: 16px;">
             <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
@@ -1212,13 +1196,6 @@
               <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
               ${ (verifiedSchool && share.school === verifiedSchool && (share.author_nickname || '在读生') === (verifiedNickname || '在读生')) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteShare(${share.id}); event.preventDefault();" title="删除自己的帖子">删除</button>` : '' }
             </div>
-            <div class="share-comments" id="comments-wrap-${share.id}">
-              <div class="comment-list" data-share-id="${share.id}"></div>
-              <div class="comment-form">
-                <input type="text" class="input" id="comment-input-${share.id}" placeholder="发表评论（无需认证）" maxlength="500" />
-                <button type="button" class="primary-btn" onclick="submitComment(${share.id})">评论</button>
-              </div>
-            </div>
           </div>
         `;
       }).join('');
@@ -1226,7 +1203,6 @@
         const src = div.getAttribute('data-src');
         if (src) div.querySelector('img').src = src;
       });
-      shares.forEach(share => loadComments(share.id));
     }
 
     function escapeHtml(s) {
@@ -1235,78 +1211,6 @@
       d.textContent = String(s);
       return d.innerHTML;
     }
-
-    // 加载评论（重做：统一用 data-share-id 选择列表容器）
-    async function loadComments(shareId) {
-      const list = document.querySelector('.comment-list[data-share-id="' + shareId + '"]');
-      if (!list) return;
-      try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments');
-        const data = await res.json();
-        if (data.code !== 200 || !Array.isArray(data.data)) {
-          list.innerHTML = '';
-          return;
-        }
-        const rows = data.data;
-        if (rows.length === 0) {
-          list.innerHTML = '';
-          return;
-        }
-        list.innerHTML = rows.map(c => {
-          const isGuest = !c.school_name || c.school_name === '游客';
-          const authorLabel = isGuest
-            ? '游客'
-            : (escapeHtml(c.school_name) + ' · ' + escapeHtml(c.nickname || '在读生'));
-          const isOwner = !isGuest &&
-            verifiedSchool &&
-            c.school_name === verifiedSchool &&
-            (c.nickname || '在读生') === (verifiedNickname || '在读生');
-          const ownerActions = isOwner
-            ? ` <button type="button" class="report-link" style="color: var(--error);" onclick="deleteComment(${shareId}, ${c.id}); event.preventDefault();" title="删除自己的评论">删除</button>`
-            : '';
-          return `
-          <div class="comment-item">
-            <div class="comment-author">${authorLabel} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>${ownerActions}</div>
-            <div>${escapeHtml(c.content)}</div>
-          </div>`;
-        }).join('');
-      } catch (e) {
-        list.innerHTML = '';
-      }
-    }
-
-    // 发表评论（content + authToken；URL 也带 authToken 以防创空间未解析 body）
-    async function submitComment(shareId) {
-      const input = document.getElementById('comment-input-' + shareId);
-      if (!input) return;
-      const content = (input.value || '').trim();
-      if (!content) {
-        showToast('请输入评论内容', 'error');
-        return;
-      }
-      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
-      const body = { content };
-      if (auth) body.authToken = auth;
-      const commentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments' + (auth ? '?authToken=' + encodeURIComponent(auth) : '');
-      try {
-        const res = await fetch(commentUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          showToast('评论成功', 'success');
-          input.value = '';
-          loadComments(shareId);
-        } else {
-          showToast(data.msg || '评论失败', 'error');
-        }
-      } catch (e) {
-        showToast('网络错误', 'error');
-      }
-    }
-
 
     // 删除自己的帖子
     async function deleteShare(shareId) {
@@ -1334,55 +1238,12 @@
       }
     }
 
-    // 删除自己的评论
-    async function deleteComment(shareId, commentId) {
-      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!auth) {
-        showToast('删除评论前请先完成认证', 'error');
-        return;
-      }
-      if (!confirm('确定要删除这条评论吗？删除后将无法恢复。')) return;
-      try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authToken: auth })
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          showToast('评论已删除', 'success');
-          await loadComments(shareId);
-        } else {
-          showToast(data.msg || '删除失败', 'error');
-        }
-      } catch (e) {
-        showToast('网络错误', 'error');
-      }
-    }
-
     // 举报帖子（重做：authToken 放 body）
     async function reportShare(shareId) {
       const auth = (localStorage.getItem('authToken') || authToken || '').trim();
       const body = auth ? { authToken: auth } : {};
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');
-      } catch (e) {
-        showToast('网络错误', 'error');
-      }
-    }
-
-    // 举报评论（重做：authToken 放 body，与后端 getTokenFromRequest 一致）
-    async function reportComment(shareId, commentId) {
-      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
-      const body = auth ? { authToken: auth } : {};
-      try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -1540,7 +1401,7 @@
       var reauthBtn = document.getElementById('reauth-btn'); if (reauthBtn) reauthBtn.style.display = 'none';
       closeAuthModal();
       showListView();
-      showToast('已退出认证，再次发帖或评论需重新认证', 'success');
+      showToast('已退出认证，再次发帖需重新认证', 'success');
     }
   </script>
 </body>
