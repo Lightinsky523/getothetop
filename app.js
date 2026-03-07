@@ -1055,7 +1055,8 @@ app.get('/api/student-shares', async (req, res) => {
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
-  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
   if (userEmail && rows && rows.length > 0) {
     const ids = rows.map((r) => r.id);
     const placeholders = ids.map(() => '?').join(',');
@@ -1629,6 +1630,10 @@ app.post('/api/student-shares/:id/like', async (req, res) => {
   const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
   let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail && token) {
+    const crypto = require('crypto');
+    userEmail = 'token_' + crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
+  }
   if (!userEmail) userEmail = 'guest_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
   db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, row) => {
     if (err || !row) {
@@ -1671,7 +1676,8 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
   const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
-  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
   db.all(
     'SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = ? ORDER BY created_at ASC',
     [shareId, 'approved'],
@@ -1802,6 +1808,10 @@ app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, re
   const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
   let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail && token) {
+    const crypto = require('crypto');
+    userEmail = 'token_' + crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
+  }
   if (!userEmail) userEmail = 'guest_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
   db.get('SELECT id, like_count FROM share_comments WHERE id = ? AND status = ?', [commentId, 'approved'], (err, row) => {
     if (err || !row) {

@@ -201,6 +201,8 @@
     .share-list {
       display: flex; flex-direction: column; gap: 16px;
     }
+    .share-list.folded-list { margin-top: 12px; }
+    .folded-posts-wrap { margin-top: 16px; }
 
     .share-card {
       background: #f8f7f4; border-radius: var(--radius);
@@ -1191,7 +1193,21 @@
       }
     }
 
-    // 加载分享列表（带 token 或 guestId 时返回点赞状态）
+    const SHOW_COUNT = 10;
+    let visibleShares = [];
+    let foldedShares = [];
+    let showFolded = false;
+
+    function shuffleArray(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // 加载分享列表（带 token 或 guestId 时返回点赞状态）；随机选 10 条显示，其余折叠
     async function loadShares() {
       try {
         const token = (localStorage.getItem('authToken') || authToken || '').trim();
@@ -1203,8 +1219,12 @@
         const data = await res.json();
         
         if (data.code === 200) {
-          allShares = data.data;
-          renderShares(allShares);
+          allShares = data.data || [];
+          const shuffled = shuffleArray(allShares);
+          visibleShares = shuffled.slice(0, SHOW_COUNT);
+          foldedShares = shuffled.slice(SHOW_COUNT);
+          showFolded = false;
+          renderShares();
         } else {
           document.getElementById('share-list').innerHTML = '<div class="empty-state">暂无分享数据</div>';
         }
@@ -1214,17 +1234,19 @@
       }
     }
 
-    // 渲染分享列表
-    function renderShares(shares) {
+    // 渲染分享列表：先显示 visibleShares，再显示折叠区（展开后显示 foldedShares）
+    function renderShares() {
       const list = document.getElementById('share-list');
+      const shares = visibleShares;
+      const folded = foldedShares;
       
-      if (shares.length === 0) {
+      if (shares.length === 0 && folded.length === 0) {
         list.innerHTML = '<div class="empty-state">暂无符合条件的分享</div>';
         return;
       }
       
       const IMAGE_SEP = '|||IMAGE_SEP|||';
-      list.innerHTML = shares.map(share => {
+      function makeCard(share) {
         const imageList = share.images ? share.images.split(IMAGE_SEP).filter(img => img.trim()) : [];
         const imagesHtml = imageList.map((img) => {
           const safe = (img || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1279,11 +1301,28 @@
             </div>
           </div>
         `;
-      }).join('');
+      }
+      let html = shares.map(share => makeCard(share)).join('');
+      if (folded.length > 0) {
+        html += '<div class="folded-posts-wrap" style="margin-top: 16px;">';
+        html += '<button type="button" class="primary-btn secondary" id="btn-toggle-folded" onclick="toggleFolded()">展开更多帖子（共 ' + folded.length + ' 条）</button>';
+        html += '<div id="folded-posts-list" class="share-list folded-list" style="display: ' + (showFolded ? 'block' : 'none') + '; margin-top: 12px;">';
+        html += folded.map(share => makeCard(share)).join('');
+        html += '</div></div>';
+      }
+      list.innerHTML = html;
       list.querySelectorAll('.share-image').forEach(div => {
         const src = div.getAttribute('data-src');
         if (src) div.querySelector('img').src = src;
       });
+    }
+
+    function toggleFolded() {
+      showFolded = !showFolded;
+      const el = document.getElementById('folded-posts-list');
+      const btn = document.getElementById('btn-toggle-folded');
+      if (el) el.style.display = showFolded ? 'block' : 'none';
+      if (btn) btn.textContent = showFolded ? '收起更多帖子' : '展开更多帖子（共 ' + foldedShares.length + ' 条）';
     }
 
     function escapeHtml(s) {
@@ -1517,7 +1556,7 @@
       }
     }
 
-    // 搜索分享
+    // 搜索分享：筛选后同样随机取 10 条显示，其余折叠
     function searchShares() {
       const keyword = document.getElementById('search-keyword').value.trim().toLowerCase();
       const school = document.getElementById('search-school').value;
@@ -1541,7 +1580,11 @@
         filtered = filtered.filter(s => s.major === major);
       }
       
-      renderShares(filtered);
+      const shuffled = shuffleArray(filtered);
+      visibleShares = shuffled.slice(0, SHOW_COUNT);
+      foldedShares = shuffled.slice(SHOW_COUNT);
+      showFolded = false;
+      renderShares();
     }
 
     // 显示图片模态框（传入被点击的元素，从 data-src 取图）
