@@ -1611,7 +1611,7 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 帖子点赞/取消点赞（需认证）
+// 帖子点赞/取消点赞（仅认证用户，与发帖同一套认证逻辑：getTokenFromRequest + parseAuthToken）
 app.post('/api/student-shares/:id/like', async (req, res) => {
   const shareId = parseInt(String(req.params.id), 10);
   if (Number.isNaN(shareId) || shareId < 1) {
@@ -1702,10 +1702,10 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   }
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成认证后再评论" });
-    return;
-  }
+  // 无论是否认证均可评论：页面上显示「已认证」则用认证学校和昵称，显示「游客」则身份为游客
+  const schoolName = verified ? (verified.school_name || '') : '游客';
+  const nickname = verified ? (verified.nickname || '在读生') : '游客';
+  const userEmail = verified ? verified.email : '游客';
   const { content, parent_id: parentId } = req.body || {};
   const contentTrim = (content != null ? String(content).trim() : '') || '';
   if (!contentTrim) {
@@ -1717,9 +1717,6 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
       return;
     }
-    const schoolName = verified.school_name || '';
-    const nickname = verified.nickname || '在读生';
-    const userEmail = verified.email;
     const finalParentId = parentId != null ? parseInt(String(parentId), 10) : null;
     function checkParentThenSubmit() {
       if (finalParentId != null && !Number.isNaN(finalParentId)) {
@@ -1734,7 +1731,7 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
         submitCommentAfterModeration();
       }
     }
-    // 已认证用户（页面上显示「退出认证」）的评论内容发送给 AI 审核，通过后可发布
+    // 所有评论（无论身份）均经 AI 审核，通过后可发布
     async function submitCommentAfterModeration() {
       let commentStatus = 'approved';
       try {
@@ -1789,7 +1786,7 @@ app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, 
   });
 });
 
-// 评论点赞/取消点赞（需认证）
+// 评论点赞/取消点赞（仅认证用户，与发帖同一套认证逻辑：getTokenFromRequest + parseAuthToken）
 app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
   if (Number.isNaN(commentId) || commentId < 1) {

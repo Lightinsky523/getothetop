@@ -1260,11 +1260,11 @@
             <div id="comments-wrap-${share.id}" class="comments-section" style="display: none;">
               <div class="comments-header">评论</div>
               <div id="comments-list-${share.id}" class="comment-list"></div>
-              <div id="comment-form-${share.id}" class="comment-input-wrap" style="${authToken ? '' : 'display: none;'}">
+              <div id="comment-form-${share.id}" class="comment-input-wrap">
                 <textarea id="comment-text-${share.id}" placeholder="写下你的评论…" rows="2"></textarea>
                 <button type="button" class="primary-btn" onclick="submitComment(${share.id}, null)">发送</button>
               </div>
-              <p id="comment-login-hint-${share.id}" class="section-desc" style="margin-top: 8px; ${authToken ? 'display: none;' : ''}">认证后可评论</p>
+              <p id="comment-login-hint-${share.id}" class="section-desc" style="margin-top: 8px;">认证后评论将显示认证学校和昵称，未认证显示为游客</p>
             </div>
           </div>
         `;
@@ -1422,11 +1422,6 @@
     }
 
     async function submitComment(shareId, parentId) {
-      const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!token) {
-        showToast('请先完成认证后再评论', 'error');
-        return;
-      }
       const textId = parentId ? 'reply-text-' + shareId + '-' + parentId : 'comment-text-' + shareId;
       const textarea = document.getElementById(textId);
       const content = (textarea && textarea.value || '').trim();
@@ -1434,11 +1429,24 @@
         showToast('请输入评论内容', 'error');
         return;
       }
+      // 按页面认证区域：显示「已认证」则带 token，显示「游客」则不带，后端据此显示认证学校/昵称或游客
+      const authBadge = document.getElementById('auth-badge');
+      const isAuthenticated = authBadge && authBadge.style.display !== 'none';
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const sendToken = isAuthenticated && token;
+      const url = API_BASE + '/api/student-shares/' + shareId + '/comments' + (sendToken ? '?authToken=' + encodeURIComponent(token) : '');
+      const headers = { 'Content-Type': 'application/json' };
+      if (sendToken) {
+        headers['X-Auth-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
+      }
+      const body = { content, parent_id: parentId || null };
+      if (sendToken) body.authToken = token;
       try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments?authToken=' + encodeURIComponent(token), {
+        const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ content, parent_id: parentId || null, authToken: token })
+          headers: headers,
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         if (data.code === 200) {
