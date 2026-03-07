@@ -586,6 +586,14 @@
     let verifiedNickname = localStorage.getItem('verifiedNickname') || '';
     let authMode = 'email';
     let studentIdImageBase64 = '';
+    function getOrCreateGuestId() {
+      let id = localStorage.getItem('guestId');
+      if (!id) {
+        id = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        localStorage.setItem('guestId', id);
+      }
+      return id;
+    }
 
     // 切换认证方式（在读生：邮箱 / 学生证）
     function switchAuthMode(mode) {
@@ -1183,11 +1191,14 @@
       }
     }
 
-    // 加载分享列表（带 token 时返回点赞状态）
+    // 加载分享列表（带 token 或 guestId 时返回点赞状态）
     async function loadShares() {
       try {
         const token = (localStorage.getItem('authToken') || authToken || '').trim();
-        const url = token ? API_BASE + '/api/student-shares?authToken=' + encodeURIComponent(token) : API_BASE + '/api/student-shares';
+        const guestId = getOrCreateGuestId();
+        let url = API_BASE + '/api/student-shares';
+        if (token) url += '?authToken=' + encodeURIComponent(token);
+        else url += '?guestId=' + encodeURIComponent(guestId);
         const res = await fetch(url);
         const data = await res.json();
         
@@ -1309,23 +1320,22 @@
       }
     }
 
-    // 帖子点赞：直接读如图三位置，若显示「已认证」则可点赞，并带 token 发送
+    // 帖子点赞：所有人可点赞，认证用户带 token，游客带 guestId
     async function likeShare(shareId, btn) {
-      const authBadge = document.getElementById('auth-badge');
-      if (!authBadge || authBadge.style.display === 'none') {
-        showToast('请先完成认证后再点赞', 'error');
-        return;
-      }
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!token) {
-        showToast('认证信息已丢失，请刷新页面或重新认证', 'error');
-        return;
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
+      const headers = { 'Content-Type': 'application/json' };
+      if (isAuth && token) {
+        headers['X-Auth-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
       }
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/like', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ authToken: token })
+          headers: headers,
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         if (data.code === 200) {
@@ -1361,7 +1371,11 @@
       if (!listEl) return;
       listEl.innerHTML = '<div class="loading">加载评论中…</div>';
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      const url = API_BASE + '/api/student-shares/' + shareId + '/comments' + (token ? '?authToken=' + encodeURIComponent(token) : '');
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      let url = API_BASE + '/api/student-shares/' + shareId + '/comments';
+      if (isAuth && token) url += '?authToken=' + encodeURIComponent(token);
+      else url += '?guestId=' + encodeURIComponent(getOrCreateGuestId());
       try {
         const res = await fetch(url);
         const data = await res.json();
@@ -1386,21 +1400,34 @@
           byParent[c.parent_id].push(c);
         }
       });
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const myNick = (localStorage.getItem('verifiedNickname') || verifiedNickname || '').trim();
+      const mySchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      const myGuestId = getOrCreateGuestId();
+      function isOwnComment(c) {
+        if (isAuth && myNick && mySchool) return c.nickname === myNick && c.school_name === mySchool;
+        return c.user_email === 'guest_' + myGuestId;
+      }
       function renderOne(c) {
         const replies = byParent[c.id] || [];
         const repliesHtml = replies.length ? '<div class="comment-replies">' + replies.map(r => renderOne(r)).join('') + '</div>' : '';
+        const isGuest = (c.school_name || '') === '游客' && (c.nickname || '') === '游客';
+        const metaHtml = isGuest
+          ? `<span class="comment-nickname">游客</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`
+          : `<span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span><span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`;
+        const deleteBtn = isOwnComment(c) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteComment(${shareId}, ${c.id}); event.preventDefault();">删除</button>` : '';
         return `
           <div class="comment-item" data-comment-id="${c.id}">
             <div class="comment-meta">
-              <span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span>
-              <span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span>
-              <span class="comment-time">${formatCommentDate(c.created_at)}</span>
+              ${metaHtml}
             </div>
             <div class="comment-content">${escapeHtml(c.content || '')}</div>
             <div class="comment-actions">
               <button type="button" onclick="likeComment(${shareId}, ${c.id}, this)"><span class="comment-like-icon">${c.user_has_liked ? '❤️' : '🤍'}</span> <span class="comment-like-count">${c.like_count != null ? c.like_count : 0}</span></button>
               <button type="button" onclick="toggleReplyInput(${shareId}, ${c.id})">回复</button>
               <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button>
+              ${deleteBtn}
             </div>
             <div id="reply-input-${shareId}-${c.id}" class="reply-input-wrap" style="display: none;">
               <textarea id="reply-text-${shareId}-${c.id}" placeholder="回复 ${escapeHtml(c.nickname || '')}…" rows="2"></textarea>
@@ -1443,6 +1470,7 @@
         payload.school_name = school || '';
       } else {
         payload.identity = 'guest';
+        payload.guestId = getOrCreateGuestId();
       }
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
@@ -1465,6 +1493,30 @@
       }
     }
 
+    async function deleteComment(shareId, commentId) {
+      if (!confirm('确定要删除这条评论吗？')) return;
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('评论已删除', 'success');
+          await loadComments(shareId);
+        } else {
+          showToast(data.msg || '删除失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
     async function reportComment(shareId, commentId) {
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
       try {
@@ -1481,21 +1533,20 @@
     }
 
     async function likeComment(shareId, commentId, btn) {
-      const authBadge = document.getElementById('auth-badge');
-      if (!authBadge || authBadge.style.display === 'none') {
-        showToast('请先完成认证后再点赞', 'error');
-        return;
-      }
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!token) {
-        showToast('认证信息已丢失，请刷新页面或重新认证', 'error');
-        return;
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
+      const headers = { 'Content-Type': 'application/json' };
+      if (isAuth && token) {
+        headers['X-Auth-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
       }
       try {
         const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/like', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ authToken: token })
+          headers: headers,
+          body: JSON.stringify(body)
         });
         const data = await res.json();
         if (data.code === 200) {

@@ -1052,20 +1052,21 @@ app.get('/api/student-shares', async (req, res) => {
       res.send({ code: 500, msg: "获取失败" });
       return;
     }
-    const token = getTokenFromRequest(req);
-    const verified = await parseAuthToken(token || null);
-    const userEmail = verified ? verified.email : null;
-    if (userEmail && rows && rows.length > 0) {
-      const ids = rows.map((r) => r.id);
-      const placeholders = ids.map(() => '?').join(',');
-      const liked = await new Promise((resolve) => {
-        db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
-      });
-      rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
-    } else {
-      rows.forEach((r) => { r.user_has_liked = false; });
-    }
-    res.send({ code: 200, data: rows });
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
+  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (userEmail && rows && rows.length > 0) {
+    const ids = rows.map((r) => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const liked = await new Promise((resolve) => {
+      db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
+    });
+    rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
+  } else {
+    rows.forEach((r) => { r.user_has_liked = false; });
+  }
+  res.send({ code: 200, data: rows });
   });
 });
 
@@ -1611,20 +1612,27 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 帖子点赞/取消点赞（仅认证用户，与发帖同一套认证逻辑：getTokenFromRequest + parseAuthToken）
+// 帖子点赞/取消点赞（所有人：认证用户用 token，游客用 body/query 的 guestId）
+function getLikeUserIdentity(req) {
+  const token = getTokenFromRequest(req);
+  const body = req.body || {};
+  const query = req.query || {};
+  const guestId = (body.guestId != null ? body.guestId : query.guestId) != null ? String(body.guestId || query.guestId).trim() : '';
+  return { token, guestId };
+}
 app.post('/api/student-shares/:id/like', async (req, res) => {
   const shareId = parseInt(String(req.params.id), 10);
   if (Number.isNaN(shareId) || shareId < 1) {
     res.send({ code: 400, msg: "参数错误" });
     return;
   }
-  const token = getTokenFromRequest(req);
+  const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成认证后再点赞" });
+  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail) {
+    res.send({ code: 400, msg: "请提供认证信息或游客标识" });
     return;
   }
-  const userEmail = verified.email;
   db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, row) => {
     if (err || !row) {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
@@ -1665,7 +1673,8 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   }
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
-  const userEmail = verified ? verified.email : null;
+  const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
+  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
   db.all(
     'SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = ? ORDER BY created_at ASC',
     [shareId, 'approved'],
@@ -1701,17 +1710,17 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
     return;
   }
   const body = req.body || {};
-  const { content, parent_id: parentId, identity, nickname: bodyNickname, school_name: bodySchool } = body;
+  const { content, parent_id: parentId, identity, nickname: bodyNickname, school_name: bodySchool, guestId: bodyGuestId } = body;
   const contentTrim = (content != null ? String(content).trim() : '') || '';
   if (!contentTrim) {
     res.send({ code: 400, msg: "评论内容不能为空" });
     return;
   }
-  // 直接采用前端传来的身份：identity=guest 为游客，identity=verified 为昵称+认证学校
+  // 直接采用前端传来的身份：identity=guest 为游客（存 guest_xxx 便于本人删评），identity=verified 为昵称+认证学校
   const isVerified = identity === 'verified';
   const schoolName = isVerified ? (String(bodySchool != null ? bodySchool : '').trim() || '') : '游客';
   const nickname = isVerified ? (String(bodyNickname != null ? bodyNickname : '').trim() || '在读生') : '游客';
-  const userEmail = isVerified ? (nickname + '_' + schoolName || 'verified') : '游客';
+  const userEmail = isVerified ? (nickname + '_' + schoolName || 'verified') : ('guest_' + (String(bodyGuestId != null ? bodyGuestId : '').trim() || 'anonymous'));
   db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, shareRow) => {
     if (err || !shareRow) {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
@@ -1762,6 +1771,43 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   });
 });
 
+// 删除自己的评论（认证用户匹配昵称+学校，游客匹配 guestId 对应的 user_email）
+app.delete('/api/student-shares/:shareId/comments/:commentId', async (req, res) => {
+  const shareId = parseInt(String(req.params.shareId), 10);
+  const commentId = parseInt(String(req.params.commentId), 10);
+  if (Number.isNaN(shareId) || shareId < 1 || Number.isNaN(commentId) || commentId < 1) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const token = getTokenFromRequest(req);
+  const verified = await parseAuthToken(token || null);
+  const body = req.body || {};
+  const guestId = (body.guestId != null ? String(body.guestId).trim() : '') || (req.query && req.query.guestId != null ? String(req.query.guestId).trim() : '');
+  db.get('SELECT id, user_email, school_name, nickname FROM share_comments WHERE id = ? AND share_id = ?', [commentId, shareId], (err, row) => {
+    if (err || !row) {
+      res.send({ code: 404, msg: "评论不存在或已删除" });
+      return;
+    }
+    let canDelete = false;
+    if (verified) {
+      canDelete = row.nickname === (verified.nickname || '在读生') && row.school_name === (verified.school_name || '');
+    } else if (guestId) {
+      canDelete = row.user_email === 'guest_' + guestId;
+    }
+    if (!canDelete) {
+      res.send({ code: 403, msg: "只能删除自己发布的评论" });
+      return;
+    }
+    db.run('DELETE FROM share_comments WHERE id = ?', [commentId], function (delErr) {
+      if (delErr) {
+        res.send({ code: 500, msg: "删除失败" });
+        return;
+      }
+      res.send({ code: 200, msg: "删除成功" });
+    });
+  });
+});
+
 // 举报评论（举报次数≥50 进入后台审核）
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
@@ -1786,20 +1832,20 @@ app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, 
   });
 });
 
-// 评论点赞/取消点赞（仅认证用户，与发帖同一套认证逻辑：getTokenFromRequest + parseAuthToken）
+// 评论点赞/取消点赞（所有人：认证用户用 token，游客用 guestId）
 app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
   if (Number.isNaN(commentId) || commentId < 1) {
     res.send({ code: 400, msg: "参数错误" });
     return;
   }
-  const token = getTokenFromRequest(req);
+  const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成认证后再点赞" });
+  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail) {
+    res.send({ code: 400, msg: "请提供认证信息或游客标识" });
     return;
   }
-  const userEmail = verified.email;
   db.get('SELECT id, like_count FROM share_comments WHERE id = ? AND status = ?', [commentId, 'approved'], (err, row) => {
     if (err || !row) {
       res.send({ code: 404, msg: "评论不存在或已删除" });
