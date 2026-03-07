@@ -130,6 +130,12 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
         console.log("✅ 学生分享表初始化成功！");
       }
       db.run(`ALTER TABLE student_shares ADD COLUMN author_nickname TEXT`, () => {});
+      db.run(`ALTER TABLE student_shares ADD COLUMN share_number INTEGER UNIQUE`, () => {});
+      db.run(`ALTER TABLE student_shares ADD COLUMN usefulness_ratio REAL`, () => {});
+      db.run(`ALTER TABLE student_shares ADD COLUMN is_emotional INTEGER DEFAULT 0`, () => {});
+      db.run(`ALTER TABLE student_shares ADD COLUMN analyzed_at DATETIME`, () => {});
+      db.run(`ALTER TABLE student_shares ADD COLUMN delete_after DATETIME`, () => {});
+      db.run(`UPDATE student_shares SET share_number = id WHERE share_number IS NULL`, () => {});
     });
 
     // 信息认证：验证码表
@@ -212,6 +218,10 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (share_id) REFERENCES student_shares(id),
       FOREIGN KEY (parent_id) REFERENCES share_comments(id)
     )`, () => {});
+    db.run(`ALTER TABLE share_comments ADD COLUMN usefulness_ratio REAL`, () => {});
+    db.run(`ALTER TABLE share_comments ADD COLUMN is_emotional INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE share_comments ADD COLUMN analyzed_at DATETIME`, () => {});
+    db.run(`ALTER TABLE share_comments ADD COLUMN delete_after DATETIME`, () => {});
 
     // 评论举报表
     db.run(`CREATE TABLE IF NOT EXISTS comment_reports (
@@ -1023,29 +1033,33 @@ app.post('/api/majors/search', (req, res) => {
 
 // ========== 新的学生分享 API ==========
 
-// 获取学生分享列表（支持搜索；含点赞数，带 token 时返回当前用户是否已点赞）
+// 获取学生分享列表（支持搜索；含点赞数；有用比率>=40 且非情绪过重且未到删除时间才展示；先执行 24h 到期删除）
 app.get('/api/student-shares', async (req, res) => {
+  db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND datetime(delete_after) <= datetime('now')`, () => {});
   const { school, major, keyword } = req.query;
-  let sql = `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.status = 'approved'`;
+  let sql = `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.status = 'approved'
+    AND (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= 40)
+    AND (s.is_emotional IS NULL OR s.is_emotional = 0)
+    AND (s.delete_after IS NULL OR datetime(s.delete_after) > datetime('now'))`;
   const params = [];
-  
+
   if (school) {
     sql += ` AND s.school = ?`;
     params.push(school);
   }
-  
+
   if (major) {
     sql += ` AND s.major = ?`;
     params.push(major);
   }
-  
+
   if (keyword) {
     sql += ` AND (s.title LIKE ? OR s.content LIKE ? OR s.tags LIKE ?)`;
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
-  
+
   sql += ` ORDER BY s.upload_time DESC`;
-  
+
   db.all(sql, params, async (err, rows) => {
     if (err) {
       console.error("获取学生分享失败:", err);
@@ -1069,6 +1083,30 @@ app.get('/api/student-shares', async (req, res) => {
   }
   res.send({ code: 200, data: rows });
   });
+});
+
+// 按编号读取帖子（用于按 share_number 锁定对应帖子）
+app.get('/api/student-shares/by-number/:share_number', (req, res) => {
+  const shareNumber = parseInt(String(req.params.share_number), 10);
+  if (Number.isNaN(shareNumber) || shareNumber < 1) {
+    res.send({ code: 400, msg: "编号无效" });
+    return;
+  }
+  db.get(
+    `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.share_number = ?`,
+    [shareNumber],
+    (err, row) => {
+      if (err) {
+        res.send({ code: 500, msg: "查询失败" });
+        return;
+      }
+      if (!row) {
+        res.send({ code: 404, msg: "未找到该编号的帖子" });
+        return;
+      }
+      res.send({ code: 200, data: row });
+    }
+  );
 });
 
 // 学生分享图片存储分隔符（data URL 内含逗号，不可用逗号分隔）
@@ -1587,8 +1625,12 @@ app.post('/api/student-shares', async (req, res) => {
       res.send({ code: 500, msg: "保存失败" });
       return;
     }
+    const shareId = this.lastID;
+    db.run('UPDATE student_shares SET share_number = ? WHERE id = ?', [shareId, shareId], () => {});
     const msg = postStatus === 'pending_review' ? "分享已提交，待人工审核通过后展示" : "分享提交成功！";
-    res.send({ code: 200, msg, id: this.lastID, status: postStatus });
+    res.send({ code: 200, msg, id: shareId, share_number: shareId, status: postStatus });
+    // 异步：DeepSeek 分析有用比率与情绪，并设置 delete_after
+    analyzeShareAndUpdate(shareId, title, content, tags || '').catch(e => console.error('analyzeShareAndUpdate error:', e));
   });
 });
 
@@ -1678,9 +1720,13 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
   let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
   if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
+  db.run(`UPDATE share_comments SET status = 'deleted' WHERE delete_after IS NOT NULL AND datetime(delete_after) <= datetime('now')`, () => {});
   db.all(
-    'SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = ? ORDER BY created_at ASC',
-    [shareId, 'approved'],
+    `SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = 'approved'
+     AND (is_emotional IS NULL OR is_emotional = 0)
+     AND (delete_after IS NULL OR datetime(delete_after) > datetime('now'))
+     ORDER BY created_at ASC`,
+    [shareId],
     async (err, rows) => {
       if (err) {
         res.send({ code: 500, msg: "获取评论失败" });
@@ -1765,8 +1811,10 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
             res.send({ code: 500, msg: "发表失败" });
             return;
           }
+          const commentId = this.lastID;
           const msg = commentStatus === 'pending_review' ? "评论已提交，待审核通过后展示" : "评论成功";
-          res.send({ code: 200, msg, id: this.lastID, status: commentStatus });
+          res.send({ code: 200, msg, id: commentId, status: commentStatus });
+          analyzeCommentAndUpdate(commentId, contentTrim).catch(e => console.error('analyzeCommentAndUpdate error:', e));
         }
       );
     }
@@ -1959,6 +2007,75 @@ async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
   }
   const result = await response.json();
   return result.choices?.[0]?.message?.content || '';
+}
+
+// 学生分享：DeepSeek 分析有用比率与情绪，并写回数据库（按编号锁定帖子）
+const USEFULNESS_KEYWORDS = '学业、课程、保研、就业、面试、压力、位次、宿舍、食堂、生活、学习';
+async function analyzeShareAndUpdate(shareId, title, content, tags) {
+  if (!DEEPSEEK_API_KEY) return;
+  const text = [title, content, tags].filter(Boolean).join('\n');
+  const systemPrompt = `你是一个面向高考生的校园内容质量评估助手。请仅根据用户给出一段帖子文本，完成两项判断，并只输出一个 JSON 对象，不要其他说明或换行外的内容。
+
+1) 有用比率 usefulness_ratio（0-100 的整数）：以句子为单位，根据以下「内容比率关键词」是否出现及出现频率，判断该帖对高考生了解校园生活或学习情况是否有用。关键词包括：${USEFULNESS_KEYWORDS}。综合整篇帖子，给出 0-100 的有用比率。
+
+2) 情绪过重 is_emotional（0 或 1）：若帖子或评论存在明显情绪过重倾向，如咒骂学校/专业、极度消极、中重度抑郁倾向等，则 is_emotional 为 1，否则为 0。
+
+只输出如下格式的 JSON，不要 markdown 代码块包裹以外的内容：
+{"usefulness_ratio": 数字, "is_emotional": 0或1}`;
+
+  const prompt = `请分析以下帖子并只返回上述 JSON：\n\n${text.slice(0, 6000)}`;
+  let raw;
+  try {
+    raw = await callDeepSeekAI(prompt, systemPrompt);
+  } catch (e) {
+    console.error('DeepSeek 分析帖子失败:', e.message);
+    return;
+  }
+  let usefulness_ratio = null;
+  let is_emotional = 0;
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch[0]);
+      const u = Number(obj.usefulness_ratio);
+      if (!Number.isNaN(u) && u >= 0 && u <= 100) usefulness_ratio = u;
+      if (obj.is_emotional === 1 || obj.is_emotional === true) is_emotional = 1;
+    } catch (_) {}
+  }
+  const shouldDelete = (usefulness_ratio != null && usefulness_ratio < 40) || is_emotional === 1;
+  db.run(
+    `UPDATE student_shares SET usefulness_ratio = ?, is_emotional = ?, analyzed_at = datetime('now'), delete_after = ${shouldDelete ? "datetime('now', '+24 hours')" : 'NULL'} WHERE id = ?`,
+    [usefulness_ratio, is_emotional, shareId],
+    (err) => { if (err) console.error('UPDATE student_shares 分析结果失败:', err); }
+  );
+}
+
+// 评论：DeepSeek 仅判断情绪过重，写回 is_emotional / delete_after
+async function analyzeCommentAndUpdate(commentId, content) {
+  if (!DEEPSEEK_API_KEY) return;
+  const systemPrompt = `你是一个内容安全评估助手。只根据用户给出一段评论文本，判断是否「情绪过重」：如咒骂学校/专业、极度消极、中重度抑郁倾向等。只输出一个 JSON：{"is_emotional": 0 或 1}，不要其他内容。`;
+  const prompt = `评论内容：\n${content.slice(0, 3000)}\n\n请只返回上述 JSON。`;
+  let raw;
+  try {
+    raw = await callDeepSeekAI(prompt, systemPrompt);
+  } catch (e) {
+    console.error('DeepSeek 分析评论失败:', e.message);
+    return;
+  }
+  let is_emotional = 0;
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch[0]);
+      if (obj.is_emotional === 1 || obj.is_emotional === true) is_emotional = 1;
+    } catch (_) {}
+  }
+  const shouldDelete = is_emotional === 1;
+  db.run(
+    `UPDATE share_comments SET is_emotional = ?, analyzed_at = datetime('now'), delete_after = ${shouldDelete ? "datetime('now', '+24 hours')" : 'NULL'} WHERE id = ?`,
+    [is_emotional, commentId],
+    (err) => { if (err) console.error('UPDATE share_comments 分析结果失败:', err); }
+  );
 }
 
 // 数据录入用 AI（仅 DeepSeek，未配置时需设置 DEEPSEEK_API_KEY）

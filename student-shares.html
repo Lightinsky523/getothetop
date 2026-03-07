@@ -1280,6 +1280,7 @@
             ${imagesHtml ? `<div class="share-images">${imagesHtml}</div>` : ''}
             ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
             <div class="share-footer">
+              <span>编号 #${share.share_number != null ? share.share_number : share.id}</span>
               <span>${formatDate(share.upload_time)}</span>
               <div class="share-actions">
                 <button type="button" class="action-btn ${share.user_has_liked ? 'liked' : ''}" onclick="likeShare(${share.id}, this); event.preventDefault();" title="点赞" data-share-id="${share.id}">
