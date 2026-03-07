@@ -1628,11 +1628,8 @@ app.post('/api/student-shares/:id/like', async (req, res) => {
   }
   const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
-  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
-  if (!userEmail) {
-    res.send({ code: 400, msg: "请提供认证信息或游客标识" });
-    return;
-  }
+  let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail) userEmail = 'guest_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
   db.get('SELECT id FROM student_shares WHERE id = ? AND status = ?', [shareId, 'approved'], (err, row) => {
     if (err || !row) {
       res.send({ code: 404, msg: "帖子不存在或已删除" });
@@ -1771,43 +1768,6 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   });
 });
 
-// 删除自己的评论（认证用户匹配昵称+学校，游客匹配 guestId 对应的 user_email）
-app.delete('/api/student-shares/:shareId/comments/:commentId', async (req, res) => {
-  const shareId = parseInt(String(req.params.shareId), 10);
-  const commentId = parseInt(String(req.params.commentId), 10);
-  if (Number.isNaN(shareId) || shareId < 1 || Number.isNaN(commentId) || commentId < 1) {
-    res.send({ code: 400, msg: "参数错误" });
-    return;
-  }
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  const body = req.body || {};
-  const guestId = (body.guestId != null ? String(body.guestId).trim() : '') || (req.query && req.query.guestId != null ? String(req.query.guestId).trim() : '');
-  db.get('SELECT id, user_email, school_name, nickname FROM share_comments WHERE id = ? AND share_id = ?', [commentId, shareId], (err, row) => {
-    if (err || !row) {
-      res.send({ code: 404, msg: "评论不存在或已删除" });
-      return;
-    }
-    let canDelete = false;
-    if (verified) {
-      canDelete = row.nickname === (verified.nickname || '在读生') && row.school_name === (verified.school_name || '');
-    } else if (guestId) {
-      canDelete = row.user_email === 'guest_' + guestId;
-    }
-    if (!canDelete) {
-      res.send({ code: 403, msg: "只能删除自己发布的评论" });
-      return;
-    }
-    db.run('DELETE FROM share_comments WHERE id = ?', [commentId], function (delErr) {
-      if (delErr) {
-        res.send({ code: 500, msg: "删除失败" });
-        return;
-      }
-      res.send({ code: 200, msg: "删除成功" });
-    });
-  });
-});
-
 // 举报评论（举报次数≥50 进入后台审核）
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
@@ -1841,11 +1801,8 @@ app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, re
   }
   const { token, guestId } = getLikeUserIdentity(req);
   const verified = await parseAuthToken(token || null);
-  const userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
-  if (!userEmail) {
-    res.send({ code: 400, msg: "请提供认证信息或游客标识" });
-    return;
-  }
+  let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+  if (!userEmail) userEmail = 'guest_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
   db.get('SELECT id, like_count FROM share_comments WHERE id = ? AND status = ?', [commentId, 'approved'], (err, row) => {
     if (err || !row) {
       res.send({ code: 404, msg: "评论不存在或已删除" });
@@ -1877,53 +1834,6 @@ app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, re
       }
     });
   });
-});
-
-// 用户删除自己发布的帖子（软删：仅限认证用户且学校/昵称匹配）
-app.delete('/api/student-shares/:id', async (req, res) => {
-  const shareId = parseInt(String(req.params.id), 10);
-  if (Number.isNaN(shareId) || shareId < 1) {
-    res.send({ code: 400, msg: "参数错误" });
-    return;
-  }
-  const token = getTokenFromRequest(req);
-  const verified = await parseAuthToken(token || null);
-  if (!verified) {
-    res.send({ code: 403, msg: "请先完成认证后再删除帖子" });
-    return;
-  }
-  const verifiedSchool = verified.school_name || '';
-  const verifiedNick = verified.nickname || '在读生';
-
-  db.get(
-    "SELECT id, school, author_nickname FROM student_shares WHERE id = ?",
-    [shareId],
-    (err, row) => {
-      if (err) {
-        console.error('delete share get err', err);
-        res.send({ code: 500, msg: "删除失败" });
-        return;
-      }
-      if (!row) {
-        res.send({ code: 404, msg: "帖子不存在或已删除" });
-        return;
-      }
-      const authorNick = row.author_nickname || '在读生';
-      if (row.school !== verifiedSchool || authorNick !== verifiedNick) {
-        res.send({ code: 403, msg: "只能删除自己发布的帖子" });
-        return;
-      }
-      // 软删帖子本身
-      db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [shareId], function (uErr) {
-        if (uErr) {
-          console.error('delete share update err', uErr);
-          res.send({ code: 500, msg: "删除失败" });
-          return;
-        }
-        res.send({ code: 200, msg: "删除成功" });
-      });
-    }
-  );
 });
 
 // ========== 学校相关 API ==========

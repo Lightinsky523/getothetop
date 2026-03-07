@@ -1266,7 +1266,6 @@
                 </button>
                 <button type="button" class="btn-toggle-comments" onclick="toggleComments(${share.id}); event.preventDefault();" data-share-id="${share.id}">评论</button>
                 <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
-                ${ (verifiedSchool && share.school === verifiedSchool && (share.author_nickname || '在读生') === (verifiedNickname || '在读生')) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteShare(${share.id}); event.preventDefault();" title="删除自己的帖子">删除</button>` : '' }
               </div>
             </div>
             <div id="comments-wrap-${share.id}" class="comments-section" style="display: none;">
@@ -1292,32 +1291,6 @@
       const d = document.createElement('div');
       d.textContent = String(s);
       return d.innerHTML;
-    }
-
-    // 删除自己的帖子
-    async function deleteShare(shareId) {
-      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
-      if (!auth) {
-        showToast('删除帖子前请先完成认证', 'error');
-        return;
-      }
-      if (!confirm('确定要删除这条分享吗？删除后将无法恢复。')) return;
-      try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authToken: auth })
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          showToast('帖子已删除', 'success');
-          await loadShares();
-        } else {
-          showToast(data.msg || '删除失败', 'error');
-        }
-      } catch (e) {
-        showToast('网络错误', 'error');
-      }
     }
 
     // 帖子点赞：所有人可点赞，认证用户带 token，游客带 guestId
@@ -1400,15 +1373,6 @@
           byParent[c.parent_id].push(c);
         }
       });
-      const authBadge = document.getElementById('auth-badge');
-      const isAuth = authBadge && authBadge.style.display !== 'none';
-      const myNick = (localStorage.getItem('verifiedNickname') || verifiedNickname || '').trim();
-      const mySchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
-      const myGuestId = getOrCreateGuestId();
-      function isOwnComment(c) {
-        if (isAuth && myNick && mySchool) return c.nickname === myNick && c.school_name === mySchool;
-        return c.user_email === 'guest_' + myGuestId;
-      }
       function renderOne(c) {
         const replies = byParent[c.id] || [];
         const repliesHtml = replies.length ? '<div class="comment-replies">' + replies.map(r => renderOne(r)).join('') + '</div>' : '';
@@ -1416,7 +1380,6 @@
         const metaHtml = isGuest
           ? `<span class="comment-nickname">游客</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`
           : `<span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span><span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`;
-        const deleteBtn = isOwnComment(c) ? `<button type="button" class="report-link" style="color: var(--error);" onclick="deleteComment(${shareId}, ${c.id}); event.preventDefault();">删除</button>` : '';
         return `
           <div class="comment-item" data-comment-id="${c.id}">
             <div class="comment-meta">
@@ -1427,7 +1390,6 @@
               <button type="button" onclick="likeComment(${shareId}, ${c.id}, this)"><span class="comment-like-icon">${c.user_has_liked ? '❤️' : '🤍'}</span> <span class="comment-like-count">${c.like_count != null ? c.like_count : 0}</span></button>
               <button type="button" onclick="toggleReplyInput(${shareId}, ${c.id})">回复</button>
               <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button>
-              ${deleteBtn}
             </div>
             <div id="reply-input-${shareId}-${c.id}" class="reply-input-wrap" style="display: none;">
               <textarea id="reply-text-${shareId}-${c.id}" placeholder="回复 ${escapeHtml(c.nickname || '')}…" rows="2"></textarea>
@@ -1487,30 +1449,6 @@
           await loadComments(shareId);
         } else {
           showToast(data.msg || '评论失败', 'error');
-        }
-      } catch (e) {
-        showToast('网络错误', 'error');
-      }
-    }
-
-    async function deleteComment(shareId, commentId) {
-      if (!confirm('确定要删除这条评论吗？')) return;
-      const authBadge = document.getElementById('auth-badge');
-      const isAuth = authBadge && authBadge.style.display !== 'none';
-      const token = (localStorage.getItem('authToken') || authToken || '').trim();
-      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
-      try {
-        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          showToast('评论已删除', 'success');
-          await loadComments(shareId);
-        } else {
-          showToast(data.msg || '删除失败', 'error');
         }
       } catch (e) {
         showToast('网络错误', 'error');
