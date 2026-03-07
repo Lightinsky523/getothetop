@@ -994,7 +994,7 @@ app.get('/api/majors', (req, res) => {
   });
 });
 
-// 公开API：获取某专业详情及开设院校
+// 公开API：获取某专业详情及开设院校（含同基础名专业，如拔尖班等，保证院校与课程完整展示）
 app.get('/api/majors/:id', (req, res) => {
   const majorId = req.params.id;
   
@@ -1003,13 +1003,31 @@ app.get('/api/majors/:id', (req, res) => {
       res.send({ code: 404, msg: "专业不存在" });
       return;
     }
-    
-    db.all(`SELECT * FROM school_programs WHERE major_id = ? ORDER BY school_name`, [majorId], (err, programs) => {
+    const baseName = normalizeMajorName(major.major_name || '').baseName || major.major_name;
+    db.all(`SELECT id, major_name FROM major_overviews`, [], (err, allMajors) => {
       if (err) {
-        res.send({ code: 500, msg: "获取失败" });
+        db.all(`SELECT * FROM school_programs WHERE major_id = ? ORDER BY school_name`, [majorId], (e, programs) => {
+          if (e) { res.send({ code: 500, msg: "获取失败" }); return; }
+          res.send({ code: 200, data: { ...major, programs: programs || [] } });
+        });
         return;
       }
-      res.send({ code: 200, data: { ...major, programs } });
+      const sameBaseIds = (allMajors || [])
+        .filter((m) => (normalizeMajorName(m.major_name || '').baseName || m.major_name) === baseName)
+        .map((m) => m.id);
+      const ids = sameBaseIds.length ? sameBaseIds : [majorId];
+      const placeholders = ids.map(() => '?').join(',');
+      db.all(
+        `SELECT * FROM school_programs WHERE major_id IN (${placeholders}) ORDER BY school_name`,
+        ids,
+        (e, programs) => {
+          if (e) {
+            res.send({ code: 500, msg: "获取失败" });
+            return;
+          }
+          res.send({ code: 200, data: { ...major, programs: programs || [] } });
+        }
+      );
     });
   });
 });
