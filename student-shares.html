@@ -280,7 +280,12 @@
       border-bottom: 1px solid #f0ede8;
     }
     .comment-item:last-child { border-bottom: none; }
+    .comment-item.reply-item { margin-left: 24px; padding-left: 12px; border-left: 2px solid var(--border-subtle); }
     .comment-author { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
+    .comment-reply-btn { font-size: 12px; color: var(--accent-muted); cursor: pointer; background: none; border: none; padding: 0 4px; margin-left: 8px; }
+    .comment-reply-btn:hover { text-decoration: underline; }
+    .comment-reply-form { margin-top: 8px; display: flex; gap: 8px; align-items: flex-start; }
+    .comment-reply-form .input { flex: 1; min-height: 32px; font-size: 13px; }
     .comment-form {
       margin-top: 12px; display: flex; gap: 8px; align-items: flex-start;
     }
@@ -1252,11 +1257,19 @@
           list.innerHTML = '';
           return;
         }
-        list.innerHTML = rows.map(c => {
+        const topLevel = rows.filter(c => !c.parent_comment_id);
+        const byParent = {};
+        rows.forEach(c => {
+          if (c.parent_comment_id) {
+            if (!byParent[c.parent_comment_id]) byParent[c.parent_comment_id] = [];
+            byParent[c.parent_comment_id].push(c);
+          }
+        });
+        function renderOne(c, isReply) {
           const isGuest = !c.school_name || c.school_name === '游客';
           const authorLabel = isGuest
             ? '游客'
-            : (escapeHtml(c.school_name) + ' · ' + escapeHtml(c.nickname || '在读生'));
+            : ('昵称：' + escapeHtml(c.nickname || '在读生') + ' | 认证学校：' + escapeHtml(c.school_name));
           const isOwner = !isGuest &&
             verifiedSchool &&
             c.school_name === verifiedSchool &&
@@ -1264,20 +1277,31 @@
           const ownerActions = isOwner
             ? ` <button type="button" class="report-link" style="color: var(--error);" onclick="deleteComment(${shareId}, ${c.id}); event.preventDefault();" title="删除自己的评论">删除</button>`
             : '';
+          const replyBtn = !isReply ? ` <button type="button" class="comment-reply-btn" onclick="toggleReplyForm(${shareId}, ${c.id})">回复</button>` : '';
+          const replyFormId = 'reply-form-' + shareId + '-' + c.id;
+          const replies = (byParent[c.id] || []).map(r => renderOne(r, true)).join('');
           return `
-          <div class="comment-item">
-            <div class="comment-author">${authorLabel} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>${ownerActions}</div>
+          <div class="comment-item ${isReply ? 'reply-item' : ''}" data-comment-id="${c.id}">
+            <div class="comment-author">${authorLabel} · ${formatDate(c.created_at)} <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>${ownerActions}${replyBtn}</div>
             <div>${escapeHtml(c.content)}</div>
+            <div id="${replyFormId}" class="comment-reply-form" style="display: none;">
+              <input type="text" class="input" id="reply-input-${shareId}-${c.id}" placeholder="回复评论..." maxlength="500" />
+              <button type="button" class="primary-btn" onclick="submitReply(${shareId}, ${c.id})">发送</button>
+            </div>
+            ${replies ? '<div class="comment-replies">' + replies + '</div>' : ''}
           </div>`;
-        }).join('');
+        }
+        list.innerHTML = topLevel.map(c => renderOne(c, false)).join('');
       } catch (e) {
         list.innerHTML = '';
       }
     }
 
-    // 发表评论（content + authToken；URL 也带 authToken 以防创空间未解析 body）
-    async function submitComment(shareId) {
-      const input = document.getElementById('comment-input-' + shareId);
+    // 发表评论（content + authToken；可选 parent_comment_id 用于互评回复）
+    async function submitComment(shareId, parentCommentId) {
+      const input = parentCommentId
+        ? document.getElementById('reply-input-' + shareId + '-' + parentCommentId)
+        : document.getElementById('comment-input-' + shareId);
       if (!input) return;
       const content = (input.value || '').trim();
       if (!content) {
@@ -1287,6 +1311,7 @@
       const auth = (localStorage.getItem('authToken') || authToken || '').trim();
       const body = { content };
       if (auth) body.authToken = auth;
+      if (parentCommentId) body.parent_comment_id = parentCommentId;
       const commentUrl = API_BASE + '/api/student-shares/' + shareId + '/comments' + (auth ? '?authToken=' + encodeURIComponent(auth) : '');
       try {
         const res = await fetch(commentUrl, {
@@ -1298,6 +1323,10 @@
         if (data.code === 200) {
           showToast('评论成功', 'success');
           input.value = '';
+          if (parentCommentId) {
+            const form = document.getElementById('reply-form-' + shareId + '-' + parentCommentId);
+            if (form) form.style.display = 'none';
+          }
           loadComments(shareId);
         } else {
           showToast(data.msg || '评论失败', 'error');
@@ -1305,6 +1334,16 @@
       } catch (e) {
         showToast('网络错误', 'error');
       }
+    }
+
+    function toggleReplyForm(shareId, commentId) {
+      const form = document.getElementById('reply-form-' + shareId + '-' + commentId);
+      if (!form) return;
+      form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    }
+
+    function submitReply(shareId, parentCommentId) {
+      submitComment(shareId, parentCommentId);
     }
 
 

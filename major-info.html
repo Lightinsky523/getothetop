@@ -506,14 +506,28 @@
           </div>
         </div>
 
-        <!-- 专业列表（默认显示） -->
+        <!-- 学校专业概览：随机展示 10 个，其余折叠 -->
         <div id="major-list">
           <div class="section-title">
             <span class="icon-pill">专</span>
-            热门专业
+            学校专业概览
           </div>
           <div class="major-grid" id="major-grid">
             <div class="loading">正在加载专业数据...</div>
+          </div>
+          <div id="major-more-wrap" style="display: none;">
+            <div class="section-title" style="margin-top: 24px;">
+              <span class="icon-pill">专</span>
+              其余专业（<span id="major-more-count">0</span> 个）
+              <span style="margin-left: 12px;">
+                <button type="button" class="primary-btn" id="btn-expand-all" onclick="expandAllMajors()">展开全部</button>
+                <button type="button" class="primary-btn" style="background: #f0ede8; color: var(--text); border-color: var(--border-subtle); margin-left: 8px;" id="btn-collapse" onclick="collapseMajors()" style="display: none;">折叠</button>
+              </span>
+            </div>
+            <div class="major-grid" id="major-grid-more"></div>
+          </div>
+          <div id="major-more-toggle-only" style="display: none; margin-top: 16px;">
+            <button type="button" class="primary-btn" onclick="expandAllMajors()">展开全部专业</button>
           </div>
         </div>
 
@@ -592,15 +606,42 @@
       }
     }
 
-    // 加载专业列表
+    // 随机打乱数组（Fisher-Yates）
+    function shuffleArray(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    let restMajors = [];
+
+    // 加载专业列表：仅随机展示 10 个，其余折叠
     async function loadMajors() {
       try {
         const res = await fetch(API_BASE + '/api/majors');
         const data = await res.json();
         if (data.code === 200) {
           allMajors = data.data;
-          renderMajorGrid(allMajors);
           populateMajorSelect(allMajors);
+          const shuffled = shuffleArray(allMajors);
+          const first = shuffled.slice(0, 10);
+          restMajors = shuffled.slice(10);
+          renderMajorGrid(first, 'major-grid');
+          const moreWrap = document.getElementById('major-more-wrap');
+          const toggleOnly = document.getElementById('major-more-toggle-only');
+          if (restMajors.length > 0) {
+            document.getElementById('major-more-count').textContent = restMajors.length;
+            renderMajorGrid(restMajors, 'major-grid-more');
+            moreWrap.style.display = 'none';
+            toggleOnly.style.display = 'block';
+            toggleOnly.querySelector('button').textContent = '展开全部（共 ' + restMajors.length + ' 个专业）';
+          } else {
+            moreWrap.style.display = 'none';
+            toggleOnly.style.display = 'none';
+          }
         } else {
           document.getElementById('major-grid').innerHTML = '<div class="empty-state">暂无专业数据</div>';
         }
@@ -608,6 +649,24 @@
         console.error('加载专业失败:', err);
         document.getElementById('major-grid').innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
       }
+    }
+
+    function expandAllMajors() {
+      document.getElementById('major-more-wrap').style.display = 'block';
+      document.getElementById('major-more-toggle-only').style.display = 'none';
+      const btnExpand = document.getElementById('btn-expand-all');
+      const btnCollapse = document.getElementById('btn-collapse');
+      if (btnExpand) btnExpand.style.display = 'none';
+      if (btnCollapse) btnCollapse.style.display = 'inline-flex';
+    }
+
+    function collapseMajors() {
+      document.getElementById('major-more-wrap').style.display = 'none';
+      document.getElementById('major-more-toggle-only').style.display = 'block';
+      const btnExpand = document.getElementById('btn-expand-all');
+      const btnCollapse = document.getElementById('btn-collapse');
+      if (btnExpand) btnExpand.style.display = 'inline-flex';
+      if (btnCollapse) btnCollapse.style.display = 'none';
     }
 
     // 填充专业下拉框
@@ -677,14 +736,14 @@
       }
     });
 
-    // 渲染专业网格
-    function renderMajorGrid(majors) {
-      const grid = document.getElementById('major-grid');
+    // 渲染专业网格（targetId 默认为 major-grid）
+    function renderMajorGrid(majors, targetId) {
+      const grid = document.getElementById(targetId || 'major-grid');
+      if (!grid) return;
       if (majors.length === 0) {
-        grid.innerHTML = '<div class="empty-state">暂无专业数据</div>';
+        grid.innerHTML = targetId === 'major-grid-more' ? '' : '<div class="empty-state">暂无专业数据</div>';
         return;
       }
-      
       grid.innerHTML = majors.map(m => `
         <div class="major-card" onclick="showMajorDetail(${m.id})">
           <h3>${m.major_name}</h3>
@@ -718,7 +777,9 @@
             if (data.data.length === 1) {
               showMajorDetail(data.data[0].id);
             } else {
-              renderMajorGrid(data.data);
+              renderMajorGrid(data.data, 'major-grid');
+              document.getElementById('major-more-wrap').style.display = 'none';
+              document.getElementById('major-more-toggle-only').style.display = 'none';
               document.getElementById('major-list').style.display = 'block';
               document.getElementById('major-overview').style.display = 'none';
             }
@@ -839,6 +900,11 @@
             <strong>大类分流方案：</strong>${p.stream_division}
           </div>
           ` : ''}
+          ${p.enrollment_category ? `
+          <div class="stream-info">
+            <strong>大类招生：</strong>${p.enrollment_category}
+          </div>
+          ` : ''}
           ${p.admission_requirements ? `
           <div class="stream-info">
             <strong>招生要求：</strong>${p.admission_requirements}
@@ -866,10 +932,11 @@
       renderSchools(filtered);
     }
 
-    // 返回列表
+    // 返回列表（恢复 10 随机 + 其余折叠 的概览）
     function backToList() {
       document.getElementById('major-list').style.display = 'block';
       document.getElementById('major-overview').style.display = 'none';
+      loadMajors();
     }
 
     function showCourseIntro(name, intro) {
