@@ -2092,13 +2092,32 @@ function schoolProgramExists(majorId, schoolName) {
   });
 }
 
-// 根据专业名获取或由 AI 自动创建专业；专业概况从阳光高考查，院校情况从院校官网查
+// 确认该校是否开设该专业（必须基于学校官网，未检索到则视为未开设）
+async function confirmSchoolOffersMajor(schoolName, majorName) {
+  const prompt = `请仅根据「${schoolName}」官方网站（院校官网）的实际信息，判断该校是否开设「${majorName}」本科专业。只返回一个 JSON：若官网明确有该专业招生或培养信息则 {"offers": true}，若未检索到或无法确认则 {"offers": false}。不得猜测，未查到则必须返回 offers: false。`;
+  const raw = await callDataEntryAI(prompt);
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const obj = JSON.parse(m[0]);
+      if (obj.offers === false) return false;
+    } catch (_) {}
+  }
+  return true;
+}
+
+// 根据专业名获取或由 AI 自动创建专业；专业概况从阳光高考查，院校情况仅来自院校官网
 async function getOrCreateMajorAndProgramData(majorName, schoolName) {
+  const offers = await confirmSchoolOffersMajor(schoolName, majorName);
+  if (!offers) throw new Error('未检索到该校开设该专业，不录入');
+
   const existing = await new Promise((resolve) => {
     db.get('SELECT id FROM major_overviews WHERE major_name = ?', [majorName], (err, row) => resolve(err ? null : row));
   });
+  const officialSource = `所有开设院校信息、培养计划、课程等必须仅来自「${schoolName}」官方网站，不得编造或使用非官网来源。`;
   if (existing) {
-    const prompt = `请从「${schoolName}」官方网站（院校官网）检索「${majorName}」专业在该校的开设信息，以JSON格式返回：
+    const prompt = `请从「${schoolName}」官方网站（院校官网）检索「${majorName}」专业在该校的开设信息。${officialSource}
+以JSON格式返回：
 {"school_level":"院校层次","location":"所在城市","program_features":"培养特色（200字以内）","courses":"主要课程，逗号分隔","course_intros":[{"name":"课程名","intro":"课程基本介绍（50-100字）"}，可多项，无介绍则intro为空字符串],"admission_requirements":"招生要求","tuition_fee":"学费","scholarships":"奖学金","contact_info":"招生办联系方式"}`;
     const aiResponse = await callDataEntryAI(prompt);
     const m = aiResponse.match(/\{[\s\S]*\}/);
@@ -2119,7 +2138,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   }
   const fullPrompt = `请按以下两个数据源分别检索并合并为一条JSON（用于系统录入，缺项填空字符串）：
 1）专业概况（介绍、培养方案、修读课程、招生计划、学科门类、学位、学制、就业、相关专业）请前往阳光高考平台（gaokao.chsi.com.cn）查询「${majorName}」专业。
-2）该校该专业的开设情况（院校层次、所在城市、培养特色、课程、招生要求、学费、奖学金、联系方式）请从「${schoolName}」官方网站（院校官网）查询。
+2）该校该专业的开设情况必须仅从「${schoolName}」官方网站（院校官网）查询。${officialSource}
 严格按以下JSON格式返回：
 {
   "description": "专业介绍（300字以内）",

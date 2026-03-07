@@ -436,6 +436,7 @@
             <option value="">全部专业</option>
           </select>
           <button class="primary-btn" onclick="searchShares()">搜索</button>
+          <button type="button" class="primary-btn secondary" onclick="refreshShares()" title="重新从服务器加载列表">刷新</button>
           <button class="primary-btn secondary" id="btn-write-share" onclick="onWriteShareClick()">+ 写分享</button>
           <button type="button" class="primary-btn secondary" id="quick-auth-btn" style="margin-left: 6px;" onclick="openAuthModal()">立即认证</button>
           <span id="guest-badge" style="font-size: 12px; color: var(--text-soft); margin-left: 8px;">游客</span>
@@ -1209,6 +1210,8 @@
 
     // 加载分享列表（带 token 或 guestId 时返回点赞状态）；随机选 10 条显示，其余折叠
     async function loadShares() {
+      const listEl = document.getElementById('share-list');
+      listEl.innerHTML = '<div class="loading">正在加载分享...</div>';
       try {
         const token = (localStorage.getItem('authToken') || authToken || '').trim();
         const guestId = getOrCreateGuestId();
@@ -1226,12 +1229,17 @@
           showFolded = false;
           renderShares();
         } else {
-          document.getElementById('share-list').innerHTML = '<div class="empty-state">暂无分享数据</div>';
+          listEl.innerHTML = '<div class="empty-state">暂无分享数据</div>';
         }
       } catch (err) {
         console.error('加载分享失败:', err);
-        document.getElementById('share-list').innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
+        listEl.innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
       }
+    }
+
+    // 刷新：重新从服务器拉取列表
+    function refreshShares() {
+      loadShares();
     }
 
     // 渲染分享列表：先显示 visibleShares，再显示折叠区（展开后显示 foldedShares）

@@ -1506,7 +1506,7 @@
             <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
               <strong>✅ 批量添加完成</strong><br>
               <small>成功：${successCount} 个 | 已跳过（已录入）：${skippedCount} 个 | 失败：${failCount} 个</small>
-              ${failCount > 0 ? '<br><small>失败项目：' + data.errors.map(e => e.major).join(', ') + '</small>' : ''}
+              ${failCount > 0 ? '<br><small>失败项目：' + data.errors.map(e => e.major + (e.error ? '（' + e.error + '）' : '')).join('；') + '</small>' : ''}
             </div>
           `;
           document.getElementById('aiBatchSchool').value = '';
