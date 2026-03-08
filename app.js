@@ -1816,39 +1816,48 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
   if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
   db.run(`UPDATE share_comments SET status = 'deleted' WHERE delete_after IS NOT NULL AND datetime(delete_after) <= datetime('now')`, () => {});
-  db.all(
-    `SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = 'approved'
+
+  function sendCommentRows(rows) {
+    if (!rows || rows.length === 0) return res.send({ code: 200, data: [] });
+    const commentIds = rows.map((r) => r.id);
+    let userLikedIds = [];
+    if (userEmail) {
+      const placeholders = commentIds.map(() => '?').join(',');
+      db.all(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${placeholders}) AND user_email = ?`, [...commentIds, userEmail], (e, r) => {
+        if (!e && r) userLikedIds = (r || []).map((x) => x.comment_id);
+        rows.forEach((row) => { row.user_has_liked = userLikedIds.indexOf(row.id) !== -1; });
+        res.send({ code: 200, data: rows });
+      });
+    } else {
+      rows.forEach((row) => { row.user_has_liked = false; });
+      res.send({ code: 200, data: rows });
+    }
+  }
+
+  const fullSql = `SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = 'approved'
      AND (is_emotional IS NULL OR is_emotional = 0)
      AND (delete_after IS NULL OR datetime(delete_after) > datetime('now'))
-     ORDER BY created_at ASC`,
-    [shareId],
-    async (err, rows) => {
-      if (err) {
-        res.send({ code: 500, msg: "获取评论失败" });
+     ORDER BY created_at ASC`;
+  const simpleSql = `SELECT id, share_id, parent_id, user_email, school_name, nickname, content, status, like_count, created_at FROM share_comments WHERE share_id = ? AND status = 'approved' ORDER BY created_at ASC`;
+
+  db.all(fullSql, [shareId], (err, rows) => {
+    if (err) {
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('no such column') || msg.includes('is_emotional') || msg.includes('delete_after')) {
+        db.all(simpleSql, [shareId], (err2, rows2) => {
+          if (err2) {
+            console.error('获取评论失败:', err2.message);
+            return res.send({ code: 500, msg: "获取评论失败" });
+          }
+          sendCommentRows(rows2);
+        });
         return;
       }
-      if (!rows || rows.length === 0) {
-        return res.send({ code: 200, data: [] });
-      }
-      try {
-        const commentIds = rows.map((r) => r.id);
-        let userLikedIds = [];
-        if (userEmail) {
-          const placeholders = commentIds.map(() => '?').join(',');
-          userLikedIds = await new Promise((resolve) => {
-            db.all(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${placeholders}) AND user_email = ?`, [...commentIds, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.comment_id)));
-          });
-        }
-        rows.forEach((r) => {
-          r.user_has_liked = userLikedIds.indexOf(r.id) !== -1;
-        });
-        res.send({ code: 200, data: rows });
-      } catch (e) {
-        console.error('获取评论异常:', e);
-        res.send({ code: 500, msg: "获取评论失败" });
-      }
+      console.error('获取评论失败:', err.message);
+      return res.send({ code: 500, msg: "获取评论失败" });
     }
-  );
+    sendCommentRows(rows);
+  });
 });
 
 // 发表评论或回复（不校验 token，身份由前端页面认证区域决定：identity=guest 显示游客，identity=verified 用 nickname/school_name）
