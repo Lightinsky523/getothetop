@@ -1830,18 +1830,23 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
       if (!rows || rows.length === 0) {
         return res.send({ code: 200, data: [] });
       }
-      const commentIds = rows.map((r) => r.id);
-      let userLikedIds = [];
-      if (userEmail) {
-        const placeholders = commentIds.map(() => '?').join(',');
-        userLikedIds = await new Promise((resolve) => {
-          db.all(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${placeholders}) AND user_email = ?`, [...commentIds, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.comment_id)));
+      try {
+        const commentIds = rows.map((r) => r.id);
+        let userLikedIds = [];
+        if (userEmail) {
+          const placeholders = commentIds.map(() => '?').join(',');
+          userLikedIds = await new Promise((resolve) => {
+            db.all(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${placeholders}) AND user_email = ?`, [...commentIds, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.comment_id)));
+          });
+        }
+        rows.forEach((r) => {
+          r.user_has_liked = userLikedIds.indexOf(r.id) !== -1;
         });
+        res.send({ code: 200, data: rows });
+      } catch (e) {
+        console.error('获取评论异常:', e);
+        res.send({ code: 500, msg: "获取评论失败" });
       }
-      rows.forEach((r) => {
-        r.user_has_liked = userLikedIds.indexOf(r.id) !== -1;
-      });
-      res.send({ code: 200, data: rows });
     }
   );
 });

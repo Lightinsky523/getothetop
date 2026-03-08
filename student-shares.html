@@ -1399,14 +1399,23 @@
       else url += '?guestId=' + encodeURIComponent(getOrCreateGuestId());
       try {
         const res = await fetch(url);
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          console.error('评论接口返回非 JSON:', parseErr);
+          listEl.innerHTML = '<div class="empty-state">加载失败（服务器响应异常，请确认通过本网站地址访问）</div>';
+          return;
+        }
         if (data.code === 200) {
           renderComments(shareId, data.data || []);
         } else {
-          listEl.innerHTML = '<div class="empty-state">加载失败</div>';
+          const msg = (data && data.msg) ? data.msg : '加载失败';
+          listEl.innerHTML = '<div class="empty-state">' + escapeHtml(msg) + '</div>';
         }
       } catch (e) {
-        listEl.innerHTML = '<div class="empty-state">加载失败</div>';
+        console.error('加载评论请求异常:', e);
+        listEl.innerHTML = '<div class="empty-state">加载失败（网络错误，请检查网络或稍后重试）</div>';
       }
     }
 
