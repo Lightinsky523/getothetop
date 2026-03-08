@@ -359,10 +359,15 @@ function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
 }
 
 // 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答（限制条数与长度以降低超时）
+// 与列表一致：排除 DeepSeek 判为无用或情绪化的帖子，志愿填报百炼不总结此类内容
 function fetchRelevantShares(prompt, limit = 10) {
   return new Promise((resolve) => {
+    const where = `status = 'approved'
+      AND (usefulness_ratio IS NULL OR usefulness_ratio >= 40)
+      AND (is_emotional IS NULL OR is_emotional = 0)
+      AND (delete_after IS NULL OR datetime(delete_after) > datetime('now'))`;
     db.all(
-      `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC LIMIT 80`,
+      `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE ${where} ORDER BY upload_time DESC LIMIT 80`,
       [],
       (err, rows) => {
         if (err || !rows || rows.length === 0) {
@@ -2468,16 +2473,28 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
 
 // ========== 专业动态新闻API ==========
 
-// 获取所有新闻
+// 获取新闻：支持 limit（默认6）、random=1 随机取、major_id 按专业筛选
 app.get('/api/news', (req, res) => {
-  const sql = `SELECT * FROM major_news ORDER BY is_hot DESC, publish_date DESC`;
-  db.all(sql, [], (err, rows) => {
+  const limit = Math.min(100, parseInt(req.query.limit, 10) || 6);
+  const random = req.query.random === '1' || req.query.random === 'true';
+  const majorId = req.query.major_id ? parseInt(req.query.major_id, 10) : null;
+  let sql = `SELECT * FROM major_news`;
+  const params = [];
+  if (majorId && !Number.isNaN(majorId)) {
+    sql += ` WHERE major_id = ?`;
+    params.push(majorId);
+  }
+  sql += random
+    ? ` ORDER BY RANDOM() LIMIT ?`
+    : ` ORDER BY is_hot DESC, publish_date DESC, id DESC LIMIT ?`;
+  params.push(limit);
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error("获取新闻失败:", err);
       res.send({ code: 500, msg: "获取失败" });
       return;
     }
-    res.send({ code: 200, data: rows });
+    res.send({ code: 200, data: rows || [] });
   });
 });
 

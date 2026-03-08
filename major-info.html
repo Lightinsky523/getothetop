@@ -533,9 +533,19 @@
 
         <!-- 专业动态 -->
         <div class="news-section">
-          <div class="section-title">
+          <div class="section-title" style="flex-wrap: wrap; gap: 8px;">
             <span class="icon-pill">新</span>
             专业动态与趣闻
+            <span style="font-weight: normal; font-size: 14px; color: var(--text-soft);">（显示最新 6 条）</span>
+          </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;">
+            <label class="field-label" style="margin: 0;">按专业检索：</label>
+            <select id="news-major-filter" class="select" style="min-width: 180px;" onchange="filterNewsByMajor()">
+              <option value="">全部专业</option>
+            </select>
+            <input type="text" id="news-major-keyword" class="input" placeholder="或输入专业名称搜索" style="max-width: 200px;" />
+            <button type="button" class="primary-btn secondary" onclick="searchNewsByMajorKeyword()">检索</button>
+            <button type="button" class="primary-btn" onclick="refreshNewsRandom()">刷新</button>
           </div>
           <div id="news-list">
             <!-- 动态加载 -->
@@ -675,6 +685,16 @@
         option.textContent = m.major_name;
         select.appendChild(option);
       });
+      const newsFilter = document.getElementById('news-major-filter');
+      if (newsFilter) {
+        newsFilter.innerHTML = '<option value="">全部专业</option>';
+        majors.forEach(m => {
+          const option = document.createElement('option');
+          option.value = m.id;
+          option.textContent = m.major_name;
+          newsFilter.appendChild(option);
+        });
+      }
     }
 
     // 加载学校列表
@@ -949,50 +969,56 @@
 
     // ========== 专业动态与趣闻功能 ==========
     let newsData = [];
+    const NEWS_LIMIT = 6;
 
-    // 加载新闻列表
-    async function loadNews() {
+    // 加载新闻列表（最新 6 条；可选 majorId 按专业；random 随机 6 条）
+    async function loadNews(random, majorId) {
       try {
-        const res = await fetch(API_BASE + '/api/news');
+        let url = API_BASE + '/api/news?limit=' + NEWS_LIMIT;
+        if (random) url += '&random=1';
+        if (majorId) url += '&major_id=' + encodeURIComponent(majorId);
+        const res = await fetch(url);
         const data = await res.json();
-        
-        if (data.code === 200 && data.data.length > 0) {
+        if (data.code === 200 && Array.isArray(data.data)) {
           newsData = data.data;
         } else {
-          // 使用默认新闻数据
-          newsData = [
-            {
-              id: 1,
-              title: '人工智能专业持续火热，多所高校新增相关学院',
-              summary: '随着AI技术的快速发展，越来越多的高校设立人工智能学院，培养AI领域专业人才。',
-              content: '<p>随着AI技术的快速发展，越来越多的高校设立人工智能学院，培养AI领域专业人才。</p><p>近年来，人工智能技术在各行各业得到广泛应用，从自动驾驶到医疗诊断，从金融风控到教育个性化，AI正在深刻改变着我们的生活。</p><p>为满足社会对AI人才的迫切需求，清华大学、北京大学、浙江大学等顶尖高校纷纷设立人工智能学院或研究院，开设人工智能本科专业，培养具备扎实理论基础和实践能力的AI人才。</p><p>据统计，目前已有超过300所高校开设了人工智能相关专业，预计未来5年内，AI领域人才缺口将达到500万。</p>',
-              source: '教育部',
-              publish_date: '2024-12-15'
-            },
-            {
-              id: 2,
-              title: '新能源科学与工程专业受关注，碳中和目标推动人才需求',
-              summary: '在双碳目标背景下，新能源相关专业成为新宠，就业市场前景广阔。',
-              content: '<p>在双碳目标背景下，新能源相关专业成为新宠，就业市场前景广阔。</p><p>随着全球气候变化问题日益严峻，各国纷纷提出碳中和目标。中国承诺在2030年前实现碳达峰，2060年前实现碳中和。这一宏伟目标的实现离不开新能源技术的突破和新能源人才的培养。</p><p>新能源科学与工程专业涵盖太阳能、风能、生物质能、氢能等多个方向，培养学生掌握新能源转换与利用的基本理论和技能。</p><p>毕业生可在新能源企业、电力公司、科研院所等单位从事技术研发、工程设计、项目管理等工作，就业前景十分广阔。</p>',
-              source: '中国能源报',
-              publish_date: '2024-12-10'
-            },
-            {
-              id: 3,
-              title: '交叉学科兴起：生物信息学、计算神经科学等新兴专业',
-              summary: '学科交叉融合成为趋势，新兴交叉学科培养复合型人才。',
-              content: '<p>学科交叉融合成为趋势，新兴交叉学科培养复合型人才。</p><p>随着科学研究的深入，单一学科已难以解决复杂的科学问题。生物信息学、计算神经科学、环境经济学等交叉学科应运而生，成为高等教育的新热点。</p><p>生物信息学结合生物学、计算机科学和统计学，研究生物数据的获取、处理和分析；计算神经科学融合神经科学、认知科学和人工智能，探索大脑的工作原理。</p><p>这些交叉学科培养的学生具备多学科知识背景，能够应对复杂的研究挑战，在学术界和产业界都备受青睐。</p>',
-              source: '科学网',
-              publish_date: '2024-12-05'
-            }
-          ];
+          newsData = [];
         }
         renderNews(newsData);
       } catch (err) {
         console.error('加载新闻失败:', err);
-        // 使用默认数据
+        newsData = [];
         renderNews(newsData);
       }
+    }
+
+    function filterNewsByMajor() {
+      const majorId = document.getElementById('news-major-filter').value;
+      loadNews(false, majorId || null);
+    }
+
+    function searchNewsByMajorKeyword() {
+      const keyword = (document.getElementById('news-major-keyword').value || '').trim().toLowerCase();
+      if (!keyword) {
+        loadNews(false, null);
+        return;
+      }
+      const major = allMajors.find(m => (m.major_name || '').toLowerCase().includes(keyword));
+      if (major) {
+        document.getElementById('news-major-filter').value = major.id;
+        loadNews(false, major.id);
+      } else {
+        loadNews(false, null);
+        renderNews(newsData.filter(n => {
+          const m = allMajors.find(mj => mj.id === n.major_id);
+          return m && (m.major_name || '').toLowerCase().includes(keyword);
+        }));
+      }
+    }
+
+    function refreshNewsRandom() {
+      const majorId = document.getElementById('news-major-filter').value;
+      loadNews(true, majorId || null);
     }
 
     // 渲染新闻列表
@@ -1007,7 +1033,7 @@
       list.innerHTML = news.map(item => `
         <div class="news-item" onclick="showNewsDetail(${item.id})">
           <h4>${item.title}</h4>
-          <p>${item.summary || item.content.substring(0, 100) + '...'}</p>
+          <p>${item.summary || (item.content || '').substring(0, 100) + ((item.content || '').length > 100 ? '...' : '')}</p>
           <div class="news-date">${item.publish_date || ''}</div>
           ${item.source ? `<div class="news-source">来源：${item.source}</div>` : ''}
         </div>
@@ -1038,9 +1064,13 @@
     window.onload = function() {
       loadMajors();
       loadSchools();
-      loadNews();
+      loadNews(false, null);
       document.getElementById('major-keyword').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); searchByMajor(); }
+      });
+      const newsKw = document.getElementById('news-major-keyword');
+      if (newsKw) newsKw.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchNewsByMajorKeyword(); }
       });
     };
   </script>

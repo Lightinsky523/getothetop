@@ -319,10 +319,13 @@
 
             <div class="subgrid">
               <div>
+                <label class="field-label">年份</label>
+                <input id="year-input" class="input" type="text" placeholder="例如：2025" />
+              </div>
+              <div>
                 <label class="field-label">生源地省份</label>
                 <input id="province-input" class="input" type="text" placeholder="例如：浙江 / 河南" />
               </div>
-              <div></div>
             </div>
 
             <div class="subgrid">
@@ -466,18 +469,18 @@
 
     function getProfileSummary() {
       const parts = [];
+      const year = document.getElementById('year-input').value;
       const province = document.getElementById('province-input').value;
       const score = document.getElementById('score-input').value;
       const rank = document.getElementById('rank-input').value;
       const type = document.getElementById('type-select').value;
       const city = document.getElementById('city-input').value;
-      
+      if (year) parts.push(`年份：${year}`);
       if (province) parts.push(`省份：${province}`);
       if (score) parts.push(`分数：${score}`);
       if (rank) parts.push(`位次：${rank}`);
       if (type) parts.push(`科类：${type}`);
       if (city) parts.push(`目标城市：${city}`);
-      
       return parts.length ? parts.join('，') : '未填写';
     }
 
@@ -488,27 +491,53 @@
       return { first, second: seconds, province };
     }
 
+    const PROFILE_STORAGE_KEY = 'volunteer_profile';
+
     function saveInfo() {
+      const year = document.getElementById('year-input').value;
+      const province = document.getElementById('province-input').value;
+      const score = document.getElementById('score-input').value;
+      const rank = document.getElementById('rank-input').value;
+      const type = document.getElementById('type-select').value;
+      const city = document.getElementById('city-input').value;
+      try {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ year, province, score, rank, type, city }));
+      } catch (e) {}
       updateSummary();
       showToast('信息已保存到本地', 'success');
+    }
+
+    function restoreProfile() {
+      try {
+        const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (p.year != null) document.getElementById('year-input').value = p.year;
+        if (p.province != null) document.getElementById('province-input').value = p.province;
+        if (p.score != null) document.getElementById('score-input').value = p.score;
+        if (p.rank != null) document.getElementById('rank-input').value = p.rank;
+        if (p.type != null) document.getElementById('type-select').value = p.type;
+        if (p.city != null) document.getElementById('city-input').value = p.city;
+      } catch (e) {}
+      updateSummary();
     }
 
     function updateSummary() {
       const tagsContainer = document.getElementById('summary-tags');
       const pillsContainer = document.getElementById('summary-pills');
-      
+      const year = document.getElementById('year-input').value;
       const province = document.getElementById('province-input').value;
       const score = document.getElementById('score-input').value;
+      const rank = document.getElementById('rank-input').value;
       const type = document.getElementById('type-select').value;
       const city = document.getElementById('city-input').value;
-      
       tagsContainer.innerHTML = '';
       pillsContainer.innerHTML = '';
-      
+      if (year) tagsContainer.innerHTML += `<span class="tag">${year}年</span>`;
       if (province) tagsContainer.innerHTML += `<span class="tag">${province}</span>`;
       if (type) tagsContainer.innerHTML += `<span class="tag">${type === 'science' ? '理科' : type === 'arts' ? '文科' : '综合'}</span>`;
-      
       if (score) pillsContainer.innerHTML += `<span class="pill">${score}分</span>`;
+      if (rank) pillsContainer.innerHTML += `<span class="pill">位次${rank}</span>`;
       if (city) pillsContainer.innerHTML += `<span class="pill">${city}</span>`;
     }
 
@@ -526,6 +555,8 @@
         submitQuery();
       }
     });
+
+    restoreProfile();
   </script>
 </body>
 </html>
