@@ -440,9 +440,7 @@
           </div>
           
           <div class="search-form" id="school-search-form" style="display: none;">
-            <select class="select" id="school-select" style="flex: 1;">
-              <option value="">选择学校</option>
-            </select>
+            <input type="text" class="input" id="school-input" placeholder="输入学校名称，如：北京大学" style="flex: 1;" />
             <select class="select" id="school-major-select" style="flex: 1;">
               <option value="">选择该学校的专业</option>
             </select>
@@ -697,60 +695,51 @@
       }
     }
 
-    // 加载学校列表
+    // 加载学校列表（用于地区筛选等）
     async function loadSchools() {
       try {
         const res = await fetch(API_BASE + '/api/schools');
         const data = await res.json();
         if (data.code === 200) {
           allSchools = data.data;
-          const select = document.getElementById('school-select');
-          select.innerHTML = '<option value="">选择学校</option>';
-          data.data.forEach(s => {
-            const option = document.createElement('option');
-            option.value = s.school_name;
-            option.textContent = s.school_name;
-            select.appendChild(option);
-          });
-          
-          // 填充地区筛选
-          const locations = [...new Set(data.data.map(s => s.location).filter(Boolean))];
+          const locations = [...new Set((data.data || []).map(s => s.location).filter(Boolean))];
           const locationSelect = document.getElementById('filter-location');
-          locations.forEach(loc => {
-            const option = document.createElement('option');
-            option.value = loc;
-            option.textContent = loc;
-            locationSelect.appendChild(option);
-          });
+          if (locationSelect) {
+            locations.forEach(loc => {
+              const option = document.createElement('option');
+              option.value = loc;
+              option.textContent = loc;
+              locationSelect.appendChild(option);
+            });
+          }
         }
       } catch (err) {
         console.error('加载学校失败:', err);
       }
     }
 
-    // 学校选择变化时加载专业
-    document.getElementById('school-select').addEventListener('change', async function() {
-      const schoolName = this.value;
+    // 根据输入的学校名称拉取该校专业并填充下拉框
+    async function fetchSchoolMajors(schoolName) {
       const majorSelect = document.getElementById('school-major-select');
       majorSelect.innerHTML = '<option value="">选择该学校的专业</option>';
-      
-      if (!schoolName) return;
-      
+      if (!schoolName || !schoolName.trim()) return [];
       try {
-        const res = await fetch(API_BASE + '/api/schools/' + encodeURIComponent(schoolName) + '/majors');
+        const res = await fetch(API_BASE + '/api/schools/' + encodeURIComponent(schoolName.trim()) + '/majors');
         const data = await res.json();
-        if (data.code === 200) {
+        if (data.code === 200 && Array.isArray(data.data)) {
           data.data.forEach(m => {
             const option = document.createElement('option');
             option.value = m.major_id;
             option.textContent = m.major_name;
             majorSelect.appendChild(option);
           });
+          return data.data;
         }
       } catch (err) {
         console.error('加载学校专业失败:', err);
       }
-    });
+      return [];
+    }
 
     // 渲染专业网格（可选 targetId，默认 major-grid）
     function renderMajorGrid(majors, targetId) {
@@ -812,17 +801,28 @@
       alert('请选择专业或输入关键词');
     }
 
-    // 按学校搜索
+    // 按学校搜索（输入学校名称，再选专业或自动进入详情）
     async function searchBySchool() {
-      const schoolName = document.getElementById('school-select').value;
+      const schoolName = (document.getElementById('school-input').value || '').trim();
       const majorId = document.getElementById('school-major-select').value;
       
-      if (!schoolName || !majorId) {
-        alert('请选择学校和专业');
+      if (!schoolName) {
+        alert('请输入学校名称');
         return;
       }
-      
-      showMajorDetail(majorId);
+      const majors = await fetchSchoolMajors(schoolName);
+      if (majors.length === 0) {
+        alert('未找到该校或该校暂无专业数据，请检查学校名称');
+        return;
+      }
+      const selectedMajorId = document.getElementById('school-major-select').value;
+      if (selectedMajorId) {
+        showMajorDetail(selectedMajorId);
+      } else if (majors.length === 1) {
+        showMajorDetail(majors[0].major_id);
+      } else {
+        alert('请从下拉框选择该学校的专业后再次点击检索');
+      }
     }
 
     // 显示专业详情
@@ -1067,6 +1067,10 @@
       loadNews(false, null);
       document.getElementById('major-keyword').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); searchByMajor(); }
+      });
+      const schoolInput = document.getElementById('school-input');
+      if (schoolInput) schoolInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchBySchool(); }
       });
       const newsKw = document.getElementById('news-major-keyword');
       if (newsKw) newsKw.addEventListener('keypress', function(e) {
