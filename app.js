@@ -55,7 +55,7 @@ const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 // 旧配置保留（管理后台等如仍用可读环境变量）
 const AI_API_KEY = process.env.AI_KEY;
-const AI_API_URL = process.env.AI_API_URL || 'http://116.62.36.98:3001/api/v1/workspace/project/chat';
+// AI_API_URL 已废弃，智能查询全部使用阿里云百炼
 
 // DeepSeek 配置 - 用于邮箱后缀识别学校、专业数据录入（单条/批量/按学校添加）
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
@@ -358,6 +358,41 @@ function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
   });
 }
 
+// 从用户输入中提取关键词（至少 2 字，用于按热度取帖）
+function extractKeywords(prompt) {
+  return (prompt || '')
+    .replace(/[,，、；;!\s]+/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+}
+
+// 按关键词匹配取点赞数（热度）最高的最多 limit 条帖子；无关键词时取全局热度前 limit 条
+function fetchTopSharesByKeyword(prompt, limit = 100) {
+  return new Promise((resolve) => {
+    const keywords = extractKeywords(prompt);
+    const baseSql = `SELECT s.id, s.school, s.major, s.title, s.content, s.tags, s.author_nickname, s.upload_time,
+      (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count
+      FROM student_shares s WHERE ${SHARE_LIST_WHERE}`;
+    if (keywords.length === 0) {
+      db.all(baseSql + ` ORDER BY like_count DESC LIMIT ?`, [limit], (err, rows) => {
+        if (err) return resolve([]);
+        resolve(rows || []);
+      });
+      return;
+    }
+    const conditions = keywords.map(() => '(s.title LIKE ? OR s.content LIKE ? OR s.tags LIKE ? OR s.school LIKE ? OR s.major LIKE ?)').join(' OR ');
+    const params = keywords.flatMap((k) => {
+      const p = '%' + k + '%';
+      return [p, p, p, p, p];
+    });
+    params.push(limit);
+    db.all(baseSql + ` AND (${conditions}) ORDER BY like_count DESC LIMIT ?`, params, (err, rows) => {
+      if (err) return resolve([]);
+      resolve(rows || []);
+    });
+  });
+}
+
 // 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答（限制条数与长度以降低超时）
 // 与列表一致：排除 DeepSeek 判为无用或情绪化的帖子，志愿填报百炼不总结此类内容
 function fetchRelevantShares(prompt, limit = 10) {
@@ -391,8 +426,34 @@ function fetchRelevantShares(prompt, limit = 10) {
   });
 }
 
-// 智能查询：调用阿里云百炼「应用」API（千问 + 知识库 + 自建 prompt）
-// 若用户问题涉及具体学校，则先对该校学生分享点赞最高的最多 100 条做百炼总结，再与综合回答一起返回
+// 调用百炼应用做总结（帖子列表 -> 一段总结文案）
+async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTextLen = 28000) {
+  const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
+  const body = JSON.stringify({
+    input: { prompt: summaryPrompt + '\n\n帖子内容：\n' + postsText.slice(0, maxTextLen) },
+    parameters: { result_format: 'message' }
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(appUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BAILIAN_API_KEY}` },
+      body,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return '';
+    const json = await res.json();
+    const text = json.output?.text || json.output?.choices?.[0]?.message?.content || json.data?.output?.text || json.choices?.[0]?.message?.content;
+    return typeof text === 'string' ? text.trim() : '';
+  } catch (e) {
+    clearTimeout(timeout);
+    return '';
+  }
+}
+
+// 智能查询：参考信息与用户问题分列；按用户输入关键词取学生分享热度最高最多 100 条并总结，结合「我的信息」与选科给出专业报考建议
 app.post('/ai-query', async (req, res) => {
   const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
@@ -403,64 +464,50 @@ app.post('/ai-query', async (req, res) => {
       return;
     }
 
-    const MAX_SNIPPET = 200;
     const MAX_SUMMARY_SNIPPET = 350;
     let shareSummary = '';
+    let summaryLabel = '';
 
-    // 若涉及具体学校：取该校（及关键词）点赞最高的最多 100 条，用百炼总结
+    // 学生分享总结：涉及具体学校则按该校+关键词取热度 top100；否则按用户输入关键词取热度 top100
     const detected = await getSchoolFromPrompt(prompt);
+    let topShares;
     if (detected && detected.school) {
-      const topShares = await fetchTopSharesBySchool(detected.school, detected.keyword, 100);
-      if (topShares.length > 0) {
-        const postsText = topShares.map((entry, i) => {
-          const contentSnippet = (entry.content || '').slice(0, MAX_SUMMARY_SNIPPET);
-          return `[${i + 1}] 点赞${entry.like_count || 0} · ${entry.title || '无标题'}\n${contentSnippet}${(entry.content || '').length > MAX_SUMMARY_SNIPPET ? '…' : ''}`;
-        }).join('\n\n');
-        const summaryPrompt = `用户问题：${prompt}\n\n请对以下「${detected.school}」学生分享帖子进行总结，围绕用户问题的关注点归纳（如学习压力、宿舍、就业、保研等）。每条帖子已按点赞数从高到低排列，共 ${topShares.length} 条。总结控制在 500 字以内，条理清晰。\n\n帖子内容：\n${postsText.slice(0, 28000)}`;
-        const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
-        try {
-          const sumController = new AbortController();
-          const sumTimeout = setTimeout(() => sumController.abort(), 60000);
-          const sumRes = await fetch(appUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BAILIAN_API_KEY}` },
-            body: JSON.stringify({ input: { prompt: summaryPrompt }, parameters: { result_format: 'message' } }),
-            signal: sumController.signal
-          });
-          clearTimeout(sumTimeout);
-          if (sumRes.ok) {
-            const sumJson = await sumRes.json();
-            const text = sumJson.output?.text || sumJson.output?.choices?.[0]?.message?.content || sumJson.data?.output?.text || sumJson.choices?.[0]?.message?.content;
-            if (text && typeof text === 'string') shareSummary = text.trim();
-          }
-        } catch (e) {
-          console.error('该校学生分享总结调用失败:', e.message);
-        }
-      }
+      topShares = await fetchTopSharesBySchool(detected.school, detected.keyword, 100);
+      summaryLabel = `该校（${detected.school}）学生分享`;
+    } else {
+      topShares = await fetchTopSharesByKeyword(prompt, 100);
+      summaryLabel = '与您问题相关的学生分享（按热度排序）';
     }
 
-    // 控制上下文长度，减少百炼处理时间，降低超时概率
-    const shareRows = await fetchRelevantShares(prompt, 8);
-    let contextInfo = "【参考信息】\n";
+    if (topShares.length > 0) {
+      const postsText = topShares.map((entry, i) => {
+        const contentSnippet = (entry.content || '').slice(0, MAX_SUMMARY_SNIPPET);
+        return `[${i + 1}] 点赞${entry.like_count || 0} · ${entry.title || '无标题'}\n${contentSnippet}${(entry.content || '').length > MAX_SUMMARY_SNIPPET ? '…' : ''}`;
+      }).join('\n\n');
+      const summaryPrompt = `用户问题：${prompt}\n\n请对以下「${summaryLabel}」帖子进行总结，围绕用户问题的关注点归纳（如学习压力、宿舍、就业、保研等）。共 ${topShares.length} 条，已按点赞从高到低排列。总结控制在 500 字以内，条理清晰。`;
+      shareSummary = await summarizeSharesWithBailian(fetch, postsText, summaryPrompt);
+      if (!shareSummary) console.error('学生分享总结调用失败');
+    }
+
+    // 参考信息（不含用户问题）：我的信息 + 选科 + 学生分享总结
+    const referenceParts = [];
+    referenceParts.push('请严格根据下方「参考信息」回答「用户问题」，结合用户填写的我的信息与选科给出专业报考建议；学生分享总结供参考。勿编造参考中未出现的内容。');
+    referenceParts.push('\n【参考信息】');
     if (profileSummary && profileSummary !== "（未填写）") {
-      contextInfo += `用户基本信息：${profileSummary}\n`;
+      referenceParts.push(`用户基本信息（我的信息）：${profileSummary}`);
     }
     if (isXuanke && xuankeContext) {
       const combo = [xuankeContext.first, ...(xuankeContext.second || [])].filter(Boolean).join("+");
-      contextInfo += `选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}\n`;
+      referenceParts.push(`选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}`);
     }
     if (shareSummary) {
-      contextInfo += "【基于该校学生分享高赞帖的总结】\n" + shareSummary + "\n";
+      referenceParts.push(`【学生分享总结（热度最高最多 100 条）】\n${shareSummary}`);
     }
-    if (shareRows.length > 0) {
-      contextInfo += "学生分享（供参考）：\n";
-      shareRows.forEach((entry, i) => {
-        const author = entry.author_nickname || entry.school || '匿名';
-        const contentSnippet = (entry.content || '').slice(0, MAX_SNIPPET);
-        contextInfo += `[${i + 1}] ${entry.school || ''} · ${entry.major || ''} · ${author}：${entry.title || ''}\n${contentSnippet}${(entry.content || '').length > MAX_SNIPPET ? '…' : ''}\n`;
-      });
-    }
-    contextInfo += `\n用户问题：${prompt}`;
+    const referenceBlock = referenceParts.join('\n');
+    const userQuestion = (prompt || '').trim();
+
+    // 分列发送：参考信息与用户问题分开，便于模型区分
+    const fullPrompt = `${referenceBlock}\n\n【用户问题】\n${userQuestion}`;
 
     const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
     const callBailian = (signal) => fetch(appUrl, {
@@ -470,7 +517,7 @@ app.post('/ai-query', async (req, res) => {
         'Authorization': `Bearer ${BAILIAN_API_KEY}`
       },
       body: JSON.stringify({
-        input: { prompt: contextInfo },
+        input: { prompt: fullPrompt },
         parameters: { result_format: 'message' }
       }),
       signal
@@ -532,7 +579,7 @@ app.post('/ai-query', async (req, res) => {
       result.choices?.[0]?.message?.content;
     if (aiText) {
       const finalData = shareSummary
-        ? `【基于该校学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
+        ? `【基于学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
         : aiText;
       res.send({ code: 200, data: finalData });
     } else {
