@@ -1,15 +1,40 @@
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const { execSync } = require('child_process');
-const app = express();
+/**
+ * ============================================================
+ * 志愿填报参考 - 后端主程序 (app.js)
+ * ============================================================
+ * 这是一个 Node.js 后端服务，用 Express 框架提供网页接口（API），
+ * 用 SQLite 存数据。主要功能包括：
+ * - 在读分享/学生分享的增删查
+ * - 智能查询（阿里云百炼 AI）
+ * - 信息认证（邮箱验证码、学生证）
+ * - 专业/学校数据管理、评论点赞、举报等
+ *
+ * ----- 小白阅读说明 -----
+ * - const/let：声明变量；require('xxx')：引入已安装的包或 Node 内置模块。
+ * - app.get('/path', (req, res) => { ... })：收到 GET 请求时执行的函数；
+ *   req=请求（含 query、body、headers），res=响应（res.send() 把结果发给前端）。
+ * - app.post：同上，处理 POST 请求（一般带 body 提交数据）。
+ * - db.run(sql, params, callback)：执行一条 SQL（写）；db.all/db.get：查询多行/一行。
+ * - async/await：异步操作，await 会等 Promise 完成再往下执行，避免回调地狱。
+ */
 
-// 从环境变量读取配置
-const PORT = process.env.PORT || 7860;
+// ----- 引入依赖（别人写好的代码包） -----
+const express = require('express');       // 网页服务框架，用来写“路由”（哪个网址对应哪个处理函数）
+const sqlite3 = require('sqlite3').verbose();  // SQLite 数据库驱动，存数据到本地文件
+const cors = require('cors');            // 允许浏览器跨域访问本接口
+const path = require('path');             // 处理文件路径（Node 内置）
+const fs = require('fs');                 // 读写文件（Node 内置）
+const { execSync } = require('child_process');  // 执行系统命令（如 git clone）
+const app = express();                    // 创建 Express 应用实例
 
-// 无法使用创空间终端时：优先用 DATA_DIR；或设置 AUTO_CLONE_DATASET 尝试自动克隆；或设置 DATASET_MOUNT_PATH 使用创空间已挂载的数据集路径
+// ----- 基础配置：从环境变量读取，没有则用默认值 -----
+const PORT = process.env.PORT || 7860;   // 服务监听的端口号，process.env 是环境变量
+
+/**
+ * 解析数据存放目录。
+ * 优先级：DATA_DIR > DATASET_MOUNT_PATH > 自动克隆数据集到 DATASET_LOCAL_PATH。
+ * 创空间等环境下可能无法用终端，用环境变量指定或自动克隆。
+ */
 function resolveDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
   // 创空间在「配置-关联数据集」里挂载数据集时，可能会出现在某路径，请在该路径的父目录或挂载点设置此变量
@@ -46,54 +71,52 @@ function resolveDataDir() {
 
 const DATA_DIR = resolveDataDir();
 
-// 阿里云百炼 - 志愿填报「智能查询」+ 学生证 AI 鉴伪（千问）
+// ----- 阿里云百炼（千问）配置：智能查询 + 学生证/文本审核 -----
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY || 'sk-67367e61ed2e4e28a49b7b1fd5a346b2';
 const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID || '1a5d7eb76b1f4c86961d372c6d134b9b';
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
-// 认证 token 与认证状态一致：一旦认证则长期有效（10 年），持有有效 token 即可发帖、举报
+// 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
-// 旧配置保留（管理后台等如仍用可读环境变量）
+// 旧配置（兼容用）
 const AI_API_KEY = process.env.AI_KEY;
-// AI_API_URL 已废弃，智能查询全部使用阿里云百炼
 
-// DeepSeek 配置 - 用于邮箱后缀识别学校、专业数据录入（单条/批量/按学校添加）
+// ----- DeepSeek 配置：邮箱后缀识别学校、专业数据录入（单条/批量/按学校） -----
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-// 确保数据目录存在
+// 确保数据目录存在（不存在就创建）
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// SQLite 数据库路径
+// 数据库文件路径（所有表都在这一个 .db 文件里）
 const DB_PATH = path.join(DATA_DIR, 'study_experience.db');
 
-// 允许网页跨域访问
-app.use(cors());
-// 解析网页提交的信息（学生分享含 base64 图片时 body 较大，提高限制）
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+// ----- 中间件：所有请求都会先经过这些 -----
+app.use(cors());   // 允许前端从别的域名访问本接口
+app.use(express.json({ limit: '15mb' }));       // 把请求体解析成 JSON，最大 15MB（图片 base64 会很大）
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));  // 解析表单格式的 body
 
-// 提供静态文件服务（前端页面）
+// 静态文件：当前目录下的 html/css/js 等直接当网站文件提供
 app.use(express.static(path.join(__dirname)));
 
-// 邮件发送配置（可选，未配置时验证码在响应中返回，便于开发测试）
+// ----- 邮件配置（发验证码用；不配置则验证码直接返回在接口里，方便测试） -----
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
-// 连接 SQLite 数据库
+// ----- 连接 SQLite 数据库；回调里建表（CREATE TABLE IF NOT EXISTS = 没有才创建） -----
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error("数据库连接失败：", err);
   } else {
     console.log("✅ SQLite 数据库连接成功！");
     
-    // 创建在读分享表（如果不存在）
+    // 表1：在读分享（简短经历）
     db.run(`CREATE TABLE IF NOT EXISTS user_uploads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school TEXT,
@@ -111,7 +134,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       }
     });
 
-    // 创建学生分享表（如果不存在）- 用于长篇分享
+    // 表2：学生分享（长篇帖子，可带图、标签、点赞、有用度等）
     db.run(`CREATE TABLE IF NOT EXISTS student_shares (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school TEXT,
@@ -129,6 +152,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       } else {
         console.log("✅ 学生分享表初始化成功！");
       }
+      // 兼容旧数据库：给表加新列（已存在则报错，用空回调忽略）
       db.run(`ALTER TABLE student_shares ADD COLUMN author_nickname TEXT`, () => {});
       db.run(`ALTER TABLE student_shares ADD COLUMN share_number INTEGER UNIQUE`, () => {});
       db.run(`ALTER TABLE student_shares ADD COLUMN usefulness_ratio REAL`, () => {});
@@ -138,7 +162,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       db.run(`UPDATE student_shares SET share_number = id WHERE share_number IS NULL`, () => {});
     });
 
-    // 信息认证：验证码表
+    // 表3：验证码（邮箱验证时存 邮箱、验证码、过期时间）
     db.run(`CREATE TABLE IF NOT EXISTS verification_codes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL,
@@ -151,7 +175,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       else console.log("✅ 验证码表初始化成功！");
     });
 
-    // 信息认证：已认证用户（邮箱或学生证）
+    // 表4：已认证用户（邮箱或学生证认证通过后存 token、学校、昵称等）
     db.run(`CREATE TABLE IF NOT EXISTS verified_users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL,
@@ -168,7 +192,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     db.run(`ALTER TABLE verified_users ADD COLUMN auth_type TEXT DEFAULT 'email'`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add auth_type:", err); });
     db.run(`ALTER TABLE verified_users ADD COLUMN nickname TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("add nickname:", err); });
 
-    // 学生证认证：待审核/已通过/已拒绝（AI 或人工）
+    // 表5：学生证认证（待审核/已通过/已拒绝，AI 或人工）
     db.run(`CREATE TABLE IF NOT EXISTS student_id_verifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school_name TEXT NOT NULL,
@@ -185,7 +209,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       db.run(`ALTER TABLE student_id_verifications ADD COLUMN nickname TEXT`, () => {});
     });
 
-    // 帖子举报表（举报次数>50的帖子进入后台审核可删）
+    // 表6：帖子举报（举报次数>50 的帖子会进后台待审核）
     db.run(`CREATE TABLE IF NOT EXISTS share_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       share_id INTEGER NOT NULL,
@@ -194,7 +218,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (share_id) REFERENCES student_shares(id)
     )`, () => {});
 
-    // 帖子点赞表
+    // 表7：帖子点赞（谁给哪条帖子点了赞）
     db.run(`CREATE TABLE IF NOT EXISTS share_likes (
       share_id INTEGER NOT NULL,
       user_email TEXT NOT NULL,
@@ -203,7 +227,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (share_id) REFERENCES student_shares(id)
     )`, () => {});
 
-    // 评论表（parent_id 为 NULL 表示一级评论，非空表示回复）
+    // 表8：评论（parent_id 为空是一级评论，有值为回复某条评论）
     db.run(`CREATE TABLE IF NOT EXISTS share_comments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       share_id INTEGER NOT NULL,
@@ -223,7 +247,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     db.run(`ALTER TABLE share_comments ADD COLUMN analyzed_at DATETIME`, () => {});
     db.run(`ALTER TABLE share_comments ADD COLUMN delete_after DATETIME`, () => {});
 
-    // 评论举报表
+    // 表9：评论举报
     db.run(`CREATE TABLE IF NOT EXISTS comment_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       comment_id INTEGER NOT NULL,
@@ -232,7 +256,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (comment_id) REFERENCES share_comments(id)
     )`, () => {});
 
-    // 评论点赞表
+    // 表10：评论点赞
     db.run(`CREATE TABLE IF NOT EXISTS comment_likes (
       comment_id INTEGER NOT NULL,
       user_email TEXT NOT NULL,
@@ -241,7 +265,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       FOREIGN KEY (comment_id) REFERENCES share_comments(id)
     )`, () => {});
 
-    // 创建学校信息表
+    // 表11：学校信息（名称、层次、所在地等）
     db.run(`CREATE TABLE IF NOT EXISTS schools (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school_name TEXT UNIQUE NOT NULL,
@@ -257,7 +281,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
       }
     });
     
-    // 创建学校专业关联表
+    // 表12：学校-专业关联（某校某专业的项目信息，和 major_overviews 关联）
     db.run(`CREATE TABLE IF NOT EXISTS school_major_programs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       school_name TEXT NOT NULL,
@@ -282,10 +306,11 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
   }
 });
 
-// ********** 功能1：接收网页提交的用户信息，存到 SQLite **********
+// ========== 功能1：保存「在读分享」到数据库 ==========
+// POST /save-data：前端提交学校、专业、城市、高考年份、经历、标签，插入 user_uploads 表
 app.post('/save-data', (req, res) => {
-  const { school, major, city, gaokao_year, experience, label } = req.body;
-  const sql = `INSERT INTO user_uploads (school, major, city, gaokao_year, experience, label) VALUES (?, ?, ?, ?, ?, ?)`;
+  const { school, major, city, gaokao_year, experience, label } = req.body;  // 从请求体解构出字段
+  const sql = `INSERT INTO user_uploads (school, major, city, gaokao_year, experience, label) VALUES (?, ?, ?, ?, ?, ?)`;  // ? 占位符防注入
   db.run(sql, [school, major, city, gaokao_year, experience, label], function(err) {
     if (err) {
       console.error("存数据失败:", err);
@@ -296,7 +321,8 @@ app.post('/save-data', (req, res) => {
   });
 });
 
-// ********** 功能2：从 SQLite 取数据，返回给网页展示 **********
+// ========== 功能2：获取「在读分享」列表 ==========
+// GET /get-data：查 user_uploads 表，按上传时间倒序，返回给前端展示
 app.get('/get-data', (req, res) => {
   const sql = `SELECT * FROM user_uploads ORDER BY upload_time DESC`;
   db.all(sql, [], (err, rows) => {
@@ -309,13 +335,17 @@ app.get('/get-data', (req, res) => {
   });
 });
 
-// ********** 功能3：智能查询 - 直连 API + 学生分享筛选与总结 **********
+// ========== 功能3：智能查询（百炼 AI + 学生分享筛选与总结） ==========
+// 下面这个条件：只取已通过、有用度>=40、非情绪化、未到删除时间的帖子
 const SHARE_LIST_WHERE = `s.status = 'approved'
   AND (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= 40)
   AND (s.is_emotional IS NULL OR s.is_emotional = 0)
   AND (s.delete_after IS NULL OR datetime(s.delete_after) > datetime('now'))`;
 
-// 从学生分享中出现的学校名里检测用户问题是否涉及具体学校，返回 { school, keyword } 或 null
+/**
+ * 从用户问题里检测是否提到具体学校名（从学生分享表里出现的学校名匹配）
+ * 返回 { school, keyword } 或 null，用于决定按“某校+关键词”还是按“关键词”取帖
+ */
 function getSchoolFromPrompt(prompt) {
   return new Promise((resolve) => {
     db.all(
@@ -337,7 +367,7 @@ function getSchoolFromPrompt(prompt) {
   });
 }
 
-// 按学校（及可选关键词）取点赞数最高的最多 limit 条帖子
+/** 按学校（及可选关键词）取点赞数最高的最多 limit 条帖子，供智能查询总结用 */
 function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
   return new Promise((resolve) => {
     let sql = `SELECT s.id, s.school, s.major, s.title, s.content, s.tags, s.author_nickname, s.upload_time,
@@ -358,7 +388,7 @@ function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
   });
 }
 
-// 从用户输入中提取关键词（至少 2 字，用于按热度取帖）
+/** 从用户输入里用空格/标点拆出关键词（至少 2 个字），用于按热度取帖 */
 function extractKeywords(prompt) {
   return (prompt || '')
     .replace(/[,，、；;!\s]+/g, ' ')
@@ -366,7 +396,7 @@ function extractKeywords(prompt) {
     .filter((w) => w.length >= 2);
 }
 
-// 按关键词匹配取点赞数（热度）最高的最多 limit 条帖子；无关键词时取全局热度前 limit 条
+/** 按关键词匹配取点赞数最高的最多 limit 条；没关键词就取全局热度前 limit 条 */
 function fetchTopSharesByKeyword(prompt, limit = 100) {
   return new Promise((resolve) => {
     const keywords = extractKeywords(prompt);
@@ -393,8 +423,10 @@ function fetchTopSharesByKeyword(prompt, limit = 100) {
   });
 }
 
-// 根据用户输入从学生分享中筛选相关帖子，再交给 AI 总结回答（限制条数与长度以降低超时）
-// 与列表一致：排除 DeepSeek 判为无用或情绪化的帖子，志愿填报百炼不总结此类内容
+/**
+ * 根据用户输入从学生分享里筛出相关帖子（关键词匹配），限制条数避免 AI 超时
+ * 与列表规则一致：排除无用、情绪化、已到删除时间的帖子
+ */
 function fetchRelevantShares(prompt, limit = 10) {
   return new Promise((resolve) => {
     const where = `status = 'approved'
@@ -426,7 +458,7 @@ function fetchRelevantShares(prompt, limit = 10) {
   });
 }
 
-// 调用百炼应用做总结（帖子列表 -> 一段总结文案）
+/** 调用百炼应用：把多条帖子内容拼成一段文字，让 AI 总结成一段文案，最多传 maxTextLen 字符 */
 async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTextLen = 28000) {
   const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
   const body = JSON.stringify({
@@ -453,7 +485,7 @@ async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTe
   }
 }
 
-// 智能查询：参考信息与用户问题分列；按用户输入关键词取学生分享热度最高最多 100 条并总结，结合「我的信息」与选科给出专业报考建议
+// POST /ai-query：智能查询。取学生分享（按学校或关键词热度 top100）总结 + 用户「我的信息」与选科，一起发给百炼，返回报考建议
 app.post('/ai-query', async (req, res) => {
   const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
@@ -591,7 +623,7 @@ app.post('/ai-query', async (req, res) => {
   }
 });
 
-// 本地模拟 AI 回复函数
+/** 本地模拟 AI 回复（未配置百炼时可用）：根据选科/分享拼一段示例文案 */
 function generateMockResponse(prompt, profileSummary, shareEntries, isXuanke, xuankeContext) {
   const safePrompt = (prompt || "").trim();
   const hasShare = shareEntries && shareEntries.length > 0;
@@ -653,7 +685,7 @@ ${hasShare ? "3" : "2"}. **志愿搭配建议**
   return base + body;
 }
 
-// ********** 功能4：保存学生长篇分享（匿名）**********
+// ========== 功能4：保存学生长篇分享（旧接口，匿名） ==========
 app.post('/save-student-share', (req, res) => {
   const { school, major, grade, title, content, tags } = req.body;
   
@@ -673,7 +705,7 @@ app.post('/save-student-share', (req, res) => {
   });
 });
 
-// ********** 功能5：获取学生长篇分享列表**********
+// ========== 功能5：获取学生长篇分享列表（旧接口） ==========
 app.get('/get-student-shares', (req, res) => {
   const sql = `SELECT * FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC`;
   db.all(sql, [], (err, rows) => {
@@ -686,9 +718,9 @@ app.get('/get-student-shares', (req, res) => {
   });
 });
 
-// ********** 专业概览管理功能 **********
+// ========== 专业概览与开设院校、专业动态（表结构） ==========
 
-// 创建专业概览表
+// 表：专业概览（专业名、类别、学制、描述、核心课程、就业等）
 db.run(`CREATE TABLE IF NOT EXISTS major_overviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   major_code TEXT UNIQUE,
@@ -711,11 +743,10 @@ db.run(`CREATE TABLE IF NOT EXISTS major_overviews (
     console.log("✅ 专业概览表初始化成功！");
   }
 });
-// 兼容旧库：为已有表补充培养方案、招生计划字段
 db.run(`ALTER TABLE major_overviews ADD COLUMN training_plan TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 training_plan 列:", err); });
 db.run(`ALTER TABLE major_overviews ADD COLUMN admission_plan TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 admission_plan 列:", err); });
 
-// 创建开设院校表
+// 表：开设院校（某专业在某校的详情：课程、学费、招生要求等）
 db.run(`CREATE TABLE IF NOT EXISTS school_programs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   major_id INTEGER,
@@ -739,10 +770,9 @@ db.run(`CREATE TABLE IF NOT EXISTS school_programs (
     console.log("✅ 开设院校表初始化成功！");
   }
 });
-// 兼容旧库：开设院校表增加课程介绍字段（不删除任何已有数据）
 db.run(`ALTER TABLE school_programs ADD COLUMN course_intros TEXT`, (err) => { if (err && !String(err.message).includes('duplicate')) console.error("添加 course_intros 列:", err); });
 
-// 创建专业动态趣闻表
+// 表：专业动态/趣闻（标题、内容、来源、是否热门等）
 db.run(`CREATE TABLE IF NOT EXISTS major_news (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   major_id INTEGER,
@@ -762,7 +792,7 @@ db.run(`CREATE TABLE IF NOT EXISTS major_news (
   }
 });
 
-// 管理员验证中间件
+// ----- 管理员校验：请求体里带正确 password 才放行 -----
 const ADMIN_PASSWORD = 'a~a~ycyzword+';
 function verifyAdmin(req, res, next) {
   const { password } = req.body;
@@ -770,10 +800,12 @@ function verifyAdmin(req, res, next) {
     res.send({ code: 403, msg: "密码错误，无权限访问" });
     return;
   }
-  next();
+  next();  // 通过则交给下一个处理函数
 }
 
-// 管理员：下载数据库备份（防止重启丢失且无法用终端/自动克隆时，可定期下载到本机保存）
+// ========== 管理后台接口（需密码或 query/body 里的 password） ==========
+
+// 下载数据库备份文件（方便本机保存）
 app.get('/admin/backup/download-db', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
@@ -789,7 +821,7 @@ app.get('/admin/backup/download-db', (req, res) => {
   fs.createReadStream(DB_PATH).pipe(res);
 });
 
-// 管理员：待人工审核的学生证列表
+// 待人工审核的学生证列表
 app.get('/admin/student-id-pending', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
@@ -809,7 +841,7 @@ app.get('/admin/student-id-pending', (req, res) => {
   );
 });
 
-// 管理员：查看单条学生证图片（base64）
+// 查看某条学生证图片（base64，用于人工审核）
 app.get('/admin/student-id-pending/:id', (req, res) => {
   const pwd = req.query.password;
   if (pwd !== ADMIN_PASSWORD) {
@@ -825,7 +857,7 @@ app.get('/admin/student-id-pending/:id', (req, res) => {
   });
 });
 
-// 管理员：通过/拒绝学生证
+// 通过或拒绝学生证（verifyAdmin 会先校验密码）
 app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
   const { id, action } = req.body;
   if (!id || !['approve', 'reject'].includes(action)) {
@@ -888,7 +920,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
   });
 });
 
-// 管理员：获取被举报待审核的帖子（举报次数>50 后 status=pending_review）
+// 被举报待审核的帖子列表（举报数>50 会变成 pending_review）
 app.get('/admin/reported-shares', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
@@ -910,7 +942,7 @@ app.get('/admin/reported-shares', (req, res) => {
   );
 });
 
-// 管理员：删帖（用于举报审核后删除）
+// 删帖（将 status 改为 deleted）
 app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [id], function (err) {
@@ -922,7 +954,7 @@ app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
   });
 });
 
-// 管理员：通过待审帖子（分享内容审核：AI 无法辨别或举报过多）
+// 通过待审帖子（改为 approved 后公开展示）
 app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'approved' WHERE id = ? AND status = 'pending_review'", [id], function (err) {
@@ -934,7 +966,7 @@ app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
   });
 });
 
-// 获取所有专业概览
+// --- 专业概览 CRUD（管理员） ---
 app.get('/admin/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
   db.all(sql, [], (err, rows) => {
@@ -947,7 +979,6 @@ app.get('/admin/majors', (req, res) => {
   });
 });
 
-// 添加专业
 app.post('/admin/majors', verifyAdmin, (req, res) => {
   const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
   
@@ -1116,7 +1147,8 @@ app.delete('/admin/news/:id', verifyAdmin, (req, res) => {
   });
 });
 
-// 公开API：获取所有专业概览（用于前端展示）
+// ========== 公开 API（无需管理员密码） ==========
+// 获取所有专业概览，供前端展示
 app.get('/api/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
   db.all(sql, [], (err, rows) => {
@@ -1129,7 +1161,7 @@ app.get('/api/majors', (req, res) => {
   });
 });
 
-// 公开API：获取某专业详情及开设院校
+// 获取某专业详情 + 该专业在各校的开设情况
 app.get('/api/majors/:id', (req, res) => {
   const majorId = req.params.id;
   
@@ -1149,7 +1181,7 @@ app.get('/api/majors/:id', (req, res) => {
   });
 });
 
-// 公开API：按专业搜索（支持 GET 与 POST，便于前端可靠传参）
+// 按关键词搜索专业（GET/POST 都支持，keyword 在 query 或 body 里）
 const searchMajorsByKeyword = (keyword, res) => {
   const k = (keyword && String(keyword).trim()) || '';
   if (!k) {
@@ -1173,9 +1205,8 @@ app.post('/api/majors/search', (req, res) => {
   searchMajorsByKeyword(req.body && req.body.keyword, res);
 });
 
-// ========== 新的学生分享 API ==========
-
-// 获取学生分享列表（支持搜索；含点赞数；有用比率>=40 且非情绪过重且未到删除时间才展示；先执行 24h 到期删除）
+// ========== 学生分享 API（新） ==========
+// 获取列表：支持 school/major/keyword 筛选；带点赞数；过滤无用/情绪化/到期删除的；有 token/guestId 时带 user_has_liked
 app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND datetime(delete_after) <= datetime('now')`, () => {});
   const { school, major, keyword } = req.query;
@@ -1227,7 +1258,7 @@ app.get('/api/student-shares', async (req, res) => {
   });
 });
 
-// 按编号读取帖子（用于按 share_number 锁定对应帖子）
+// 按分享编号读取单条帖子（share_number 即 id，用于前端固定链接）
 app.get('/api/student-shares/by-number/:share_number', (req, res) => {
   const shareNumber = parseInt(String(req.params.share_number), 10);
   if (Number.isNaN(shareNumber) || shareNumber < 1) {
@@ -1251,12 +1282,11 @@ app.get('/api/student-shares/by-number/:share_number', (req, res) => {
   );
 });
 
-// 学生分享图片存储分隔符（data URL 内含逗号，不可用逗号分隔）
+// 多张图片存一个字段时用此分隔符（因为 base64 里本身有逗号）
 const IMAGE_SEP = '|||IMAGE_SEP|||';
 
-// ========== 信息认证（学校邮箱验证） ==========
-
-// 常见邮箱后缀 -> 学校名（AI 失败或返回空/未知时回退）
+// ========== 信息认证：学校邮箱验证 + 学生证 ==========
+// 邮箱后缀 -> 学校名映射（DeepSeek 识别失败时的回退表）
 const EMAIL_SUFFIX_TO_SCHOOL = {
   'pku.edu.cn': '北京大学',
   'tsinghua.edu.cn': '清华大学',
@@ -1280,7 +1310,7 @@ const EMAIL_SUFFIX_TO_SCHOOL = {
   'seu.edu.cn': '东南大学'
 };
 
-// 根据邮箱后缀识别学校名称：已配置 DeepSeek 时用 AI 识别，否则仅用内置表；含解析增强与回退表
+/** 根据邮箱后缀得到学校名：有 DeepSeek 就用 AI，否则查上面内置表 */
 async function getSchoolFromEmailSuffix(emailSuffix) {
   const suffixLower = (emailSuffix || '').trim().toLowerCase();
   if (suffixLower && EMAIL_SUFFIX_TO_SCHOOL[suffixLower])
@@ -1307,7 +1337,7 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
   return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 }
 
-// 发送验证码
+// POST 发送验证码：校验学校邮箱，生成 6 位码存库，有 SMTP 则发邮件否则在响应里返回（测试用）
 app.post('/api/auth/send-code', async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   if (!email) {
@@ -1361,7 +1391,7 @@ app.post('/api/auth/send-code', async (req, res) => {
   );
 });
 
-// 验证码校验，获得认证（在读生-邮箱认证）
+// POST 验证码校验：正确则写入 verified_users 并返回 authToken，用于后续发帖等
 app.post('/api/auth/verify', (req, res) => {
   const { email, code, nickname } = req.body;
   const emailLower = (email || '').trim().toLowerCase();
@@ -1409,7 +1439,7 @@ app.post('/api/auth/verify', (req, res) => {
   );
 });
 
-// 学生证图片发给 AI（百炼千问视觉）做鉴伪
+/** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工） */
 async function callBailianVisionStudentId(imageBase64) {
   if (!BAILIAN_API_KEY) return 'review';
   const fetch = (await import('node-fetch')).default;
@@ -1446,7 +1476,7 @@ async function callBailianVisionStudentId(imageBase64) {
   return 'review';
 }
 
-// 百炼文本内容审核：判断帖子标题+内容是否违规，返回 'pass' | 'block' | 'review'
+/** 百炼文本审核：判断标题+内容+标签是否违规，返回 'pass' | 'block' | 'review' */
 async function callBailianTextModeration(title, content, tags) {
   if (!BAILIAN_API_KEY) return 'review';
   const fetch = (await import('node-fetch')).default;
@@ -1485,12 +1515,12 @@ async function callBailianTextModeration(title, content, tags) {
   return 'review';
 }
 
-// 阿里云内容安全配置（可选，用于学生证鉴伪）。环境变量名支持 ALIYUN_* 或 ALIBABA_CLOUD_*
+// 阿里云内容安全（可选）：学生证图片鉴伪，环境变量 ALIYUN_* 或 ALIBABA_CLOUD_*
 const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALIBABA_CLOUD_ACCESS_KEY_ID;
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 
-// 学生证认证：提交图片，先走阿里云鉴伪（若已配置），存疑则 pending_manual 等人审（在读生认证）
+// POST 学生证认证：上传图片 → 百炼视觉鉴伪 → 可选阿里云审核 → 通过则写 verified_users 并返回 token
 app.post('/api/auth/student-id', async (req, res) => {
   const { school, imageBase64, nickname } = req.body;
   const schoolName = (school || '').trim();
@@ -1563,7 +1593,7 @@ app.post('/api/auth/student-id', async (req, res) => {
   );
 });
 
-// 阿里云内容安全：使用 POP 签名调用图片同步检测。中国地域固定使用 green.cn-shanghai.aliyuncs.com
+/** 阿里云内容安全 API 的签名（POP 规范），用于调用图片检测 */
 function signAliyunGreen(method, path, body, headers, accessKeySecret) {
   const crypto = require('crypto');
   const contentMd5 = body ? crypto.createHash('md5').update(body, 'utf8').digest('base64') : '';
@@ -1638,7 +1668,7 @@ async function callAliyunImageScan(imageBase64) {
   return 'review';
 }
 
-// 学生证认证状态轮询（人工通过后前端可拿到 token）
+// GET 学生证认证状态轮询：前端传 submissionId，人工通过后可拿到 authToken
 app.get('/api/auth/student-id/status', (req, res) => {
   const submissionId = req.query.submissionId;
   if (!submissionId) {
@@ -1665,8 +1695,7 @@ app.get('/api/auth/student-id/status', (req, res) => {
   );
 });
 
-// 解析认证 token，返回 { email, school_name, auth_type, nickname } 或 null
-// 使用 datetime() 包装保证 SQLite 正确比较 ISO 格式的 token_expires_at 与当前时间
+/** 根据 authToken 查 verified_users，未过期则返回 { email, school_name, auth_type, nickname }，否则 null */
 function parseAuthToken(authToken) {
   return new Promise((resolve) => {
     const t = authToken != null ? String(authToken).trim() : '';
@@ -1679,7 +1708,7 @@ function parseAuthToken(authToken) {
   });
 }
 
-// 学生分享相关接口统一从请求中读取 token：body.authToken / body.auth_token → query.authToken → header X-Auth-Token / Authorization
+/** 从请求里取 token：body.authToken 或 auth_token → query.authToken → header X-Auth-Token 或 Authorization */
 function getTokenFromRequest(req) {
   const body = req.body || {};
   let token = (body.authToken != null ? String(body.authToken).trim() : '') || (body.auth_token != null ? String(body.auth_token).trim() : '');
@@ -1692,7 +1721,7 @@ function getTokenFromRequest(req) {
   return (token || '').trim();
 }
 
-// 获取当前认证用户信息（用于恢复学校等，解决认证后无法上传）
+// GET 当前登录用户信息（学校、昵称、认证类型），前端用来恢复“已认证”状态
 app.get('/api/auth/me', async (req, res) => {
   const token = getTokenFromRequest(req);
   const verified = await parseAuthToken(token || null);
@@ -1708,8 +1737,7 @@ app.get('/api/auth/me', async (req, res) => {
   });
 });
 
-// 提交学生分享（需信息认证；在读生限认证学校，高考生不可带学校/专业）
-// 若 token 无效但请求来自「分享你的经历」表单（fromShareForm），且含学校/标题/内容，则兜底允许发帖（解决创空间多实例/DB 不一致导致 token 查不到）
+// POST 提交学生分享：需认证；发帖前百炼审核内容，违规 block，存疑 pending_review；提交后异步 DeepSeek 分析有用度/情绪
 app.post('/api/student-shares', async (req, res) => {
   const body = req.body || {};
   const { school, major, grade, title, content, tags, images, fromShareForm, nickname, author_nickname } = body;
@@ -1776,7 +1804,7 @@ app.post('/api/student-shares', async (req, res) => {
   });
 });
 
-// 举报帖子（举报次数>50 进入后台审核）
+// 举报帖子；同一帖子举报数达到 REPORT_THRESHOLD 后 status 改为 pending_review
 const REPORT_THRESHOLD = 50;
 app.post('/api/student-shares/:id/report', async (req, res) => {
   const shareId = req.params.id;
@@ -1797,7 +1825,7 @@ app.post('/api/student-shares/:id/report', async (req, res) => {
   });
 });
 
-// 帖子点赞/取消点赞（所有人：认证用户用 token，游客用 body/query 的 guestId）
+// 点赞时识别用户：认证用户用 token，游客用 guestId（body 或 query）
 function getLikeUserIdentity(req) {
   const token = getTokenFromRequest(req);
   const body = req.body || {};
@@ -1850,7 +1878,7 @@ app.post('/api/student-shares/:id/like', async (req, res) => {
   });
 });
 
-// 获取某帖子的评论列表（一级评论 + 回复，仅 approved；带 token 时每条带 user_has_liked）
+// GET 某帖子的评论列表（一级+回复，仅已通过；有 token/guestId 时带 user_has_liked）
 app.get('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = parseInt(String(req.params.id), 10);
   if (Number.isNaN(shareId) || shareId < 1) {
@@ -1907,7 +1935,7 @@ app.get('/api/student-shares/:id/comments', async (req, res) => {
   });
 });
 
-// 发表评论或回复（不校验 token，身份由前端页面认证区域决定：identity=guest 显示游客，identity=verified 用 nickname/school_name）
+// POST 发表评论/回复：identity=guest 为游客，identity=verified 用昵称+学校；所有评论经百炼审核
 app.post('/api/student-shares/:id/comments', async (req, res) => {
   const shareId = parseInt(String(req.params.id), 10);
   if (Number.isNaN(shareId) || shareId < 1) {
@@ -1978,7 +2006,7 @@ app.post('/api/student-shares/:id/comments', async (req, res) => {
   });
 });
 
-// 举报评论（举报次数≥50 进入后台审核）
+// 举报评论（同帖子举报逻辑，≥50 进待审）
 app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
   if (Number.isNaN(commentId) || commentId < 1) {
@@ -2002,7 +2030,7 @@ app.post('/api/student-shares/:shareId/comments/:commentId/report', async (req, 
   });
 });
 
-// 评论点赞/取消点赞（所有人：认证用户用 token，游客用 guestId）
+// 评论点赞/取消点赞（身份同帖子点赞）
 app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, res) => {
   const commentId = parseInt(String(req.params.commentId), 10);
   if (Number.isNaN(commentId) || commentId < 1) {
@@ -2050,9 +2078,8 @@ app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, re
   });
 });
 
-// ========== 学校相关 API ==========
-
-// 获取所有学校列表（含 schools 表 + 仅在 school_programs 中出现的学校，便于按学校检索）
+// ========== 学校 API ==========
+// 学校列表：schools 表 + school_programs 里出现过的学校（去重）
 app.get('/api/schools', (req, res) => {
   const sql = `SELECT school_name, school_level, location FROM schools
                UNION
@@ -2069,7 +2096,7 @@ app.get('/api/schools', (req, res) => {
   });
 });
 
-// 获取某学校的所有专业（从 school_programs 读取，与 AI/管理后台录入一致）
+// 某学校下的所有专业（school_programs + major_overviews 联表）
 app.get('/api/schools/:schoolName/majors', (req, res) => {
   const schoolName = req.params.schoolName;
   const sql = `SELECT sp.id, sp.major_id, sp.school_name, sp.school_level, sp.location, sp.program_features, sp.courses, sp.admission_requirements, sp.tuition_fee, sp.scholarships, sp.contact_info, mo.major_name, mo.category, mo.degree_type 
@@ -2121,9 +2148,8 @@ app.post('/admin/school-programs', verifyAdmin, (req, res) => {
   });
 });
 
-// ========== 数据录入用 AI（DeepSeek）==========
-
-// 调用 DeepSeek（数据录入与邮箱后缀识别；429 时重试 2 次）
+// ========== 数据录入与内容分析用 AI（DeepSeek） ==========
+/** 调用 DeepSeek 对话接口；429 时自动重试 2 次 */
 async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
   const fetch = (await import('node-fetch')).default;
   if (!DEEPSEEK_API_KEY) {
@@ -2165,7 +2191,7 @@ async function callDeepSeekAI(prompt, systemPrompt = '', retryCount = 0) {
   return result.choices?.[0]?.message?.content || '';
 }
 
-// 学生分享：DeepSeek 分析有用比率与情绪，并写回数据库（按编号锁定帖子）
+/** 学生分享发布后异步调用：DeepSeek 分析有用度 usefulness_ratio 和是否情绪过重，写回 DB；若无用或情绪化则设 delete_after 为 24h 后 */
 const USEFULNESS_KEYWORDS = '学业、课程、保研、就业、面试、压力、位次、宿舍、食堂、生活、学习';
 async function analyzeShareAndUpdate(shareId, title, content, tags) {
   if (!DEEPSEEK_API_KEY) return;
@@ -2206,7 +2232,7 @@ async function analyzeShareAndUpdate(shareId, title, content, tags) {
   );
 }
 
-// 评论：DeepSeek 仅判断情绪过重，写回 is_emotional / delete_after
+/** 评论发布后异步：DeepSeek 判断是否情绪过重，写回 is_emotional，过重则设 delete_after */
 async function analyzeCommentAndUpdate(commentId, content) {
   if (!DEEPSEEK_API_KEY) return;
   const systemPrompt = `你是一个内容安全评估助手。只根据用户给出一段评论文本，判断是否「情绪过重」：如咒骂学校/专业、极度消极、中重度抑郁倾向等。只输出一个 JSON：{"is_emotional": 0 或 1}，不要其他内容。`;
@@ -2234,21 +2260,21 @@ async function analyzeCommentAndUpdate(commentId, content) {
   );
 }
 
-// 数据录入用 AI（仅 DeepSeek，未配置时需设置 DEEPSEEK_API_KEY）
+/** 数据录入统一走 DeepSeek；未配置会抛错 */
 async function callDataEntryAI(prompt, systemPrompt = '') {
   if (!DEEPSEEK_API_KEY)
     throw new Error("DeepSeek 未配置，请设置 DEEPSEEK_API_KEY 后进行数据录入");
   return callDeepSeekAI(prompt, systemPrompt);
 }
 
-// 检查该专业下该院校是否已录入（避免重复）
+/** 查 school_programs 表，该专业+该学校是否已有记录 */
 function schoolProgramExists(majorId, schoolName) {
   return new Promise((resolve) => {
     db.get('SELECT id FROM school_programs WHERE major_id = ? AND school_name = ?', [majorId, schoolName], (err, row) => resolve(!!(row && !err)));
   });
 }
 
-// 确认该校是否开设该专业（必须基于学校官网，未检索到则视为未开设）
+/** 用 AI 根据学校官网判断是否开设某专业；未检索到则返回 false */
 async function confirmSchoolOffersMajor(schoolName, majorName) {
   const prompt = `请仅根据「${schoolName}」官方网站（院校官网）的实际信息，判断该校是否开设「${majorName}」本科专业。只返回一个 JSON：若官网明确有该专业招生或培养信息则 {"offers": true}，若未检索到或无法确认则 {"offers": false}。不得猜测，未查到则必须返回 offers: false。`;
   const raw = await callDataEntryAI(prompt);
@@ -2262,7 +2288,7 @@ async function confirmSchoolOffersMajor(schoolName, majorName) {
   return true;
 }
 
-// 根据专业名获取或由 AI 自动创建专业；专业概况从阳光高考查，院校情况仅来自院校官网
+/** 根据专业名+学校名：若专业已存在则只查该校该专业开设信息；否则从阳光高考+官网查全量并建 major_overviews + 返回 program 数据 */
 async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   const offers = await confirmSchoolOffersMajor(schoolName, majorName);
   if (!offers) throw new Error('未检索到该校开设该专业，不录入');
@@ -2355,7 +2381,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   return { majorId, programData };
 }
 
-// 管理员：使用AI检索并添加（专业不存在时自动创建；该专业下该院校已录入则跳过）
+// 管理员：输入学校+专业名，AI 检索并写入（专业不存在会先创建；已录入则跳过）
 app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
   const { password, school_name, major_name } = req.body;
   
@@ -2400,7 +2426,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async (req, res) => {
   }
 });
 
-// 管理员：批量AI添加（专业不存在时自动创建并录入介绍、培养方案、课程、招生计划）
+// 管理员：批量按学校+专业列表 AI 添加（每个专业不存在会自动创建）
 app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
   const { password, school_name, majors } = req.body;
   
@@ -2456,7 +2482,7 @@ app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
   });
 });
 
-// 管理员：仅提供学校名称，AI 自动检索并添加该校所有招生专业（专业自动创建并录入介绍、培养方案、课程、招生计划）
+// 管理员：只填学校名，AI 拉取该校本科招生专业列表并逐个录入（专业自动创建）
 app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   const { password, school_name } = req.body;
   
@@ -2532,9 +2558,8 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
   }
 });
 
-// ========== 专业动态新闻API ==========
-
-// 获取新闻：支持 limit（默认6）、random=1 随机取、major_id 按专业筛选
+// ========== 专业动态/新闻 API ==========
+// 新闻列表：limit 条数，random=1 随机，major_id 按专业筛
 app.get('/api/news', (req, res) => {
   const limit = Math.min(100, parseInt(req.query.limit, 10) || 6);
   const random = req.query.random === '1' || req.query.random === 'true';
@@ -2559,7 +2584,7 @@ app.get('/api/news', (req, res) => {
   });
 });
 
-// 获取单条新闻详情
+// 单条新闻详情
 app.get('/api/news/:id', (req, res) => {
   const newsId = req.params.id;
   const sql = `SELECT * FROM major_news WHERE id = ?`;
@@ -2572,7 +2597,8 @@ app.get('/api/news/:id', (req, res) => {
   });
 });
 
-// 启动服务，监听 0.0.0.0:7860
+// ========== 启动 HTTP 服务 ==========
+// 0.0.0.0 表示监听所有网卡，外网可访问；否则只本机
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
   console.log(`📊 数据目录: ${DATA_DIR}`);
