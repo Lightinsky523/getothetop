@@ -1,6 +1,0 @@
-# 本项目使用 Node.js 运行，无需 Python 依赖
-# Node.js 依赖在 package.json 中定义：
-# - express
-# - sqlite3
-# - cors
-# - node-fetch
