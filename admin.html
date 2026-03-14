@@ -1413,7 +1413,7 @@
       resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 AI正在检索院校官网信息，请稍候...</div>';
       
       try {
-        const res = await fetch(API_BASE + '/api/admin/ai-add-program', {
+        const res = await fetch(API_BASE + '/admin/ai-add-program', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1487,7 +1487,7 @@
       resultDiv.innerHTML = `<div style="color: var(--text-soft);">🤖 正在批量检索 ${majors.length} 个专业，请稍候...</div>`;
       
       try {
-        const res = await fetch(API_BASE + '/api/admin/ai-batch-add', {
+        const res = await fetch(API_BASE + '/admin/ai-batch-add', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1545,7 +1545,7 @@
       resultDiv.style.display = 'block';
       resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 正在检索该校招生专业并逐个添加，请稍候...</div>';
       try {
-        const res = await fetch(API_BASE + '/api/admin/ai-add-school-all-majors', {
+        const res = await fetch(API_BASE + '/admin/ai-add-school-all-majors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: adminPassword, school_name: schoolName })
@@ -1588,7 +1588,7 @@
     let currentStudentIdReviewId = null;
     async function loadStudentIdPending() {
       try {
-        const res = await fetch(API_BASE + '/api/admin/student-id-pending?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/student-id-pending?password=' + encodeURIComponent(adminPassword));
         const data = await res.json();
         const tbody = document.getElementById('studentIdTableBody');
         const empty = document.getElementById('studentIdEmpty');
@@ -1617,7 +1617,7 @@
 
     async function viewStudentIdImage(id) {
       try {
-        const res = await fetch(API_BASE + '/api/admin/student-id-pending/' + id + '?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/student-id-pending/' + id + '?password=' + encodeURIComponent(adminPassword));
         const data = await res.json();
         if (data.code !== 200 || !data.data) {
           showToast('获取失败', 'error');
@@ -1635,7 +1635,7 @@
     async function reviewStudentId(id, action) {
       if (!confirm(action === 'approve' ? '确认通过该学生证认证？' : '确认拒绝？')) return;
       try {
-        const res = await fetch(API_BASE + '/api/admin/student-id-review', {
+        const res = await fetch(API_BASE + '/admin/student-id-review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: adminPassword, id: String(id), action })
@@ -1662,7 +1662,7 @@
     // 分享内容审核
     async function loadShareReviewPending() {
       try {
-        const res = await fetch(API_BASE + '/api/admin/reported-shares?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/reported-shares?password=' + encodeURIComponent(adminPassword));
         const data = await res.json();
         const tbody = document.getElementById('shareReviewTableBody');
         const empty = document.getElementById('shareReviewEmpty');
@@ -1702,7 +1702,7 @@
     async function approveShare(id) {
       if (!confirm('确认通过该帖子？通过后将公开展示。')) return;
       try {
-        const res = await fetch(API_BASE + '/api/admin/student-shares/' + id + '/approve', {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: adminPassword })
@@ -1724,7 +1724,7 @@
     async function deleteShare(id) {
       if (!confirm('确认删除该帖子？删除后不可恢复。')) return;
       try {
-        const res = await fetch(API_BASE + '/api/admin/student-shares/' + id + '/delete', {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: adminPassword })
