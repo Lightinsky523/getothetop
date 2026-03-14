@@ -567,7 +567,7 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
 // ========== 功能1：保存「在读分享」到数据库 ==========
 // POST /save-data：前端提交学校、专业、城市、高考年份、经历、标签，插入 user_uploads 表
-app.post('/api/save-data', (req, res) => {
+app.post('/save-data', (req, res) => {
   const { school, major, city, gaokao_year, experience, label } = req.body;  // 从请求体解构出字段
   const sql = `INSERT INTO user_uploads (school, major, city, gaokao_year, experience, label) VALUES (?, ?, ?, ?, ?, ?)`;  // ? 占位符防注入
   db.run(sql, [school, major, city, gaokao_year, experience, label], function(err) {
@@ -582,7 +582,7 @@ app.post('/api/save-data', (req, res) => {
 
 // ========== 功能2：获取「在读分享」列表 ==========
 // GET /get-data：查 user_uploads 表，按上传时间倒序，返回给前端展示
-app.get('/api/get-data', (req, res) => {
+app.get('/get-data', (req, res) => {
   const sql = `SELECT * FROM user_uploads ORDER BY upload_time DESC`;
   db.all(sql, [], (err, rows) => {
     if (err) {
@@ -745,7 +745,7 @@ async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTe
 }
 
 // POST /ai-query：智能查询。取学生分享（按学校或关键词热度 top100）总结 + 用户「我的信息」与选科，一起发给百炼，返回报考建议
-app.post('/api/ai-query', async (req, res) => {
+app.post('/ai-query', async (req, res) => {
   const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
   
   try {
@@ -945,7 +945,7 @@ ${hasShare ? "3" : "2"}. **志愿搭配建议**
 }
 
 // ========== 功能4：保存学生长篇分享（旧接口，匿名） ==========
-app.post('/api/save-student-share', (req, res) => {
+app.post('/save-student-share', (req, res) => {
   const { school, major, grade, title, content, tags } = req.body;
   
   if (!school || !major || !title || !content) {
@@ -965,7 +965,7 @@ app.post('/api/save-student-share', (req, res) => {
 });
 
 // ========== 功能5：获取学生长篇分享列表（旧接口） ==========
-app.get('/api/get-student-shares', (req, res) => {
+app.get('/get-student-shares', (req, res) => {
   const sql = `SELECT * FROM student_shares WHERE status = 'approved' ORDER BY upload_time DESC`;
   db.all(sql, [], (err, rows) => {
     if (err) {
@@ -1065,7 +1065,7 @@ function verifyAdmin(req, res, next) {
 // ========== 管理后台接口（需密码或 query/body 里的 password） ==========
 
 // 下载数据库备份文件（方便本机保存）
-app.get('/api/admin/backup/download-db', (req, res) => {
+app.get('/admin/backup/download-db', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
     res.status(403).send('无权限');
@@ -1086,7 +1086,7 @@ app.get('/api/admin/backup/download-db', (req, res) => {
 });
 
 // 待人工审核的学生证列表
-app.get('/api/admin/student-id-pending', (req, res) => {
+app.get('/admin/student-id-pending', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
     res.send({ code: 403, msg: "无权限" });
@@ -1106,7 +1106,7 @@ app.get('/api/admin/student-id-pending', (req, res) => {
 });
 
 // 查看某条学生证图片（base64，用于人工审核）
-app.get('/api/admin/student-id-pending/:id', (req, res) => {
+app.get('/admin/student-id-pending/:id', (req, res) => {
   const pwd = req.query.password;
   if (pwd !== ADMIN_PASSWORD) {
     res.send({ code: 403, msg: "无权限" });
@@ -1122,7 +1122,7 @@ app.get('/api/admin/student-id-pending/:id', (req, res) => {
 });
 
 // 通过或拒绝学生证（verifyAdmin 会先校验密码）
-app.post('/api/admin/student-id-review', verifyAdmin, (req, res) => {
+app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
   const { id, action } = req.body;
   if (!id || !['approve', 'reject'].includes(action)) {
     res.send({ code: 400, msg: "参数错误" });
@@ -1185,7 +1185,7 @@ app.post('/api/admin/student-id-review', verifyAdmin, (req, res) => {
 });
 
 // 被举报待审核的帖子列表（举报数>50 会变成 pending_review）
-app.get('/api/admin/reported-shares', (req, res) => {
+app.get('/admin/reported-shares', (req, res) => {
   const pwd = req.query.password || (req.body && req.body.password);
   if (pwd !== ADMIN_PASSWORD) {
     res.send({ code: 403, msg: "无权限" });
@@ -1207,7 +1207,7 @@ app.get('/api/admin/reported-shares', (req, res) => {
 });
 
 // 删帖（将 status 改为 deleted）
-app.post('/api/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
+app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [id], function (err) {
     if (err) {
@@ -1219,7 +1219,7 @@ app.post('/api/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
 });
 
 // 通过待审帖子（改为 approved 后公开展示）
-app.post('/api/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
+app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'approved' WHERE id = ? AND status = 'pending_review'", [id], function (err) {
     if (err) {
@@ -1231,7 +1231,7 @@ app.post('/api/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
 });
 
 // --- 专业概览 CRUD（管理员） ---
-app.get('/api/admin/majors', (req, res) => {
+app.get('/admin/majors', (req, res) => {
   const sql = `SELECT * FROM major_overviews ORDER BY category, major_name`;
   db.all(sql, [], (err, rows) => {
     if (err) {
@@ -1243,7 +1243,7 @@ app.get('/api/admin/majors', (req, res) => {
   });
 });
 
-app.post('/api/admin/majors', verifyAdmin, (req, res) => {
+app.post('/admin/majors', verifyAdmin, (req, res) => {
   const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
   
   const sql = `INSERT INTO major_overviews (major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -1258,7 +1258,7 @@ app.post('/api/admin/majors', verifyAdmin, (req, res) => {
 });
 
 // 更新专业
-app.put('/api/admin/majors/:id', verifyAdmin, (req, res) => {
+app.put('/admin/majors/:id', verifyAdmin, (req, res) => {
   const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
   const id = req.params.id;
   
@@ -1274,7 +1274,7 @@ app.put('/api/admin/majors/:id', verifyAdmin, (req, res) => {
 });
 
 // 删除专业
-app.delete('/api/admin/majors/:id', verifyAdmin, (req, res) => {
+app.delete('/admin/majors/:id', verifyAdmin, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
@@ -1290,7 +1290,7 @@ app.delete('/api/admin/majors/:id', verifyAdmin, (req, res) => {
 });
 
 // 获取某专业的开设院校
-app.get('/api/admin/majors/:id/programs', (req, res) => {
+app.get('/admin/majors/:id/programs', (req, res) => {
   const majorId = req.params.id;
   const sql = `SELECT * FROM school_programs WHERE major_id = ? ORDER BY school_name`;
   db.all(sql, [majorId], (err, rows) => {
@@ -1304,7 +1304,7 @@ app.get('/api/admin/majors/:id/programs', (req, res) => {
 });
 
 // 添加开设院校
-app.post('/api/admin/programs', verifyAdmin, (req, res) => {
+app.post('/admin/programs', verifyAdmin, (req, res) => {
   const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   
   const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
