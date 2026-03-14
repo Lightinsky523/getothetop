@@ -735,8 +735,15 @@ async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTe
     });
     clearTimeout(timeout);
     if (!res.ok) return '';
-    const json = await res.json();
-    const text = json.output?.text || json.output?.choices?.[0]?.message?.content || json.data?.output?.text || json.choices?.[0]?.message?.content;
+    let text;
+    try {
+      const json = await res.json();
+      text = json.output?.text || json.output?.choices?.[0]?.message?.content || json.data?.output?.text || json.choices?.[0]?.message?.content;
+    } catch (e) {
+      // 如果不是 JSON，获取纯文本
+      const rawText = await res.text();
+      text = rawText.trim();
+    }
     return typeof text === 'string' ? text.trim() : '';
   } catch (e) {
     clearTimeout(timeout);
@@ -857,17 +864,18 @@ app.post('/ai-query', async (req, res) => {
     }
     const rawText = await response.text();
     let result;
+    let aiText;
     try {
       result = JSON.parse(rawText);
+      aiText =
+        result.output?.text ||
+        result.output?.choices?.[0]?.message?.content ||
+        result.data?.output?.text ||
+        result.choices?.[0]?.message?.content;
     } catch (e) {
-      res.send({ code: 500, msg: "AI 响应非 JSON" });
-      return;
+      // 如果不是 JSON，假设是纯文本响应
+      aiText = rawText.trim();
     }
-    const aiText =
-      result.output?.text ||
-      result.output?.choices?.[0]?.message?.content ||
-      result.data?.output?.text ||
-      result.choices?.[0]?.message?.content;
     if (aiText) {
       const finalData = shareSummary
         ? `【基于学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
