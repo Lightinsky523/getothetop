@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/ai-query",
+      "destination": "http://115.29.233.160:3000/ai-query"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "http://115.29.233.160:3000/admin/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "http://115.29.233.160:3000/api/:path*"
     }
