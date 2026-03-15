@@ -25,6 +25,7 @@ const path = require('path');             // 处理文件路径（Node 内置）
 const fs = require('fs');                 // 读写文件（Node 内置）
 const { execSync } = require('child_process');  // 执行系统命令（如 git clone）
 const mysql = require('mysql2/promise');        // 连接阿里云 MySQL，存放所有业务数据与关键词
+const nodemailer = require('nodemailer');       // 发送验证码邮件（避免动态 import 在部分环境失效）
 const app = express();                    // 创建 Express 应用实例
 
 // ----- 基础配置：从环境变量读取，没有则用默认值 -----
@@ -74,9 +75,11 @@ function resolveDataDir() {
 const DATA_DIR = resolveDataDir();
 
 // ----- 阿里云百炼（千问）配置：智能查询 + 学生证/文本审核 -----
-// 仅从环境变量读取，不写默认值，避免密钥进代码
+// 应用调用用 BAILIAN_* ；模型调用（学生证视觉、文本审核）用 DASHSCOPE_API_KEY（灵积模型 API Key），未配置时回退到 BAILIAN_API_KEY
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY;
 const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID;
+const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || BAILIAN_API_KEY; // 学生证鉴伪/文本审核用模型 API，建议单独配置灵积 Key
+const DASHSCOPE_VISION_MODEL = process.env.DASHSCOPE_VISION_MODEL || 'qwen-vl-plus'; // 视觉模型，可选 qwen2-vl-7b-instruct 等
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
@@ -1610,7 +1613,18 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
   return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 }
 
-// POST 发送验证码：校验学校邮箱，生成 6 位码存库，由 ycyzgetothetop120@163.com 发送邮件（须配置 SMTP_PASS）
+// GET 后端配置检查（不暴露密钥）：用于确认当前请求是否到达正确后端及 SMTP/百炼 是否已配置
+app.get('/api/auth/backend-config', (req, res) => {
+  res.send({
+    code: 200,
+    smtpConfigured: !!SMTP_PASS,
+    bailianConfigured: !!BAILIAN_API_KEY,
+    dashscopeConfigured: !!DASHSCOPE_API_KEY,
+    msg: 'OK'
+  });
+});
+
+// POST 发送验证码：校验学校邮箱，生成 6 位码存库，由 SMTP 发送邮件（须配置 SMTP_PASS）
 app.post('/api/auth/send-code', async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   if (!email) {
@@ -1629,53 +1643,61 @@ app.post('/api/auth/send-code', async (req, res) => {
     return;
   }
 
+  const emailMasked = email.replace(/(.{3})(.*)(@.*)/, '$1***$3');
+
+  try {
+    await initMySQLForKeywords();
+  } catch (mysqlErr) {
+    console.error("[邮件] MySQL 未就绪，无法保存验证码:", mysqlErr.message);
+    res.send({ code: 503, msg: "服务暂不可用，请稍后重试" });
+    return;
+  }
+
   const schoolName = await getSchoolFromEmailSuffix(suffix);
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-  const emailMasked = email.replace(/(.{3})(.*)(@.*)/, '$1***$3');
 
-  db.run(
-    'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, ?)',
-    [email, code, schoolName, expiresAt],
-    async (err) => {
-      if (err) {
-        console.error("保存验证码失败:", err);
-        res.send({ code: 500, msg: "发送失败" });
-        return;
-      }
-      try {
-        const nodemailer = (await import('nodemailer')).default;
-        const transporter = nodemailer.createTransport({
-          host: SMTP_HOST,
-          port: SMTP_PORT,
-          secure: SMTP_PORT === 465,
-          auth: { user: SMTP_USER, pass: SMTP_PASS }
-        });
-        console.log("[邮件] 正在发送验证码至", emailMasked, "学校:", schoolName);
-        await transporter.sendMail({
-          from: `"志愿填报参考" <${SMTP_FROM}>`,
-          to: email,
-          subject: '【志愿填报参考】邮箱验证码',
-          text: `您的验证码是：${code}，5 分钟内有效。`
-        });
-        console.log("[邮件] 验证码已发送成功:", emailMasked);
-        res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
-      } catch (mailErr) {
-        const msg = mailErr.message || String(mailErr);
-        const codeNum = mailErr.responseCode || mailErr.code;
-        console.error("[邮件] 发送失败:", emailMasked, "error:", msg, "responseCode:", codeNum, mailErr.response ? String(mailErr.response).slice(0, 200) : "");
-        let userMsg = "邮件发送失败，请稍后重试";
-        if (codeNum === 535 || /authentication|auth|login|535/i.test(msg)) {
-          userMsg = "SMTP 认证失败，请检查 SMTP 授权码（163 邮箱需使用「授权码」而非登录密码）";
-        } else if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(msg)) {
-          userMsg = "无法连接邮件服务器，请检查 SMTP 地址与端口";
-        } else if (/recipient|550|553/i.test(msg)) {
-          userMsg = "收件地址被拒绝，请确认邮箱正确";
-        }
-        res.send({ code: 500, msg: userMsg });
-      }
+  try {
+    await mysqlPool.execute(
+      'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, ?)',
+      [email, code, schoolName, expiresAt]
+    );
+  } catch (err) {
+    console.error("保存验证码失败:", err);
+    res.send({ code: 500, msg: "发送失败" });
+    return;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    });
+    console.log("[邮件] 正在发送验证码至", emailMasked, "学校:", schoolName);
+    await transporter.sendMail({
+      from: `"志愿填报参考" <${SMTP_FROM}>`,
+      to: email,
+      subject: '【志愿填报参考】邮箱验证码',
+      text: `您的验证码是：${code}，5 分钟内有效。`
+    });
+    console.log("[邮件] 验证码已发送成功:", emailMasked);
+    res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
+  } catch (mailErr) {
+    const msg = mailErr.message || String(mailErr);
+    const codeNum = mailErr.responseCode || mailErr.code;
+    console.error("[邮件] 发送失败:", emailMasked, "error:", msg, "responseCode:", codeNum, mailErr.response ? String(mailErr.response).slice(0, 200) : "");
+    let userMsg = "邮件发送失败，请稍后重试";
+    if (codeNum === 535 || /authentication|auth|login|535/i.test(msg)) {
+      userMsg = "SMTP 认证失败，请检查 SMTP 授权码（163 邮箱需使用「授权码」而非登录密码）";
+    } else if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(msg)) {
+      userMsg = "无法连接邮件服务器，请检查 SMTP 地址与端口";
+    } else if (/recipient|550|553/i.test(msg)) {
+      userMsg = "收件地址被拒绝，请确认邮箱正确";
     }
-  );
+    res.send({ code: 500, msg: userMsg });
+  }
 });
 
 // POST 验证码校验：正确则写入 verified_users 并返回 authToken，用于后续发帖等
@@ -1726,10 +1748,11 @@ app.post('/api/auth/verify', (req, res) => {
   );
 });
 
-/** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工） */
+/** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工）；使用 DASHSCOPE_API_KEY（灵积模型 Key） */
 async function callBailianVisionStudentId(imageBase64) {
-  if (!BAILIAN_API_KEY) {
-    console.warn('[学生证鉴伪] 未配置 BAILIAN_API_KEY，直接转人工审核');
+  const apiKey = DASHSCOPE_API_KEY;
+  if (!apiKey) {
+    console.warn('[学生证鉴伪] 未配置 DASHSCOPE_API_KEY 或 BAILIAN_API_KEY，直接转人工审核');
     return 'review';
   }
   const fetch = (await import('node-fetch')).default;
@@ -1739,10 +1762,10 @@ async function callBailianVisionStudentId(imageBase64) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BAILIAN_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'qwen-vl-plus',
+        model: DASHSCOPE_VISION_MODEL,
         messages: [
           {
             role: 'user',
@@ -1777,9 +1800,9 @@ async function callBailianVisionStudentId(imageBase64) {
   return 'review';
 }
 
-/** 百炼文本审核：判断标题+内容+标签是否违规，返回 'pass' | 'block' | 'review' */
+/** 百炼文本审核：判断标题+内容+标签是否违规，返回 'pass' | 'block' | 'review'；使用 DASHSCOPE_API_KEY */
 async function callBailianTextModeration(title, content, tags) {
-  if (!BAILIAN_API_KEY) return 'review';
+  if (!DASHSCOPE_API_KEY) return 'review';
   const fetch = (await import('node-fetch')).default;
   const text = [title, content, tags].filter(Boolean).join('\n').slice(0, 3000);
   if (!text.trim()) return 'pass';
@@ -1788,7 +1811,7 @@ async function callBailianTextModeration(title, content, tags) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BAILIAN_API_KEY}`
+        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`
       },
       body: JSON.stringify({
         model: 'qwen-turbo',
