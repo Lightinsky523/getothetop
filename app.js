@@ -562,7 +562,7 @@ app.use(express.static(path.join(__dirname)));
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.163.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
 const SMTP_USER = process.env.SMTP_USER || 'ycyzgetothetop120@163.com';
-const SMTP_PASS = process.env.SMTP_PASS || 'QJcBwaZbWCTr7JHq';
+const SMTP_PASS = process.env.SMTP_PASS ;
 const SMTP_FROM = process.env.SMTP_FROM || 'ycyzgetothetop120@163.com';
 
 // 下面开始的所有 db.run/db.all/db.get 调用，已通过上方的 MySQL 封装实现，
