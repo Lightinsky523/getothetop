@@ -524,6 +524,7 @@
           信息认证
         </div>
         <p class="section-desc">仅在读生需认证，认证通过后可发帖（仅限认证学校内容）。</p>
+        <p id="backend-config-msg" style="font-size: 12px; color: var(--text-soft); margin-bottom: 12px; display: none;"></p>
         <div id="auth-category-current">
           <div class="pill-switch" style="margin-bottom: 16px;">
             <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
@@ -587,7 +588,17 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const API_BASE = '';
+    // 支持通过 URL 参数指定接口地址，便于排查：?api_base=https://你的后端域名:端口
+    (function () {
+      const m = /[?&]api_base=([^&]+)/.exec(location.search);
+      if (m) {
+        try {
+          const base = decodeURIComponent(m[1]).replace(/\/$/, '');
+          localStorage.setItem('api_base_override', base);
+        } catch (e) {}
+      }
+    })();
+    const API_BASE = localStorage.getItem('api_base_override') || '';
     let selectedImages = [];
     let allShares = [];
     let schoolsData = [];
@@ -823,6 +834,23 @@
     }
     function openAuthModal() {
       document.getElementById('auth-modal').classList.add('show');
+      var cfgEl = document.getElementById('backend-config-msg');
+      cfgEl.style.display = 'block';
+      cfgEl.textContent = '正在检查后端…';
+      fetch(API_BASE + '/api/auth/backend-config').then(function(r) { return r.json().catch(function() { return {} }); }).then(function(d) {
+        if (d.code === 200) {
+          var parts = [];
+          parts.push(d.smtpConfigured ? '邮件已配置' : '邮件未配置');
+          parts.push(d.dashscopeConfigured ? 'AI鉴伪已配置' : 'AI鉴伪未配置');
+          cfgEl.textContent = '后端: ' + parts.join('，') + '。' + (API_BASE ? '（当前接口: ' + API_BASE + '）' : '');
+          cfgEl.style.color = (d.smtpConfigured && d.dashscopeConfigured) ? 'var(--success)' : 'var(--text-soft)';
+        } else {
+          cfgEl.textContent = '无法获取后端配置';
+        }
+      }).catch(function() {
+        cfgEl.textContent = '无法连接后端。若为静态页或跨域，请在 URL 加 ?api_base=你的后端地址（如 https://服务器:端口）';
+        cfgEl.style.color = 'var(--danger, #c00)';
+      });
       if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
       }
