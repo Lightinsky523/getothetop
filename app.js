@@ -85,7 +85,7 @@ const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 const AI_API_KEY = process.env.AI_KEY;
 
 // ----- DeepSeek 配置：邮箱后缀识别学校、专业数据录入（单条/批量/按学校） -----
-// 部署在 Vercel 时由 Serverless 读取 Vercel 环境变量，在 Vercel 里配置 DEEPSEEK_API_KEY 即可
+// 当前 vercel.json 将请求代理到自建后端，DEEPSEEK_API_KEY 需在「运行本 Node 的后端服务器」上配置
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -2763,7 +2763,7 @@ app.post('/api/admin/ai-add-program', verifyAdmin, async (req, res) => {
     res.send({ code: 200, msg: "AI检索并添加成功", id: majorId, data: programData });
   } catch (e) {
     console.error("AI添加失败:", e);
-    const hint = !DEEPSEEK_API_KEY ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。' : '';
+    const hint = !DEEPSEEK_API_KEY ? ' 请在后端服务器（如 115.29.233.160）环境变量中配置 DEEPSEEK_API_KEY。' : '';
     res.send({ code: 500, msg: "AI检索失败: " + e.message + hint });
   }
 });
@@ -2793,7 +2793,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async function aiAddProgramHandle
     res.send({ code: 200, msg: "AI检索并添加成功", id: majorId, data: programData });
   } catch (e) {
     console.error("AI添加失败:", e);
-    const hint = !DEEPSEEK_API_KEY ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。' : '';
+    const hint = !DEEPSEEK_API_KEY ? ' 请在后端服务器（如 115.29.233.160）环境变量中配置 DEEPSEEK_API_KEY。' : '';
     res.send({ code: 500, msg: "AI检索失败: " + e.message + hint });
   }
 });
@@ -2957,7 +2957,7 @@ const handleAiAddSchoolAllMajors = async (req, res) => {
     console.error("AI 按学校添加所有专业失败:", err);
     const msg = err.message || '';
     const hint = !DEEPSEEK_API_KEY
-      ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。'
+      ? ' 请在后端服务器（如 115.29.233.160）环境变量中配置 DEEPSEEK_API_KEY。'
       : '';
     res.send({ code: 500, msg: "检索失败: " + msg + hint });
   }
