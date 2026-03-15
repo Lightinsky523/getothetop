@@ -85,6 +85,7 @@ const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 const AI_API_KEY = process.env.AI_KEY;
 
 // ----- DeepSeek 配置：邮箱后缀识别学校、专业数据录入（单条/批量/按学校） -----
+// 部署在 Vercel 时由 Serverless 读取 Vercel 环境变量，在 Vercel 里配置 DEEPSEEK_API_KEY 即可
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -2762,7 +2763,38 @@ app.post('/api/admin/ai-add-program', verifyAdmin, async (req, res) => {
     res.send({ code: 200, msg: "AI检索并添加成功", id: majorId, data: programData });
   } catch (e) {
     console.error("AI添加失败:", e);
-    res.send({ code: 500, msg: "AI检索失败: " + e.message });
+    const hint = !DEEPSEEK_API_KEY ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。' : '';
+    res.send({ code: 500, msg: "AI检索失败: " + e.message + hint });
+  }
+});
+app.post('/admin/ai-add-program', verifyAdmin, async function aiAddProgramHandler (req, res) {
+  const { password, school_name, major_name } = req.body;
+  if (!school_name || !major_name) {
+    res.send({ code: 400, msg: "学校名称和专业名称为必填项" });
+    return;
+  }
+  const sName = school_name.trim();
+  const mName = major_name.trim();
+  try {
+    const { majorId, programData } = await getOrCreateMajorAndProgramData(mName, sName);
+    const exists = await schoolProgramExists(majorId, sName);
+    if (exists) {
+      res.send({ code: 200, msg: "该专业下该院校已录入，已跳过", skipped: true, id: majorId, data: programData });
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      db.run(sql, [majorId, sName, programData.school_level || '', programData.location || '', programData.program_features || '', programData.courses || '', programData.course_intros || '', programData.admission_requirements || '', programData.tuition_fee || '', programData.scholarships || '', programData.contact_info || ''], function (insertErr) {
+        if (insertErr) reject(insertErr);
+        else resolve(this.lastID);
+      });
+    });
+    db.run(`INSERT IGNORE INTO schools (school_name, school_level, location) VALUES (?, ?, ?)`, [sName, programData.school_level || '', programData.location || '']);
+    res.send({ code: 200, msg: "AI检索并添加成功", id: majorId, data: programData });
+  } catch (e) {
+    console.error("AI添加失败:", e);
+    const hint = !DEEPSEEK_API_KEY ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。' : '';
+    res.send({ code: 500, msg: "AI检索失败: " + e.message + hint });
   }
 });
 
@@ -2821,20 +2853,51 @@ app.post('/api/admin/ai-batch-add', verifyAdmin, async (req, res) => {
     errors
   });
 });
+app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
+  const { password, school_name, majors } = req.body;
+  if (!school_name || !majors || !Array.isArray(majors)) {
+    res.send({ code: 400, msg: "参数错误" });
+    return;
+  }
+  const results = [];
+  const errors = [];
+  const name = school_name.trim();
+  for (const major of majors) {
+    const majorStr = String(major).trim();
+    if (!majorStr) continue;
+    try {
+      const { majorId, programData } = await getOrCreateMajorAndProgramData(majorStr, name);
+      if (await schoolProgramExists(majorId, name)) {
+        results.push({ major: majorStr, status: 'skipped', msg: '该院校该专业已录入' });
+        continue;
+      }
+      await new Promise((resolve, reject) => {
+        const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        db.run(sql, [majorId, name, programData.school_level || '', programData.location || '', programData.program_features || '', programData.courses || '', programData.course_intros || '', programData.admission_requirements || '', programData.tuition_fee || '', programData.scholarships || '', programData.contact_info || ''], function (err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        });
+      });
+      db.run(`INSERT IGNORE INTO schools (school_name, school_level, location) VALUES (?, ?, ?)`, [name, programData.school_level || '', programData.location || '']);
+      results.push({ major: majorStr, status: 'success' });
+    } catch (err) {
+      errors.push({ major: majorStr, error: err.message });
+    }
+  }
+  res.send({ code: 200, msg: `批量添加完成，成功${results.length}个，失败${errors.length}个`, results, errors });
+});
 
 // 管理员：只填学校名，AI 拉取该校本科招生专业列表并逐个录入（专业自动创建）
-app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) => {
+// 同时挂载 /admin/... 与 /api/admin/...，以兼容 Vercel 代理到后端时的路径
+const handleAiAddSchoolAllMajors = async (req, res) => {
   const { password, school_name } = req.body;
-  
   if (!school_name || !school_name.trim()) {
     res.send({ code: 400, msg: "请填写学校名称" });
     return;
   }
-  
   const name = school_name.trim();
   const results = [];
   const errors = [];
-  
   try {
     const listPrompt = `请列出「${name}」的本科招生专业列表。只返回一个 JSON 数组，格式为 ["专业名称1", "专业名称2", ...]，不要其他说明。`;
     const listResponse = await callDataEntryAI(listPrompt, '你只输出一个 JSON 数组，不要 markdown 代码块包裹。');
@@ -2850,7 +2913,6 @@ app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) =>
       res.send({ code: 500, msg: "未能解析到招生专业列表，请稍后重试或手动填写专业" });
       return;
     }
-
     for (const major of majorNames) {
       const majorStr = String(major).trim();
       if (!majorStr) continue;
@@ -2885,7 +2947,6 @@ app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) =>
         errors.push({ major: majorStr, error: err.message });
       }
     }
-
     res.send({
       code: 200,
       msg: `已检索并添加完成，成功 ${results.length} 个，失败 ${errors.length} 个`,
@@ -2894,9 +2955,15 @@ app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, async (req, res) =>
     });
   } catch (err) {
     console.error("AI 按学校添加所有专业失败:", err);
-    res.send({ code: 500, msg: "检索失败: " + err.message });
+    const msg = err.message || '';
+    const hint = !DEEPSEEK_API_KEY
+      ? ' 请在 Vercel 项目 Environment Variables 中配置 DEEPSEEK_API_KEY。'
+      : '';
+    res.send({ code: 500, msg: "检索失败: " + msg + hint });
   }
-});
+};
+app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, handleAiAddSchoolAllMajors);
+app.post('/admin/ai-add-school-all-majors', verifyAdmin, handleAiAddSchoolAllMajors);
 
 // ========== 专业动态/新闻 API ==========
 // 新闻列表：limit 条数，random=1 随机，major_id 按专业筛
