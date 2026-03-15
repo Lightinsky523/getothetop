@@ -1550,7 +1550,18 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: adminPassword, school_name: schoolName })
         });
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (_) {
+          resultDiv.innerHTML = `
+            <div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">
+              <strong>❌ 请求失败</strong><br><small>后端返回格式异常（${res.status}），请确认后端服务已启动且 Vercel 代理目标可访问。</small>
+            </div>
+          `;
+          return;
+        }
         if (data.code === 200) {
           const successCount = data.results.filter(r => r.status === 'success').length;
           const skippedCount = data.results.filter(r => r.status === 'skipped').length;
