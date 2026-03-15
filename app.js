@@ -74,12 +74,11 @@ function resolveDataDir() {
 
 const DATA_DIR = resolveDataDir();
 
-// ----- 阿里云百炼（千问）配置：智能查询 + 学生证/文本审核 -----
-// 应用调用用 BAILIAN_* ；模型调用（学生证视觉、文本审核）用 DASHSCOPE_API_KEY（灵积模型 API Key），未配置时回退到 BAILIAN_API_KEY
+// ----- 阿里云百炼（千问）配置：智能查询 + 学生证鉴伪 + 文本审核 共用同一 Key -----
+// 志愿查询用应用 completion；学生证鉴伪、发帖/评论审核用模型 API（compatible-mode），均使用 BAILIAN_API_KEY
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY;
 const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID;
-const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || BAILIAN_API_KEY; // 学生证鉴伪/文本审核用模型 API，建议单独配置灵积 Key
-const DASHSCOPE_VISION_MODEL = process.env.DASHSCOPE_VISION_MODEL || 'qwen-vl-plus'; // 视觉模型，可选 qwen2-vl-7b-instruct 等
+const DASHSCOPE_VISION_MODEL = process.env.DASHSCOPE_VISION_MODEL || 'qwen-vl-plus'; // 学生证视觉模型
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
@@ -1619,7 +1618,6 @@ app.get('/api/auth/backend-config', (req, res) => {
     code: 200,
     smtpConfigured: !!SMTP_PASS,
     bailianConfigured: !!BAILIAN_API_KEY,
-    dashscopeConfigured: !!DASHSCOPE_API_KEY,
     msg: 'OK'
   });
 });
@@ -1639,7 +1637,7 @@ app.post('/api/auth/send-code', async (req, res) => {
 
   if (!SMTP_PASS) {
     console.error("未配置 SMTP_PASS，无法发送验证码邮件");
-    res.send({ code: 503, msg: "邮件服务未配置，暂时无法发送验证码" });
+    res.send({ code: 503, msg: "未配置邮件服务，无法发送验证码。请在后端服务器环境变量中配置 SMTP_PASS（163 邮箱需使用授权码）。" });
     return;
   }
 
@@ -1748,11 +1746,10 @@ app.post('/api/auth/verify', (req, res) => {
   );
 });
 
-/** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工）；使用 DASHSCOPE_API_KEY（灵积模型 Key） */
+/** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工）；与志愿查询共用 BAILIAN_API_KEY */
 async function callBailianVisionStudentId(imageBase64) {
-  const apiKey = DASHSCOPE_API_KEY;
-  if (!apiKey) {
-    console.warn('[学生证鉴伪] 未配置 DASHSCOPE_API_KEY 或 BAILIAN_API_KEY，直接转人工审核');
+  if (!BAILIAN_API_KEY) {
+    console.warn('[学生证鉴伪] 未配置 BAILIAN_API_KEY，直接转人工审核');
     return 'review';
   }
   const fetch = (await import('node-fetch')).default;
@@ -1762,7 +1759,7 @@ async function callBailianVisionStudentId(imageBase64) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
       },
       body: JSON.stringify({
         model: DASHSCOPE_VISION_MODEL,
@@ -1800,9 +1797,9 @@ async function callBailianVisionStudentId(imageBase64) {
   return 'review';
 }
 
-/** 百炼文本审核：判断标题+内容+标签是否违规，返回 'pass' | 'block' | 'review'；使用 DASHSCOPE_API_KEY */
+/** 百炼文本审核：判断标题+内容+标签是否违规，返回 'pass' | 'block' | 'review'；与志愿查询共用 BAILIAN_API_KEY */
 async function callBailianTextModeration(title, content, tags) {
-  if (!DASHSCOPE_API_KEY) return 'review';
+  if (!BAILIAN_API_KEY) return 'review';
   const fetch = (await import('node-fetch')).default;
   const text = [title, content, tags].filter(Boolean).join('\n').slice(0, 3000);
   if (!text.trim()) return 'pass';
@@ -1811,7 +1808,7 @@ async function callBailianTextModeration(title, content, tags) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`
+        'Authorization': `Bearer ${BAILIAN_API_KEY}`
       },
       body: JSON.stringify({
         model: 'qwen-turbo',
