@@ -537,7 +537,7 @@
               <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
             </div>
             <div id="verify-step2" style="display: none;">
-              <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 4px;">验证码已发送，识别学校：<strong id="verify-school-name"></strong></p>
+              <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 4px;">验证码已发送到您的邮箱，识别学校：<strong id="verify-school-name"></strong></p>
               <p style="font-size: 12px; color: var(--text-soft); margin-bottom: 8px;">若未收到请检查垃圾邮件；163 邮箱需使用「授权码」登录 SMTP。</p>
               <div class="form-grid" style="margin-bottom: 8px;">
                 <input type="text" class="input" id="verify-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
@@ -841,9 +841,9 @@
         if (d.code === 200) {
           var parts = [];
           parts.push(d.smtpConfigured ? '邮件已配置' : '邮件未配置');
-          parts.push(d.dashscopeConfigured ? 'AI鉴伪已配置' : 'AI鉴伪未配置');
+          parts.push(d.bailianConfigured ? '百炼（志愿查询+学生证鉴伪）已配置' : '百炼未配置');
           cfgEl.textContent = '后端: ' + parts.join('，') + '。' + (API_BASE ? '（当前接口: ' + API_BASE + '）' : '');
-          cfgEl.style.color = (d.smtpConfigured && d.dashscopeConfigured) ? 'var(--success)' : 'var(--text-soft)';
+          cfgEl.style.color = (d.smtpConfigured && d.bailianConfigured) ? 'var(--success)' : 'var(--text-soft)';
         } else {
           cfgEl.textContent = '无法获取后端配置';
         }
