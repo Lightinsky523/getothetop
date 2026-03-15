@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>学生分享 - 志愿填报参考</title>
+  <style>
+    :root {
+      --bg: #f8f7f4;
+      --bg-elevated: #ffffff;
+      --accent: #1a1a1a;
+      --accent-muted: #4a5568;
+      --text: #1a1a1a;
+      --text-soft: #5f6b7a;
+      --border-subtle: #e2e4e8;
+      --error: #c53030;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+      color: var(--text);
+      background: #f0ede8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 24px;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1400px;
+      background: #fffef9;
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .app-inner { position: relative; z-index: 1; }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; }
+
+    .logo {
+      width: 42px; height: 42px; border-radius: var(--radius);
+      background: var(--accent); display: flex; align-items: center; justify-content: center;
+      color: #fffef9; font-weight: 600; font-size: 18px; text-decoration: none;
+    }
+
+    .title-block h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.02em; }
+    .title-block p { margin: 4px 0 0; font-size: 14px; color: var(--text-soft); }
+
+    .nav-tabs {
+      display: inline-flex; gap: 2px; padding: 2px;
+      background: #f0ede8; border-radius: var(--radius);
+    }
+
+    .nav-tab {
+      border: none; background: transparent; color: var(--text-soft);
+      padding: 8px 16px; border-radius: 6px; font-size: 13px;
+      cursor: pointer; text-decoration: none; transition: all 0.15s;
+    }
+
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
+
+    .nav-tab.admin-link {
+      background: var(--accent); color: #fffef9; margin-left: 2px;
+    }
+    .nav-tab.admin-link:hover { opacity: 0.9; }
+
+    .main-content {
+      background: #fffef9; border-radius: var(--radius-lg);
+      padding: 24px; border: 1px solid var(--border-subtle);
+    }
+
+    .section-title {
+      font-size: 18px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+
+    .section-title .icon-pill {
+      width: 20px; height: 20px; border-radius: 4px;
+      background: var(--accent); color: #fffef9;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+
+    .section-desc { margin: 4px 0 20px; font-size: 13px; color: var(--text-soft); }
+
+    /* 搜索栏 */
+    .search-bar {
+      display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;
+    }
+
+    .input, .select {
+      border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      background: #fff; padding: 11px 12px; color: var(--text); font-size: 14px;
+      outline: none;
+    }
+
+    .input:focus, .select:focus { border-color: var(--accent); }
+    .input { flex: 1; min-width: 200px; }
+    .select { min-width: 150px; }
+
+    .primary-btn {
+      border: 1px solid var(--accent); border-radius: var(--radius);
+      padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
+      background: var(--accent); color: #fffef9; display: inline-flex;
+      align-items: center; gap: 6px;
+    }
+
+    .primary-btn:hover { opacity: 0.9; }
+    .primary-btn.secondary { background: transparent; color: var(--accent); }
+
+    /* 上传表单 */
+    .upload-section {
+      background: #f8f7f4; border-radius: var(--radius);
+      padding: 20px; border: 1px solid var(--border-subtle);
+      margin-bottom: 24px;
+    }
+
+    .form-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+    }
+
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .textarea {
+      width: 100%; border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      background: #fff; padding: 11px 12px; color: var(--text); font-size: 14px;
+      outline: none; resize: vertical; font-family: inherit; min-height: 120px;
+    }
+
+    .textarea:focus { border-color: var(--accent); }
+
+    /* 图片上传 */
+    .image-upload {
+      margin-top: 12px;
+    }
+
+    .image-upload-label {
+      display: block; font-size: 14px; color: var(--text-soft); margin-bottom: 8px;
+    }
+
+    .image-input-wrapper {
+      position: relative; display: inline-block;
+    }
+
+    .image-input-wrapper input[type="file"] {
+      position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;
+    }
+
+    .image-upload-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius); background: #fff; color: var(--text-soft);
+      font-size: 13px; cursor: pointer;
+    }
+
+    .image-upload-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    .image-preview-grid {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;
+    }
+
+    .image-preview {
+      position: relative; width: 100px; height: 100px;
+      border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border-subtle);
+    }
+
+    .image-preview img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+
+    .image-preview .remove-btn {
+      position: absolute; top: 2px; right: 2px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--error); color: #fff; border: none;
+      font-size: 12px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+    }
+
+    /* 分享列表 */
+    .share-list {
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .share-list.folded-list { margin-top: 12px; }
+    .folded-posts-wrap { margin-top: 16px; }
+
+    .share-card {
+      background: #f8f7f4; border-radius: var(--radius);
+      padding: 20px; border: 1px solid var(--border-subtle);
+      transition: all 0.2s;
+    }
+
+    .share-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+
+    .share-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .share-meta {
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .share-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 600;
+    }
+
+    .share-author h4 { margin: 0; font-size: 14px; font-weight: 600; }
+    .share-author p { margin: 2px 0 0; font-size: 12px; color: var(--text-soft); }
+
+    .share-school-tag {
+      font-size: 11px; padding: 4px 8px; border-radius: 4px;
+      background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+    }
+
+    .share-content {
+      font-size: 14px; line-height: 1.7; color: var(--text-soft);
+      margin-bottom: 12px;
+    }
+
+    .share-images {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+    }
+
+    .share-image {
+      width: 120px; height: 120px; border-radius: var(--radius);
+      overflow: hidden; border: 1px solid var(--border-subtle); cursor: pointer;
+    }
+
+    .share-image img { width: 100%; height: 100%; object-fit: cover; }
+
+    .share-tags {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+
+    .tag {
+      font-size: 11px; padding: 3px 8px; border-radius: 4px;
+      border: 1px solid var(--border-subtle); color: var(--text-soft); background: #fff;
+    }
+
+    .share-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-soft);
+    }
+    .share-actions {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .action-btn {
+      background: none; border: none; color: var(--text-soft);
+      font-size: 12px; cursor: pointer; padding: 0 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .action-btn:hover { color: var(--accent); }
+    .action-btn.liked { color: #c53030; }
+    .report-link {
+      background: none; border: none; color: var(--text-soft);
+      font-size: 12px; cursor: pointer; padding: 0 4px;
+      text-decoration: none;
+    }
+    .report-link:hover { color: var(--error); text-decoration: underline; }
+    /* 评论区 */
+    .comments-section {
+      margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .comments-header {
+      font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-soft);
+    }
+    .comment-list { list-style: none; margin: 0; padding: 0; }
+    .comment-item {
+      padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
+      font-size: 13px;
+    }
+    .comment-item:last-child { border-bottom: none; }
+    .comment-replies { margin-left: 24px; margin-top: 8px; }
+    .comment-meta {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    .comment-nickname { font-weight: 600; color: var(--text); }
+    .comment-school {
+      font-size: 11px; padding: 2px 6px; border-radius: 4px;
+      background: #fef3c7; color: #92400e;
+    }
+    .comment-time { font-size: 11px; color: var(--text-soft); margin-left: auto; }
+    .comment-content { color: var(--text-soft); line-height: 1.5; margin-bottom: 6px; }
+    .comment-actions {
+      display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-soft);
+    }
+    .comment-actions button {
+      background: none; border: none; cursor: pointer; color: inherit; padding: 0;
+    }
+    .comment-actions button:hover { color: var(--accent); }
+    .comment-input-wrap {
+      margin-top: 12px; display: flex; gap: 8px; align-items: flex-start;
+    }
+    .comment-input-wrap textarea {
+      flex: 1; min-height: 60px; resize: vertical;
+      border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      padding: 8px 12px; font-size: 13px; font-family: inherit;
+    }
+    .reply-input-wrap { margin-top: 8px; margin-left: 24px; }
+    .reply-input-wrap textarea { width: 100%; min-height: 50px; resize: vertical; font-size: 13px; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border-subtle); }
+    .btn-toggle-comments { background: none; border: none; color: var(--text-soft); font-size: 12px; cursor: pointer; padding: 0 4px; }
+    .btn-toggle-comments:hover { color: var(--accent); }
+
+    .loading {
+      text-align: center; padding: 60px 20px; color: var(--text-soft);
+    }
+
+    .empty-state {
+      text-align: center; padding: 40px 20px; color: var(--text-soft);
+    }
+
+    /* 图片查看模态框 */
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8); z-index: 3000; justify-content: center; align-items: center;
+    }
+
+    .modal.show { display: flex; }
+
+    .modal img { max-width: 90%; max-height: 90%; border-radius: var(--radius); }
+
+    .modal-close {
+      position: absolute; top: 20px; right: 20px;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: #fff; border: none; font-size: 20px; cursor: pointer;
+    }
+
+    /* 切换按钮 */
+    .section-toggle {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+    }
+
+    .pill-switch { display: inline-flex; gap: 2px; padding: 2px; background: #f0ede8; border-radius: var(--radius); }
+    .pill-switch button { border: none; background: transparent; color: var(--text-soft); padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .pill-switch button.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
+
+    .form-section { display: none; }
+    .form-section.active { display: block; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; z-index: 2000; display: none; }
+    .toast.show { display: block; }
+    .toast.success { background: #38a169; }
+    .toast.error { background: var(--error); }
+
+    /* 信息认证弹窗：仅显示认证表单，不显示底部搜索栏等 */
+    .auth-modal {
+      display: none; position: fixed; inset: 0; z-index: 2500;
+      background: rgba(0,0,0,0.45); align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+    }
+    .auth-modal.show { display: flex; }
+    .auth-modal-box {
+      background: #fffef9; border-radius: var(--radius-lg); padding: 28px;
+      max-width: 480px; width: 100%; max-height: 90vh; overflow: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid var(--border-subtle);
+    }
+    .auth-modal-box .upload-section { margin-bottom: 0; background: transparent; border: none; padding: 0; }
+    .auth-modal-box .section-desc { margin-bottom: 16px; }
+
+    /* 列表视图 / 编辑视图 切换 */
+    .list-view { display: block; }
+    .list-view.hidden { display: none !important; }
+    .editor-view { display: none; }
+    .editor-view.active { display: block; }
+
+    @media (max-width: 900px) {
+      .app-shell { border-radius: 24px; padding: 20px 16px; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .search-bar { flex-direction: column; }
+      .input, .select { width: 100%; }
+    }
+
+    .contact-bar {
+      margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-subtle);
+      font-size: 13px; color: var(--text-soft); text-align: center;
+    }
+    .contact-bar a { color: var(--accent); text-decoration: none; }
+    .contact-bar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="app-inner">
+      <header class="header">
+        <div class="brand">
+          <a href="index.html" class="logo">志</a>
+          <div class="title-block">
+            <h1>学生分享</h1>
+            <p>学长学姐的真实经历</p>
+          </div>
+        </div>
+        <nav class="nav-tabs">
+          <a href="index.html" class="nav-tab">志愿填报</a>
+          <a href="major-info.html" class="nav-tab">专业院校信息概览</a>
+          <a href="student-shares.html" class="nav-tab active">学生分享</a>
+          <a href="admin.html" class="nav-tab admin-link" onclick="return checkAdminAccess()">管理者通道</a>
+        </nav>
+      </header>
+
+      <div class="main-content">
+        <div class="section-title">
+          <span class="icon-pill">享</span>
+          学生分享
+        </div>
+        <!-- 列表视图：搜索 + 分享列表 -->
+        <div id="list-view" class="list-view">
+        <p class="section-desc">
+          阅读在读学生的真实分享。仅大学在读生完成认证（邮箱或学生证）后才可发帖，且只能发布认证学校相关内容。可举报不当帖子。
+        </p>
+        <div class="search-bar">
+          <input type="text" class="input" id="search-keyword" placeholder="搜索学校、专业或关键词..." />
+          <select class="select" id="search-school">
+            <option value="">全部学校</option>
+          </select>
+          <select class="select" id="search-major">
+            <option value="">全部专业</option>
+          </select>
+          <button class="primary-btn" onclick="searchShares()">搜索</button>
+          <button type="button" class="primary-btn secondary" onclick="refreshShares()" title="重新从服务器加载列表">刷新</button>
+          <button class="primary-btn secondary" id="btn-write-share" onclick="onWriteShareClick()">+ 写分享</button>
+          <button type="button" class="primary-btn secondary" id="quick-auth-btn" style="margin-left: 6px;" onclick="openAuthModal()">立即认证</button>
+          <span id="guest-badge" style="font-size: 12px; color: var(--text-soft); margin-left: 8px;">游客</span>
+          <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
+          <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
+        </div>
+
+        <!-- 分享列表 -->
+        <div class="share-list" id="share-list">
+          <div class="loading">正在加载分享...</div>
+        </div>
+        </div>
+
+        <!-- 帖子编辑页（认证后填写内容并上传） -->
+        <div id="upload-form" class="upload-section editor-view">
+          <div class="section-title">
+            <span class="icon-pill">写</span>
+            分享你的经历
+          </div>
+          <p class="section-desc" id="upload-form-desc">本页已视为认证通过，可直接发帖。学校已锁定为认证学校，可选填专业、年级。一经发布可供所有用户浏览。</p>
+          
+          <div class="form-grid" id="upload-form-nickname-row" style="display: none;">
+            <input type="text" class="input" id="upload-nickname-display" readonly placeholder="昵称" style="background: #f8f7f4; cursor: not-allowed; max-width: 200px;" />
+          </div>
+          <div class="form-grid" id="upload-form-school-row">
+            <input type="text" class="input" id="upload-school" readonly placeholder="认证学校（必填，已锁定）" style="background: #f8f7f4; cursor: not-allowed;" title="发帖必须为认证学校" />
+            <select class="select" id="upload-major">
+              <option value="">专业（选填）</option>
+            </select>
+            <select class="select" id="upload-grade">
+              <option value="">年级（选填）</option>
+              <option value="大一">大一</option>
+              <option value="大二">大二</option>
+              <option value="大三">大三</option>
+              <option value="大四">大四</option>
+              <option value="研一">研一</option>
+              <option value="研二">研二</option>
+              <option value="研三">研三</option>
+            </select>
+            <input type="text" class="input" id="upload-title" placeholder="分享标题" />
+          </div>
+          
+          <textarea class="textarea" id="upload-content" placeholder="写下你的真实经历、学习感受、经验教训..." style="margin-top: 12px;"></textarea>
+          
+          <!-- 图片上传 -->
+          <div class="image-upload">
+            <label class="image-upload-label">上传图片（最多5张）</label>
+            <div class="image-input-wrapper">
+              <input type="file" id="upload-images" accept="image/*" multiple onchange="handleImageSelect(event)" />
+              <div class="image-upload-btn">
+                <span>📷</span> 选择图片
+              </div>
+            </div>
+            <div class="image-preview-grid" id="image-preview-grid"></div>
+          </div>
+          
+          <input type="text" class="input" id="upload-tags" placeholder="标签，用逗号分隔（如：学习方法,竞赛经历,实习经验）" style="margin-top: 12px;" />
+          
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; color: var(--text-soft);">无需实名，保护隐私</span>
+            <div>
+              <button class="primary-btn secondary" onclick="toggleUploadForm()" style="margin-right: 8px;">取消</button>
+              <button class="primary-btn" onclick="submitShare()">提交分享</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="contact-bar">联系我们：<a href="mailto:GAS_service120@163.com">GAS_service120@163.com</a></div>
+    </div>
+  </div>
+
+  <!-- 信息认证弹窗（点击「写分享」且未认证时弹出，不显示底部搜索栏） -->
+  <div id="auth-modal" class="auth-modal" onclick="if(event.target===this) closeAuthModal()">
+    <div class="auth-modal-box" onclick="event.stopPropagation()">
+      <div id="verification-panel" class="upload-section">
+        <div class="section-title">
+          <span class="icon-pill">验</span>
+          信息认证
+        </div>
+        <p class="section-desc">仅在读生需认证，认证通过后可发帖（仅限认证学校内容）。</p>
+        <p id="backend-config-msg" style="font-size: 12px; color: var(--text-soft); margin-bottom: 12px; display: none;"></p>
+        <div id="auth-category-current">
+          <div class="pill-switch" style="margin-bottom: 16px;">
+            <button type="button" id="auth-tab-email" class="active" onclick="switchAuthMode('email')">邮箱认证</button>
+            <button type="button" id="auth-tab-student" onclick="switchAuthMode('student')">学生证认证</button>
+          </div>
+          <div id="auth-mode-email">
+            <div id="verify-step1" class="form-grid" style="margin-bottom: 12px;">
+              <input type="email" class="input" id="verify-email" placeholder="学校邮箱，如 xxx@pku.edu.cn" style="grid-column: 1 / -1;" />
+              <button class="primary-btn" id="send-code-btn" onclick="sendVerifyCode()">发送验证码</button>
+              <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
+            </div>
+            <div id="verify-step2" style="display: none;">
+              <p style="font-size: 13px; color: var(--text-soft); margin-bottom: 4px;">验证码已发送到您的邮箱，识别学校：<strong id="verify-school-name"></strong></p>
+              <p style="font-size: 12px; color: var(--text-soft); margin-bottom: 8px;">若未收到请检查垃圾邮件；163 邮箱需使用「授权码」登录 SMTP。</p>
+              <div class="form-grid" style="margin-bottom: 8px;">
+                <input type="text" class="input" id="verify-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
+              </div>
+              <div class="form-grid" style="margin-bottom: 12px;">
+                <input type="text" class="input" id="verify-code" placeholder="输入6位验证码" maxlength="6" style="max-width: 160px;" />
+                <button class="primary-btn" onclick="doVerify()">确认认证</button>
+                <button class="primary-btn secondary" onclick="resetVerifyStep()">重新发送</button>
+              </div>
+            </div>
+          </div>
+          <div id="auth-mode-student" style="display: none;">
+            <p class="section-desc">上传学生证照片，系统将进行鉴伪；存疑时转人工审核。</p>
+            <div class="form-grid" style="margin-bottom: 8px;">
+              <input type="text" class="input" id="student-id-nickname" placeholder="昵称（用于展示）" style="max-width: 200px;" />
+            </div>
+            <div class="form-grid" style="margin-bottom: 12px;">
+              <select class="select" id="student-id-school" style="min-width: 200px;">
+                <option value="">选择学校</option>
+              </select>
+            </div>
+            <div class="image-upload" style="margin-bottom: 12px;">
+              <label class="image-upload-label">学生证图片（1 张）</label>
+              <div class="image-input-wrapper">
+                <input type="file" id="student-id-image" accept="image/*" onchange="onStudentIdImageChange(event)" />
+                <div class="image-upload-btn"><span>📷</span> 选择图片</div>
+              </div>
+              <div id="student-id-preview" class="image-preview-grid"></div>
+            </div>
+            <div class="form-grid">
+              <button class="primary-btn" id="submit-student-id-btn" onclick="submitStudentId()" disabled>提交认证</button>
+              <button class="primary-btn secondary" onclick="closeAuthModal()">取消</button>
+            </div>
+            <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
+            <button type="button" class="primary-btn secondary" id="student-id-query-btn" style="margin-top: 8px; display: none;" onclick="queryStudentIdStatusOnce()">查询认证结果</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片查看模态框 -->
+  <div class="modal" id="image-modal" onclick="closeModal()">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <img id="modal-image" src="" alt="预览" />
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // 支持通过 URL 参数指定接口地址，便于排查：?api_base=https://你的后端域名:端口
+
+   // 1. 优先处理URL参数（例如: ?api_base=https://your-backend.com）
+const urlParams = new URLSearchParams(window.location.search);
+const urlApiBase = urlParams.get('api_base');
+  
+if (urlApiBase) {
+  try {
+    const cleanBase = decodeURIComponent(urlApiBase).replace(/\/$/, '');
+    // ✅ 关键修复：检查是否与当前域名相同，如果是则不存储
+    if (cleanBase !== window.location.origin) {
+      localStorage.setItem('api_base_override', cleanBase);
+    }
+    // 移除URL参数避免重复设置
+    const cleanUrl = window.location.origin + window.location.pathname;
+    history.replaceState({}, document.title, cleanUrl);
+  } catch (e) {
+    console.warn('URL参数api_base解析失败', e);
+  }
+}
+
+// 2. 确定API基础地址
+const override = localStorage.getItem('api_base_override');
+let baseUrl = '';
+  
+if (override) {
+  baseUrl = override;
+} else if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+  baseUrl = 'http://localhost:3000'; // 本地开发默认
+}
+
+// 3. 暴露为全局变量
+window.API_CONFIG = {
+  BASE_URL: baseUrl,
+  isLocalDev: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+};
+    
+    const API_BASE = localStorage.getItem('api_base_override') || '';
+    let selectedImages = [];
+    let allShares = [];
+    let schoolsData = [];
+    let majorsData = [];
+    let authToken = localStorage.getItem('authToken') || '';
+    let verifiedSchool = localStorage.getItem('verifiedSchool') || '';
+    let authType = localStorage.getItem('authType') || ''; // 'email' | 'student_id' | 'gaokao'
+    let verifiedNickname = localStorage.getItem('verifiedNickname') || '';
+    let authMode = 'email';
+    let studentIdImageBase64 = '';
+    function getOrCreateGuestId() {
+      let id = localStorage.getItem('guestId');
+      if (!id) {
+        id = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        localStorage.setItem('guestId', id);
+      }
+      return id;
+    }
+
+    // 切换认证方式（在读生：邮箱 / 学生证）
+    function switchAuthMode(mode) {
+      authMode = mode;
+      document.getElementById('auth-tab-email').classList.toggle('active', mode === 'email');
+      document.getElementById('auth-tab-student').classList.toggle('active', mode === 'student');
+      document.getElementById('auth-mode-email').style.display = mode === 'email' ? 'block' : 'none';
+      document.getElementById('auth-mode-student').style.display = mode === 'student' ? 'block' : 'none';
+      if (mode === 'student') {
+        document.getElementById('verify-step2').style.display = 'none';
+        loadStudentIdSchoolOptions();
+      }
+    }
+
+    function loadStudentIdSchoolOptions() {
+      const sel = document.getElementById('student-id-school');
+      if (sel.options.length > 1) return;
+      fetch(API_BASE + '/api/schools').then(r => r.json()).then(data => {
+        if (data.code === 200 && data.data) {
+          sel.innerHTML = '<option value="">选择学校</option>';
+          data.data.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.school_name;
+            o.textContent = s.school_name;
+            sel.appendChild(o);
+          });
+        }
+      });
+    }
+
+    function onStudentIdImageChange(e) {
+      const file = e.target.files && e.target.files[0];
+      studentIdImageBase64 = '';
+      document.getElementById('student-id-preview').innerHTML = '';
+      document.getElementById('submit-student-id-btn').disabled = true;
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        studentIdImageBase64 = ev.target.result;
+        document.getElementById('student-id-preview').innerHTML = '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
+        document.getElementById('submit-student-id-btn').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function submitStudentId() {
+      const school = document.getElementById('student-id-school').value;
+      if (!school) {
+        showToast('请选择学校', 'error');
+        return;
+      }
+      if (!studentIdImageBase64) {
+        showToast('请上传学生证图片', 'error');
+        return;
+      }
+      const btn = document.getElementById('submit-student-id-btn');
+      const msgEl = document.getElementById('student-id-status-msg');
+      btn.disabled = true;
+      msgEl.style.display = 'block';
+      msgEl.textContent = '提交中…';
+      try {
+        const nickname = (document.getElementById('student-id-nickname') && document.getElementById('student-id-nickname').value || '').trim() || '在读生';
+        const res = await fetch(API_BASE + '/api/auth/student-id', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ school, imageBase64: studentIdImageBase64, nickname })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.authToken && data.school) {
+          authToken = data.authToken;
+          verifiedSchool = data.school;
+          authType = 'student_id';
+          verifiedNickname = data.nickname || nickname || '在读生';
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          localStorage.setItem('authType', authType);
+          localStorage.setItem('verifiedNickname', verifiedNickname);
+          closeAuthModal();
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
+          setAuthBadgeText();
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+          updateWriteShareButtonVisibility();
+          showToast('认证成功', 'success');
+          closeAuthModal();
+          return;
+        }
+        if (data.code != null && data.code !== 200) {
+          showToast(data.msg || '提交失败', 'error');
+          btn.disabled = false;
+          return;
+        }
+        if (data.status === 'rejected') {
+          msgEl.textContent = data.msg || '未通过鉴伪，请使用真实学生证。';
+          btn.disabled = false;
+          return;
+        }
+        msgEl.textContent = '已提交，等待人工审核。请稍后点击下方按钮查询，或保持本页等待自动刷新。';
+        pollStudentIdStatus(data.submissionId, msgEl, btn);
+        window._lastStudentIdSubmissionId = data.submissionId;
+        if (data.submissionId) localStorage.setItem('lastStudentIdSubmissionId', String(data.submissionId));
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+      } catch (e) {
+        msgEl.textContent = '网络错误';
+        btn.disabled = false;
+      }
+    }
+
+    function pollStudentIdStatus(submissionId, msgEl, btn) {
+      const t = setInterval(async () => {
+        try {
+          const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
+          const data = await res.json().catch(() => ({}));
+          if (data.code === 200 && data.status === 'approved' && data.authToken) {
+            clearInterval(t);
+            authToken = data.authToken;
+            verifiedSchool = data.school || '';
+            authType = 'student_id';
+            verifiedNickname = data.nickname || '在读生';
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('verifiedSchool', verifiedSchool);
+            localStorage.setItem('authType', authType);
+            localStorage.setItem('verifiedNickname', verifiedNickname);
+            closeAuthModal();
+            document.getElementById('auth-badge').style.display = 'inline';
+            document.getElementById('guest-badge').style.display = 'none';
+            setAuthBadgeText();
+            document.getElementById('exit-auth-btn').style.display = 'inline-block';
+            var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+            updateWriteShareButtonVisibility();
+            msgEl.style.display = 'none';
+            document.getElementById('student-id-query-btn').style.display = 'none';
+            showToast('认证已通过', 'success');
+            closeAuthModal();
+          }
+          if (data.status === 'rejected') {
+            clearInterval(t);
+            msgEl.textContent = '审核未通过。';
+            btn.disabled = false;
+          }
+        } catch (e) {}
+      }, 4000);
+      setTimeout(() => { clearInterval(t); btn.disabled = false; document.getElementById('student-id-query-btn').style.display = 'inline-block'; }, 5 * 60 * 1000);
+    }
+
+    async function queryStudentIdStatusOnce() {
+      const submissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
+      if (!submissionId) {
+        showToast('请先提交学生证认证', 'error');
+        return;
+      }
+      const msgEl = document.getElementById('student-id-status-msg');
+      const queryBtn = document.getElementById('student-id-query-btn');
+      queryBtn.disabled = true;
+      msgEl.textContent = '正在查询…';
+      try {
+        const res = await fetch(API_BASE + '/api/auth/student-id/status?submissionId=' + submissionId);
+        const data = await res.json().catch(() => ({}));
+        if (data.code === 200 && data.status === 'approved' && data.authToken) {
+          authToken = data.authToken;
+          verifiedSchool = data.school || '';
+          authType = 'student_id';
+          verifiedNickname = data.nickname || '在读生';
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          localStorage.setItem('authType', authType);
+          localStorage.setItem('verifiedNickname', verifiedNickname);
+          closeAuthModal();
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
+          setAuthBadgeText();
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+          updateWriteShareButtonVisibility();
+          msgEl.style.display = 'none';
+          queryBtn.style.display = 'none';
+          showToast('认证已通过', 'success');
+          closeAuthModal();
+        } else if (data.code === 200 && data.status === 'rejected') {
+          msgEl.textContent = '审核未通过。';
+        } else {
+          msgEl.textContent = data.status === 'pending_manual' ? '仍在审核中，请稍后再点「查询认证结果」。' : (data.msg || '查询失败');
+        }
+      } catch (e) {
+        msgEl.textContent = '网络错误，请重试';
+      }
+      queryBtn.disabled = false;
+    }
+
+    // 检查管理员权限
+    function checkAdminAccess() {
+      const password = prompt('请输入管理员密码：');
+      if (password === 'a~a~ycyzword+') {
+        sessionStorage.setItem('adminAuth', 'true');
+        return true;
+      } else if (password !== null) {
+        alert('密码错误！');
+      }
+      return false;
+    }
+
+    function setAuthBadgeText() {
+      const el = document.getElementById('auth-school');
+      if (!el) return;
+      el.textContent = verifiedNickname ? verifiedNickname + ' · ' + verifiedSchool : verifiedSchool;
+      updateWriteShareButtonVisibility();
+    }
+    function updateWriteShareButtonVisibility() {
+      // 写分享始终显示，未认证点击时弹出在读生认证
+    }
+
+    function closeAuthModal() {
+      document.getElementById('auth-modal').classList.remove('show');
+    }
+    function openAuthModal() {
+      document.getElementById('auth-modal').classList.add('show');
+      var cfgEl = document.getElementById('backend-config-msg');
+      cfgEl.style.display = 'block';
+      cfgEl.textContent = '正在检查后端…';
+      fetch(API_BASE + '/api/auth/backend-config').then(function(r) { return r.json().catch(function() { return {} }); }).then(function(d) {
+        if (d.code === 200) {
+          var parts = [];
+          parts.push(d.smtpConfigured ? '邮件已配置' : '邮件未配置');
+          parts.push(d.bailianConfigured ? '百炼（志愿查询+学生证鉴伪）已配置' : '百炼未配置');
+          cfgEl.textContent = '后端: ' + parts.join('，') + '。' + (API_BASE ? '（当前接口: ' + API_BASE + '）' : '');
+          cfgEl.style.color = (d.smtpConfigured && d.bailianConfigured) ? 'var(--success)' : 'var(--text-soft)';
+        } else {
+          cfgEl.textContent = '无法获取后端配置';
+        }
+      }).catch(function() {
+        cfgEl.textContent = '无法连接后端。若为静态页或跨域，请在 URL 加 ?api_base=你的后端地址（如 https://服务器:端口）';
+        cfgEl.style.color = 'var(--danger, #c00)';
+      });
+      if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+      }
+    }
+
+    function showListView() {
+      document.getElementById('list-view').classList.remove('hidden');
+      document.getElementById('upload-form').classList.remove('active');
+    }
+    async function showEditorView() {
+      document.getElementById('list-view').classList.add('hidden');
+      document.getElementById('upload-form').classList.add('active');
+      await fillEditorForm();
+    }
+
+    async function fillEditorForm() {
+      authToken = localStorage.getItem('authToken') || authToken;
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      authType = localStorage.getItem('authType') || authType;
+      verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
+      // 一旦进入「分享你的经历」页面即视为认证通过，不再发起 /api/auth/me 校验，避免打断直接发帖
+      if (authToken && verifiedSchool) {
+        // 直接使用本地认证信息填充
+      } else if (authToken) {
+        try {
+          const meRes = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+          const meData = await meRes.json().catch(() => ({}));
+          if (meData.code === 200) {
+            verifiedSchool = meData.school || verifiedSchool;
+            authType = meData.authType || authType;
+            verifiedNickname = meData.nickname != null ? meData.nickname : verifiedNickname;
+            localStorage.setItem('verifiedSchool', verifiedSchool || '');
+            localStorage.setItem('authType', authType || '');
+            localStorage.setItem('verifiedNickname', verifiedNickname || '');
+          } else if (meData.code === 403 || meRes.status === 403) {
+            authToken = '';
+            verifiedSchool = '';
+            authType = '';
+            verifiedNickname = '';
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('verifiedSchool');
+            localStorage.removeItem('authType');
+            localStorage.removeItem('verifiedNickname');
+            showListView();
+            showToast('认证已过期，请重新认证', 'error');
+            return;
+          }
+        } catch (e) {}
+      }
+      const formAlreadyVisible = document.getElementById('upload-form').classList.contains('active');
+      if (!verifiedSchool && !formAlreadyVisible) {
+        showListView();
+        showToast('认证信息不完整，请重新认证', 'error');
+        return;
+      }
+      if (!verifiedSchool && formAlreadyVisible) {
+        verifiedSchool = document.getElementById('upload-school').value || '';
+      }
+      const schoolRow = document.getElementById('upload-form-school-row');
+      const nicknameRow = document.getElementById('upload-form-nickname-row');
+      const descEl = document.getElementById('upload-form-desc');
+      if (schoolRow) schoolRow.style.display = '';
+      if (nicknameRow) {
+        nicknameRow.style.display = '';
+        const nickInput = document.getElementById('upload-nickname-display');
+        if (nickInput) nickInput.value = verifiedNickname || '在读生';
+      }
+      if (descEl) descEl.textContent = '本页已视为认证通过，可直接发帖。学校已锁定为认证学校，可选填专业、年级。一经发布可供所有用户浏览。';
+      document.getElementById('upload-school').value = verifiedSchool;
+      loadMajorsForSchool(verifiedSchool);
+    }
+
+    // 点击「写分享」：未认证仅提示「请先完成信息认证」不弹窗；已认证则进入帖子编辑页
+    async function onWriteShareClick() {
+      authToken = localStorage.getItem('authToken') || authToken;
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      authType = localStorage.getItem('authType') || authType;
+      verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
+      if (authToken && !verifiedSchool) {
+        await restoreAuthFromServer(false);
+        verifiedSchool = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+        authType = localStorage.getItem('authType') || authType;
+        verifiedNickname = localStorage.getItem('verifiedNickname') || verifiedNickname;
+      }
+      const canPost = authToken && !!verifiedSchool;
+      if (!canPost) {
+        showToast('请先完成信息认证', 'error');
+        return;
+      }
+      await showEditorView();
+    }
+
+    // 编辑页「取消」返回列表
+    function toggleUploadForm() {
+      showListView();
+    }
+
+    // 信息认证：发送验证码
+    async function sendVerifyCode() {
+      const email = document.getElementById('verify-email').value.trim().toLowerCase();
+      if (!email) {
+        showToast('请输入学校邮箱', 'error');
+        return;
+      }
+      const suffix = (email.split('@')[1] || '');
+      if (!suffix.endsWith('.edu') && !suffix.endsWith('.edu.cn')) {
+        showToast('请使用学校邮箱（.edu 或 .edu.cn 结尾）', 'error');
+        return;
+      }
+      const btn = document.getElementById('send-code-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/send-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.code === 200) {
+          showToast(data.msg, 'success');
+          document.getElementById('verify-school-name').textContent = data.school || '未知';
+          document.getElementById('verify-step2').style.display = 'block';
+          document.getElementById('verify-code').value = '';
+          btn.disabled = false;
+        } else {
+          showToast(data.msg || '发送失败', 'error');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // 信息认证：确认验证
+    async function doVerify() {
+      const email = document.getElementById('verify-email').value.trim().toLowerCase();
+      const code = document.getElementById('verify-code').value.trim();
+      const nickname = (document.getElementById('verify-nickname') && document.getElementById('verify-nickname').value || '').trim() || '在读生';
+      if (!email || !code) {
+        showToast('请输入邮箱和验证码', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code, nickname })
+        });
+        const contentType = res.headers.get('content-type');
+        let data;
+        try {
+          data = contentType && contentType.includes('application/json') ? await res.json() : {};
+        } catch (_) {
+          data = {};
+        }
+        if ((res.ok || data.code === 200) && data.authToken) {
+          authToken = data.authToken;
+          verifiedSchool = (data.school != null && data.school !== '') ? String(data.school) : '未知';
+          authType = 'email';
+          verifiedNickname = (data.nickname != null && data.nickname !== '') ? String(data.nickname) : (nickname || '在读生');
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('verifiedSchool', verifiedSchool);
+          localStorage.setItem('authType', authType);
+          localStorage.setItem('verifiedNickname', verifiedNickname);
+          closeAuthModal();
+          document.getElementById('auth-badge').style.display = 'inline';
+          document.getElementById('guest-badge').style.display = 'none';
+          setAuthBadgeText();
+          document.getElementById('exit-auth-btn').style.display = 'inline-block';
+          var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+          updateWriteShareButtonVisibility();
+          showToast('认证成功，可在认证学校下发帖', 'success');
+          closeAuthModal();
+        } else {
+          showToast((data && data.msg) ? data.msg : '验证失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    function resetVerifyStep() {
+      document.getElementById('verify-step2').style.display = 'none';
+      document.getElementById('verify-code').value = '';
+    }
+
+    // 加载学校选项
+    async function loadSchoolOptions() {
+      try {
+        const res = await fetch(API_BASE + '/api/schools');
+        const data = await res.json();
+        if (data.code === 200) {
+          schoolsData = data.data;
+          const searchSchoolSelect = document.getElementById('search-school');
+          searchSchoolSelect.innerHTML = '<option value="">全部学校</option>';
+          data.data.forEach(school => {
+            const option = document.createElement('option');
+            option.value = school.school_name;
+            option.textContent = school.school_name;
+            searchSchoolSelect.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error('加载学校列表失败:', err);
+      }
+    }
+
+    // 为指定学校加载专业（认证后发帖用）
+    async function loadMajorsForSchool(schoolName) {
+      const majorSelect = document.getElementById('upload-major');
+      majorSelect.innerHTML = '<option value="">选择专业</option>';
+      if (!schoolName) return;
+      try {
+        const res = await fetch(API_BASE + '/api/schools/' + encodeURIComponent(schoolName) + '/majors');
+        const data = await res.json();
+        if (data.code === 200 && data.data) {
+          data.data.forEach(major => {
+            const option = document.createElement('option');
+            option.value = major.major_name;
+            option.textContent = major.major_name;
+            majorSelect.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error('加载专业列表失败:', err);
+      }
+    }
+
+    // 加载专业选项（用于搜索）
+    async function loadMajorOptions() {
+      try {
+        const res = await fetch(API_BASE + '/api/majors');
+        const data = await res.json();
+        if (data.code === 200) {
+          majorsData = data.data;
+          const searchMajorSelect = document.getElementById('search-major');
+          searchMajorSelect.innerHTML = '<option value="">全部专业</option>';
+          
+          data.data.forEach(major => {
+            const option = document.createElement('option');
+            option.value = major.major_name;
+            option.textContent = major.major_name;
+            searchMajorSelect.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error('加载专业列表失败:', err);
+      }
+    }
+
+    // 处理图片选择
+    function handleImageSelect(event) {
+      const files = event.target.files;
+      if (!files.length) return;
+      
+      if (selectedImages.length + files.length > 5) {
+        showToast('最多只能上传5张图片', 'error');
+        return;
+      }
+      
+      Array.from(files).forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+          showToast('单张图片不能超过5MB', 'error');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          selectedImages.push({
+            file: file,
+            preview: e.target.result
+          });
+          renderImagePreviews();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 渲染图片预览
+    function renderImagePreviews() {
+      const grid = document.getElementById('image-preview-grid');
+      grid.innerHTML = selectedImages.map((img, index) => `
+        <div class="image-preview">
+          <img src="${img.preview}" alt="预览" />
+          <button class="remove-btn" onclick="removeImage(${index})">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    // 移除图片
+    function removeImage(index) {
+      selectedImages.splice(index, 1);
+      renderImagePreviews();
+    }
+
+    // 提交分享
+    async function submitShare() {
+      // 提交前强制从 localStorage 同步 token，避免内存与存储不一致导致服务端收不到
+      authToken = localStorage.getItem('authToken') || authToken;
+      authType = localStorage.getItem('authType') || authType;
+      const school = document.getElementById('upload-school').value.trim();
+      const major = document.getElementById('upload-major').value;
+      const grade = document.getElementById('upload-grade').value;
+      const title = document.getElementById('upload-title').value.trim();
+      const content = document.getElementById('upload-content').value.trim();
+      const tags = document.getElementById('upload-tags').value.trim();
+
+      if (!school) {
+        showToast('请确定认证学校', 'error');
+        return;
+      }
+
+      if (!title || !content) {
+        showToast('请填写标题和内容', 'error');
+        return;
+      }
+
+      // 优先使用当前页面的认证信息（进入本页即视为认证通过），再兜底 localStorage
+      const tokenToSend = (authToken || localStorage.getItem('authToken') || '').trim();
+      if (!tokenToSend) {
+        showToast('认证信息已丢失，请重新认证后再提交', 'error');
+        return;
+      }
+      const imageData = (selectedImages || []).map(function(img) { return img.preview || ''; }).filter(Boolean);
+      const data = {
+        school,
+        major,
+        grade: grade || '未知年级',
+        title,
+        content,
+        tags: tags || '',
+        images: imageData,
+        authToken: tokenToSend,
+        fromShareForm: true,
+        nickname: verifiedNickname || (document.getElementById('upload-nickname-display') && document.getElementById('upload-nickname-display').value) || ''
+      };
+      // URL 带 token 作为兜底，避免部分环境下 body/头未到达服务端
+      const submitUrl = API_BASE + '/api/student-shares?authToken=' + encodeURIComponent(tokenToSend);
+
+      try {
+        const res = await fetch(submitUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': tokenToSend,
+            'Authorization': 'Bearer ' + tokenToSend
+          },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json().catch(function() { return {}; });
+        
+        if (result.code === 200) {
+          showToast('分享提交成功！', 'success');
+          document.getElementById('upload-school').value = '';
+          document.getElementById('upload-major').value = '';
+          document.getElementById('upload-grade').value = '';
+          document.getElementById('upload-title').value = '';
+          document.getElementById('upload-content').value = '';
+          document.getElementById('upload-tags').value = '';
+          selectedImages = [];
+          renderImagePreviews();
+          toggleUploadForm();
+          loadShares();
+        } else {
+          if (result.code === 403) {
+            showToast(result.msg || '提交失败：请检查认证是否有效，可尝试退出后重新认证', 'error');
+          } else {
+            showToast(result.msg ? '提交失败：' + result.msg : '提交失败', 'error');
+          }
+        }
+      } catch (err) {
+        console.error('提交失败:', err);
+        showToast('网络错误，请稍后重试', 'error');
+      }
+    }
+
+    const SHOW_COUNT = 10;
+    let visibleShares = [];
+    let foldedShares = [];
+    let showFolded = false;
+
+    function shuffleArray(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // 加载分享列表（带 token 或 guestId 时返回点赞状态）；随机选 10 条显示，其余折叠
+    async function loadShares() {
+      const listEl = document.getElementById('share-list');
+      listEl.innerHTML = '<div class="loading">正在加载分享...</div>';
+      try {
+        const token = (localStorage.getItem('authToken') || authToken || '').trim();
+        const guestId = getOrCreateGuestId();
+        let url = API_BASE + '/api/student-shares';
+        if (token) url += '?authToken=' + encodeURIComponent(token);
+        else url += '?guestId=' + encodeURIComponent(guestId);
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          allShares = data.data || [];
+          const shuffled = shuffleArray(allShares);
+          visibleShares = shuffled.slice(0, SHOW_COUNT);
+          foldedShares = shuffled.slice(SHOW_COUNT);
+          showFolded = false;
+          renderShares();
+        } else {
+          listEl.innerHTML = '<div class="empty-state">暂无分享数据</div>';
+        }
+      } catch (err) {
+        console.error('加载分享失败:', err);
+        listEl.innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
+      }
+    }
+
+    // 刷新：重新从服务器拉取列表
+    function refreshShares() {
+      loadShares();
+    }
+
+    // 渲染分享列表：先显示 visibleShares，再显示折叠区（展开后显示 foldedShares）
+    function renderShares() {
+      const list = document.getElementById('share-list');
+      const shares = visibleShares;
+      const folded = foldedShares;
+      
+      if (shares.length === 0 && folded.length === 0) {
+        list.innerHTML = '<div class="empty-state">暂无符合条件的分享</div>';
+        return;
+      }
+      
+      const IMAGE_SEP = '|||IMAGE_SEP|||';
+      function makeCard(share) {
+        const imageList = share.images ? share.images.split(IMAGE_SEP).filter(img => img.trim()) : [];
+        const imagesHtml = imageList.map((img) => {
+          const safe = (img || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `<div class="share-image" onclick="showImageModal(this)" data-src="${safe}"><img alt="分享图片" /></div>`;
+        }).join('');
+        
+        const tagsHtml = share.tags ? share.tags.split(/[,，]/).filter(t => t.trim()).map(tag => `
+          <span class="tag">${tag.trim()}</span>
+        `).join('') : '';
+        
+        const authorName = share.author_nickname || share.school || '匿名';
+        const authorSub = share.author_nickname
+          ? (share.school === '高考生' ? '高考生' : (share.school + (share.major ? ' · ' + share.major : '') + (share.grade ? ' · ' + share.grade : '')))
+          : ((share.school || '') + (share.major ? ' · ' + share.major : '') + ' · ' + (share.grade || '未知年级'));
+        const firstChar = authorName.charAt(0);
+        
+        return `
+          <div class="share-card">
+            <div class="share-header">
+              <div class="share-meta">
+                <div class="share-avatar">${firstChar}</div>
+                <div class="share-author">
+                  <h4>${escapeHtml(authorName)}</h4>
+                  <p>${escapeHtml(authorSub || '未知年级')}</p>
+                </div>
+              </div>
+              <span class="share-school-tag">${share.school === '高考生' ? '高考生分享' : '在读分享'}</span>
+            </div>
+            <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 10px 0;">${share.title || '无标题'}</h3>
+            <div class="share-content">${share.content}</div>
+            ${imagesHtml ? `<div class="share-images">${imagesHtml}</div>` : ''}
+            ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
+            <div class="share-footer">
+              <span>编号 #${share.share_number != null ? share.share_number : share.id}</span>
+              <span>${formatDate(share.upload_time)}</span>
+              <div class="share-actions">
+                <button type="button" class="action-btn ${share.user_has_liked ? 'liked' : ''}" onclick="likeShare(${share.id}, this); event.preventDefault();" title="点赞" data-share-id="${share.id}">
+                  <span aria-hidden="true">${share.user_has_liked ? '❤️' : '🤍'}</span>
+                  <span class="like-count">${share.like_count != null ? share.like_count : 0}</span>
+                </button>
+                <button type="button" class="btn-toggle-comments" onclick="toggleComments(${share.id}); event.preventDefault();" data-share-id="${share.id}">评论</button>
+                <button type="button" class="report-link" onclick="reportShare(${share.id}); event.preventDefault();" title="举报超过50次将转后台处理">举报</button>
+              </div>
+            </div>
+            <div id="comments-wrap-${share.id}" class="comments-section" style="display: none;">
+              <div class="comments-header">评论</div>
+              <div id="comments-list-${share.id}" class="comment-list"></div>
+              <div id="comment-form-${share.id}" class="comment-input-wrap">
+                <textarea id="comment-text-${share.id}" placeholder="写下你的评论…" rows="2"></textarea>
+                <button type="button" class="primary-btn" onclick="submitComment(${share.id}, null)">发送</button>
+              </div>
+              <p id="comment-login-hint-${share.id}" class="section-desc" style="margin-top: 8px;">认证后评论将显示认证学校和昵称，未认证显示为游客</p>
+            </div>
+          </div>
+        `;
+      }
+      let html = shares.map(share => makeCard(share)).join('');
+      if (folded.length > 0) {
+        html += '<div class="folded-posts-wrap" style="margin-top: 16px;">';
+        html += '<button type="button" class="primary-btn secondary" id="btn-toggle-folded" onclick="toggleFolded()">展开更多帖子（共 ' + folded.length + ' 条）</button>';
+        html += '<div id="folded-posts-list" class="share-list folded-list" style="display: ' + (showFolded ? 'block' : 'none') + '; margin-top: 12px;">';
+        html += folded.map(share => makeCard(share)).join('');
+        html += '</div></div>';
+      }
+      list.innerHTML = html;
+      list.querySelectorAll('.share-image').forEach(div => {
+        const src = div.getAttribute('data-src');
+        if (src) div.querySelector('img').src = src;
+      });
+    }
+
+    function toggleFolded() {
+      showFolded = !showFolded;
+      const el = document.getElementById('folded-posts-list');
+      const btn = document.getElementById('btn-toggle-folded');
+      if (el) el.style.display = showFolded ? 'block' : 'none';
+      if (btn) btn.textContent = showFolded ? '收起更多帖子' : '展开更多帖子（共 ' + foldedShares.length + ' 条）';
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    // 帖子点赞：所有人可点赞，认证用户带 token，游客带 guestId
+    async function likeShare(shareId, btn) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
+      const headers = { 'Content-Type': 'application/json' };
+      if (isAuth && token) {
+        headers['X-Auth-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/like', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          const span = btn ? btn.querySelector('span[aria-hidden="true"]') : null;
+          const countEl = btn ? btn.querySelector('.like-count') : null;
+          if (span) span.textContent = data.liked ? '❤️' : '🤍';
+          if (countEl) countEl.textContent = data.like_count != null ? data.like_count : 0;
+          btn.classList.toggle('liked', data.liked);
+          const share = allShares.find(s => s.id === shareId);
+          if (share) {
+            share.user_has_liked = data.liked;
+            share.like_count = data.like_count;
+          }
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 展开/收起评论区并加载评论
+    async function toggleComments(shareId) {
+      const wrap = document.getElementById('comments-wrap-' + shareId);
+      if (!wrap) return;
+      const isHidden = wrap.style.display === 'none';
+      wrap.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) await loadComments(shareId);
+    }
+
+    async function loadComments(shareId) {
+      const listEl = document.getElementById('comments-list-' + shareId);
+      if (!listEl) return;
+      listEl.innerHTML = '<div class="loading">加载评论中…</div>';
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      let url = API_BASE + '/api/student-shares/' + shareId + '/comments';
+      if (isAuth && token) url += '?authToken=' + encodeURIComponent(token);
+      else url += '?guestId=' + encodeURIComponent(getOrCreateGuestId());
+      try {
+        const res = await fetch(url);
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          console.error('评论接口返回非 JSON:', parseErr);
+          listEl.innerHTML = '<div class="empty-state">加载失败（服务器响应异常，请确认通过本网站地址访问）</div>';
+          return;
+        }
+        if (data.code === 200) {
+          renderComments(shareId, data.data || []);
+        } else {
+          const msg = (data && data.msg) ? data.msg : '加载失败';
+          listEl.innerHTML = '<div class="empty-state">' + escapeHtml(msg) + '</div>';
+        }
+      } catch (e) {
+        console.error('加载评论请求异常:', e);
+        listEl.innerHTML = '<div class="empty-state">加载失败（网络错误，请检查网络或稍后重试）</div>';
+      }
+    }
+
+    function renderComments(shareId, comments) {
+      const listEl = document.getElementById('comments-list-' + shareId);
+      if (!listEl) return;
+      const topLevel = (comments || []).filter(c => !c.parent_id);
+      const byParent = {};
+      (comments || []).forEach(c => {
+        if (c.parent_id) {
+          if (!byParent[c.parent_id]) byParent[c.parent_id] = [];
+          byParent[c.parent_id].push(c);
+        }
+      });
+      function renderOne(c) {
+        const replies = byParent[c.id] || [];
+        const repliesHtml = replies.length ? '<div class="comment-replies">' + replies.map(r => renderOne(r)).join('') + '</div>' : '';
+        const isGuest = (c.school_name || '') === '游客' && (c.nickname || '') === '游客';
+        const metaHtml = isGuest
+          ? `<span class="comment-nickname">游客</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`
+          : `<span class="comment-nickname">昵称：${escapeHtml(c.nickname || '')}</span><span class="comment-school">认证学校：${escapeHtml(c.school_name || '')}</span><span class="comment-time">${formatCommentDate(c.created_at)}</span>`;
+        return `
+          <div class="comment-item" data-comment-id="${c.id}">
+            <div class="comment-meta">
+              ${metaHtml}
+            </div>
+            <div class="comment-content">${escapeHtml(c.content || '')}</div>
+            <div class="comment-actions">
+              <button type="button" onclick="likeComment(${shareId}, ${c.id}, this)"><span class="comment-like-icon">${c.user_has_liked ? '❤️' : '🤍'}</span> <span class="comment-like-count">${c.like_count != null ? c.like_count : 0}</span></button>
+              <button type="button" onclick="toggleReplyInput(${shareId}, ${c.id})">回复</button>
+              <button type="button" class="report-link" onclick="reportComment(${shareId}, ${c.id}); event.preventDefault();">举报</button>
+            </div>
+            <div id="reply-input-${shareId}-${c.id}" class="reply-input-wrap" style="display: none;">
+              <textarea id="reply-text-${shareId}-${c.id}" placeholder="回复 ${escapeHtml(c.nickname || '')}…" rows="2"></textarea>
+              <button type="button" class="primary-btn" style="margin-top: 6px;" onclick="submitComment(${shareId}, ${c.id})">发送</button>
+            </div>
+            ${repliesHtml}
+          </div>
+        `;
+      }
+      if (topLevel.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">暂无评论</div>';
+        return;
+      }
+      listEl.innerHTML = topLevel.map(renderOne).join('');
+    }
+
+    function toggleReplyInput(shareId, parentCommentId) {
+      const wrap = document.getElementById('reply-input-' + shareId + '-' + parentCommentId);
+      if (!wrap) return;
+      wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function submitComment(shareId, parentId) {
+      const textId = parentId ? 'reply-text-' + shareId + '-' + parentId : 'comment-text-' + shareId;
+      const textarea = document.getElementById(textId);
+      const content = (textarea && textarea.value || '').trim();
+      if (!content) {
+        showToast('请输入评论内容', 'error');
+        return;
+      }
+      // 直接读取如图三位置：认证区域显示「游客」则身份为游客，显示「已认证」则传昵称和认证学校
+      const authBadge = document.getElementById('auth-badge');
+      const isAuthenticated = authBadge && authBadge.style.display !== 'none';
+      const nick = (localStorage.getItem('verifiedNickname') || verifiedNickname || '').trim();
+      const school = (localStorage.getItem('verifiedSchool') || verifiedSchool || '').trim();
+      const payload = { content, parent_id: parentId || null };
+      if (isAuthenticated && (nick || school)) {
+        payload.identity = 'verified';
+        payload.nickname = nick || '在读生';
+        payload.school_name = school || '';
+      } else {
+        payload.identity = 'guest';
+        payload.guestId = getOrCreateGuestId();
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg || '评论成功', 'success');
+          if (textarea) textarea.value = '';
+          const replyWrap = parentId ? document.getElementById('reply-input-' + shareId + '-' + parentId) : null;
+          if (replyWrap) replyWrap.style.display = 'none';
+          await loadComments(shareId);
+        } else {
+          showToast(data.msg || '评论失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    async function reportComment(shareId, commentId) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(token ? { authToken: token } : {})
+        });
+        const data = await res.json();
+        showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    async function likeComment(shareId, commentId, btn) {
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const authBadge = document.getElementById('auth-badge');
+      const isAuth = authBadge && authBadge.style.display !== 'none';
+      const body = isAuth && token ? { authToken: token } : { guestId: getOrCreateGuestId() };
+      const headers = { 'Content-Type': 'application/json' };
+      if (isAuth && token) {
+        headers['X-Auth-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
+      }
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/comments/' + commentId + '/like', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          const iconEl = btn ? btn.querySelector('.comment-like-icon') : null;
+          const countEl = btn ? btn.querySelector('.comment-like-count') : null;
+          if (iconEl) iconEl.textContent = data.liked ? '❤️' : '🤍';
+          if (countEl) countEl.textContent = data.like_count != null ? data.like_count : 0;
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 举报帖子（重做：authToken 放 body）
+    async function reportShare(shareId) {
+      const auth = (localStorage.getItem('authToken') || authToken || '').trim();
+      const body = auth ? { authToken: auth } : {};
+      try {
+        const res = await fetch(API_BASE + '/api/student-shares/' + shareId + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        showToast(data.code === 200 ? (data.msg || '举报已提交') : (data.msg || '举报失败'), data.code === 200 ? 'success' : 'error');
+      } catch (e) {
+        showToast('网络错误', 'error');
+      }
+    }
+
+    // 搜索分享：筛选后同样随机取 10 条显示，其余折叠
+    function searchShares() {
+      const keyword = document.getElementById('search-keyword').value.trim().toLowerCase();
+      const school = document.getElementById('search-school').value;
+      const major = document.getElementById('search-major').value;
+      
+      let filtered = allShares;
+      
+      if (keyword) {
+        filtered = filtered.filter(s => 
+          (s.title && s.title.toLowerCase().includes(keyword)) ||
+          (s.content && s.content.toLowerCase().includes(keyword)) ||
+          (s.tags && s.tags.toLowerCase().includes(keyword))
+        );
+      }
+      
+      if (school) {
+        filtered = filtered.filter(s => s.school === school);
+      }
+      
+      if (major) {
+        filtered = filtered.filter(s => s.major === major);
+      }
+      
+      const shuffled = shuffleArray(filtered);
+      visibleShares = shuffled.slice(0, SHOW_COUNT);
+      foldedShares = shuffled.slice(SHOW_COUNT);
+      showFolded = false;
+      renderShares();
+    }
+
+    // 显示图片模态框（传入被点击的元素，从 data-src 取图）
+    function showImageModal(el) {
+      const src = el && el.getAttribute ? el.getAttribute('data-src') : el;
+      if (src) document.getElementById('modal-image').src = src;
+      document.getElementById('image-modal').classList.add('show');
+    }
+
+    // 关闭模态框
+    function closeModal() {
+      document.getElementById('image-modal').classList.remove('show');
+    }
+
+    // 格式化日期
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('zh-CN');
+    }
+    function formatCommentDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // 显示提示
+    function showToast(msg, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast ' + type + ' show';
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // 回车搜索
+    document.getElementById('search-keyword').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') searchShares();
+    });
+
+    // 从服务端恢复认证状态（跳转/刷新后仍保持已认证，除非 token 过期或退出认证）
+    async function restoreAuthFromServer(forceRefresh) {
+      if (!authToken) return false;
+      if (!forceRefresh && verifiedSchool) return true;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/me?authToken=' + encodeURIComponent(authToken));
+        const data = await res.json().catch(() => ({}));
+        if (data.code === 200) {
+          if (data.school) verifiedSchool = data.school;
+          if (data.nickname != null) verifiedNickname = data.nickname;
+          if (data.authType) authType = data.authType;
+          localStorage.setItem('verifiedSchool', verifiedSchool || '');
+          localStorage.setItem('verifiedNickname', verifiedNickname || '');
+          localStorage.setItem('authType', authType || '');
+          return true;
+        }
+        if (data.code === 403 || res.status === 403) {
+          authToken = '';
+          verifiedSchool = '';
+          authType = '';
+          verifiedNickname = '';
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('verifiedSchool');
+          localStorage.removeItem('authType');
+          localStorage.removeItem('verifiedNickname');
+          return false;
+        }
+        return true;
+      } catch (e) {
+        return true;
+      }
+    }
+
+    // 恢复认证信息（解决认证后刷新或 school 未写入导致无法上传）
+    async function restoreAuthIfNeeded() {
+      if (!authToken) return;
+      if (verifiedSchool) return;
+      const ok = await restoreAuthFromServer(false);
+      if (ok) {
+        document.getElementById('auth-badge').style.display = 'inline';
+        document.getElementById('guest-badge').style.display = 'none';
+        setAuthBadgeText();
+        document.getElementById('exit-auth-btn').style.display = 'inline-block';
+        var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+        updateWriteShareButtonVisibility();
+      }
+    }
+
+    // 页面加载：仅从 localStorage 恢复认证状态并展示，不向服务端校验（避免切换页面时误清空；只有退出认证或提交时服务端 403 才清空）
+    window.onload = async function() {
+      authToken = localStorage.getItem('authToken') || '';
+      verifiedSchool = (localStorage.getItem('verifiedSchool') || '').trim();
+      authType = localStorage.getItem('authType') || '';
+      verifiedNickname = localStorage.getItem('verifiedNickname') || '';
+      window._lastStudentIdSubmissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
+      loadShares();
+      loadSchoolOptions();
+      loadMajorOptions();
+      if (authToken && verifiedSchool) {
+        document.getElementById('auth-badge').style.display = 'inline';
+        document.getElementById('guest-badge').style.display = 'none';
+        setAuthBadgeText();
+        document.getElementById('exit-auth-btn').style.display = 'inline-block';
+        var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
+      } else {
+        document.getElementById('guest-badge').style.display = 'inline';
+        document.getElementById('auth-badge').style.display = 'none';
+        var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'inline-block';
+        document.getElementById('exit-auth-btn').style.display = 'none';
+      }
+      closeAuthModal();
+      showListView();
+      if (!authToken && window._lastStudentIdSubmissionId) {
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+      }
+      updateWriteShareButtonVisibility();
+      restoreAuthIfNeeded();
+    };
+
+    // 退出认证：显示游客与「立即认证」，隐藏已认证与「退出认证」
+    function exitVerification() {
+      authToken = '';
+      verifiedSchool = '';
+      authType = '';
+      verifiedNickname = '';
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('verifiedSchool');
+      localStorage.removeItem('authType');
+      localStorage.removeItem('verifiedNickname');
+      document.getElementById('auth-badge').style.display = 'none';
+      document.getElementById('guest-badge').style.display = 'inline';
+      document.getElementById('exit-auth-btn').style.display = 'none';
+      var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'inline-block';
+      closeAuthModal();
+      showListView();
+      showToast('已退出认证，再次发帖需重新认证', 'success');
+    }
+  </script>
+</body>
+</html>
