@@ -1632,6 +1632,7 @@ app.post('/api/auth/send-code', async (req, res) => {
   const schoolName = await getSchoolFromEmailSuffix(suffix);
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const emailMasked = email.replace(/(.{3})(.*)(@.*)/, '$1***$3');
 
   db.run(
     'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, ?)',
@@ -1650,16 +1651,28 @@ app.post('/api/auth/send-code', async (req, res) => {
           secure: SMTP_PORT === 465,
           auth: { user: SMTP_USER, pass: SMTP_PASS }
         });
+        console.log("[邮件] 正在发送验证码至", emailMasked, "学校:", schoolName);
         await transporter.sendMail({
           from: `"志愿填报参考" <${SMTP_FROM}>`,
           to: email,
           subject: '【志愿填报参考】邮箱验证码',
           text: `您的验证码是：${code}，5 分钟内有效。`
         });
+        console.log("[邮件] 验证码已发送成功:", emailMasked);
         res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
       } catch (mailErr) {
-        console.error("邮件发送失败:", mailErr);
-        res.send({ code: 500, msg: "邮件发送失败，请稍后重试" });
+        const msg = mailErr.message || String(mailErr);
+        const codeNum = mailErr.responseCode || mailErr.code;
+        console.error("[邮件] 发送失败:", emailMasked, "error:", msg, "responseCode:", codeNum, mailErr.response ? String(mailErr.response).slice(0, 200) : "");
+        let userMsg = "邮件发送失败，请稍后重试";
+        if (codeNum === 535 || /authentication|auth|login|535/i.test(msg)) {
+          userMsg = "SMTP 认证失败，请检查 SMTP 授权码（163 邮箱需使用「授权码」而非登录密码）";
+        } else if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(msg)) {
+          userMsg = "无法连接邮件服务器，请检查 SMTP 地址与端口";
+        } else if (/recipient|550|553/i.test(msg)) {
+          userMsg = "收件地址被拒绝，请确认邮箱正确";
+        }
+        res.send({ code: 500, msg: userMsg });
       }
     }
   );
@@ -1715,7 +1728,10 @@ app.post('/api/auth/verify', (req, res) => {
 
 /** 学生证图片用百炼千问视觉模型鉴伪，返回 'pass' | 'rejected' | 'review'（存疑转人工） */
 async function callBailianVisionStudentId(imageBase64) {
-  if (!BAILIAN_API_KEY) return 'review';
+  if (!BAILIAN_API_KEY) {
+    console.warn('[学生证鉴伪] 未配置 BAILIAN_API_KEY，直接转人工审核');
+    return 'review';
+  }
   const fetch = (await import('node-fetch')).default;
   const imageUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
   try {
@@ -1739,13 +1755,24 @@ async function callBailianVisionStudentId(imageBase64) {
         max_tokens: 50
       })
     });
-    if (!response.ok) return 'review';
-    const result = await response.json();
-    const text = (result.choices?.[0]?.message?.content || result.output?.text || '').trim();
-    if (/是|真实|有效|学生证/.test(text) && !/否|不|假|非/.test(text)) return 'pass';
-    if (/否|不|假|非|非学生证/.test(text)) return 'rejected';
+    const rawBody = await response.text();
+    if (!response.ok) {
+      console.warn('[学生证鉴伪] 百炼视觉 API 非 200:', response.status, rawBody.slice(0, 400));
+      return 'review';
+    }
+    let result;
+    try {
+      result = JSON.parse(rawBody);
+    } catch (e) {
+      console.warn('[学生证鉴伪] 百炼返回非 JSON:', rawBody.slice(0, 200));
+      return 'review';
+    }
+    const text = (result.choices?.[0]?.message?.content || result.output?.text || result.output?.choices?.[0]?.message?.content || '').trim();
+    if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/^否|不真实|假|非学生证/.test(text)) return 'pass';
+    if (/^否|不真实|假|非学生证/.test(text)) return 'rejected';
+    console.warn('[学生证鉴伪] 模型输出无法判定，转人工:', JSON.stringify(text).slice(0, 100));
   } catch (e) {
-    console.error('学生证 AI 视觉鉴伪失败:', e.message);
+    console.error('[学生证鉴伪] 请求异常:', e.message);
   }
   return 'review';
 }
