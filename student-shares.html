@@ -944,10 +944,7 @@
           showToast(data.msg, 'success');
           document.getElementById('verify-school-name').textContent = data.school || '未知';
           document.getElementById('verify-step2').style.display = 'block';
-          if (data.vc) {
-            document.getElementById('verify-code').value = data.vc;
-            document.getElementById('verify-code').placeholder = '验证码已预填（测试模式）';
-          }
+          document.getElementById('verify-code').value = '';
           btn.disabled = false;
         } else {
           showToast(data.msg || '发送失败', 'error');
