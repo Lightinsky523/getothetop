@@ -564,47 +564,76 @@ app.use(cors());   // 允许前端从别的域名访问本接口
 // 静态文件：当前目录下的 html/css/js 等直接当网站文件提供
 app.use(express.static(path.join(__dirname)));
 
-// ----- 邮件配置（发验证码用；发件人固定为 ycyzgetothetop120@163.com，需配置 SMTP 才能发送） -----
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.163.com';
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER = process.env.SMTP_USER || 'ycyzgetothetop120@163.com';
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM = process.env.SMTP_FROM || 'ycyzgetothetop120@163.com';
+// ----- 邮件配置（发验证码用）：SMTP 客户端初始化在 express 之后、所有路由之前 -----
+let transporter = null;
 
-// 全局 SMTP transporter：端口与 secure 严格匹配（465=secure，587/25=secure:false），加超时与 TLS 避免 Unexpected socket close
-let mailTransporter = null;
-if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-  const smtpHost = String(SMTP_HOST).trim();
-  const smtpPort = parseInt(process.env.SMTP_PORT, 10) || 587;
-  const smtpUser = String(SMTP_USER).trim();
-  const smtpPass = String(SMTP_PASS).trim();
+if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  const smtpHost = process.env.SMTP_HOST.trim();
+  const smtpPort = parseInt(process.env.SMTP_PORT, 10) || 465; // 优先 465 避开阿里云拦截
+  const smtpUser = process.env.SMTP_USER.trim();
+  const smtpPass = process.env.SMTP_PASS.trim();
+
+  console.log('===== SMTP配置信息 =====');
+  console.log('SMTP服务器:', smtpHost);
+  console.log('SMTP端口:', smtpPort);
+  console.log('发件人邮箱:', smtpUser);
+  console.log('=========================');
+
   try {
-    mailTransporter = nodemailer.createTransport({
+    transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
       secure: smtpPort === 465,
       auth: { user: smtpUser, pass: smtpPass },
-      connectionTimeout: 10 * 1000,
-      greetingTimeout: 10 * 1000,
-      socketTimeout: 15 * 1000,
+      requireTLS: smtpPort === 587,
       tls: {
         rejectUnauthorized: false,
-        minVersion: 'TLSv1.2'
+        minVersion: 'TLSv1.2',
+        maxVersion: 'TLSv1.3',
+        servername: smtpHost
       },
+      connectionTimeout: 30 * 1000,
+      greetingTimeout: 30 * 1000,
+      socketTimeout: 60 * 1000,
       debug: true,
       logger: true
     });
-    mailTransporter.verify((err, success) => {
-      if (err) {
-        console.error('❌ SMTP 服务连接失败，详细错误：', err);
-        mailTransporter = null;
+
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('❌ SMTP连接失败，详细错误：', error);
+        transporter = null;
       } else {
-        console.log('✅ SMTP 邮件服务连接成功，可正常发送邮件');
+        console.log('✅ SMTP邮件服务连接成功，可正常发送邮件');
       }
     });
   } catch (e) {
-    console.error('❌ SMTP 客户端初始化异常：', e);
-    mailTransporter = null;
+    console.error('❌ SMTP客户端初始化异常：', e);
+    transporter = null;
+  }
+}
+
+/** 发送验证码邮件（容错 + 日志）；SMTP 不可用时进入测试模式并把验证码打日志 */
+async function sendVerifyEmail(toEmail, code) {
+  if (!transporter) {
+    const testMsg = `⚠️ SMTP服务不可用，进入测试模式，收件人：${toEmail}，验证码：${code}`;
+    console.warn(testMsg);
+    return { success: false, testMode: true, code, msg: testMsg };
+  }
+  const fromAddr = process.env.SMTP_FROM || process.env.SMTP_USER || '';
+  try {
+    const sendResult = await transporter.sendMail({
+      from: `"志愿填报系统" <${fromAddr}>`,
+      to: toEmail,
+      subject: '【志愿填报系统】邮箱认证验证码',
+      text: `您的验证码是：${code}，有效期10分钟，请勿泄露给他人。`,
+      html: `您的验证码是：<b style="font-size: 20px; color: #165DFF;">${code}</b>，有效期10分钟，请勿泄露给他人。`
+    });
+    console.log('✅ 邮件发送成功，收件人：', toEmail, '发送结果：', sendResult);
+    return { success: true, msg: '邮件发送成功' };
+  } catch (sendError) {
+    console.error('❌ 邮件发送失败，收件人：', toEmail, '详细错误：', sendError);
+    return { success: false, error: sendError, msg: '邮件发送失败' };
   }
 }
 
@@ -1589,7 +1618,7 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
 app.get('/api/auth/backend-config', (req, res) => {
   res.send({
     code: 200,
-    smtpConfigured: !!SMTP_PASS,
+    smtpConfigured: !!transporter,
     bailianConfigured: !!BAILIAN_API_KEY,
     msg: 'OK'
   });
@@ -1605,12 +1634,6 @@ app.post('/api/auth/send-code', async (req, res) => {
   const suffix = email.split('@')[1] || '';
   if (!suffix.endsWith('.edu') && !suffix.endsWith('.edu.cn')) {
     res.send({ code: 400, msg: "请使用学校邮箱（以 .edu 或 .edu.cn 结尾）" });
-    return;
-  }
-
-  if (!SMTP_PASS) {
-    console.error("未配置 SMTP_PASS，无法发送验证码邮件");
-    res.send({ code: 503, msg: "未配置邮件服务，无法发送验证码。请在后端服务器环境变量中配置 SMTP_PASS（163 邮箱需使用授权码）。" });
     return;
   }
 
@@ -1639,35 +1662,27 @@ app.post('/api/auth/send-code', async (req, res) => {
     return;
   }
 
-  if (!mailTransporter) {
-    console.error("SMTP 未配置或初始化失败，无法发送验证码");
-    res.send({ code: 503, msg: "邮件服务不可用，请检查后端 SMTP 配置" });
+  console.log("[邮件] 正在发送验证码至", emailMasked, "学校:", schoolName);
+  const mailResult = await sendVerifyEmail(email, code);
+  if (mailResult.success) {
+    res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
     return;
   }
-  try {
-    console.log("[邮件] 正在发送验证码至", emailMasked, "学校:", schoolName);
-    await mailTransporter.sendMail({
-      from: `"志愿填报参考" <${SMTP_FROM}>`,
-      to: email,
-      subject: '【志愿填报参考】邮箱验证码',
-      text: `您的验证码是：${code}，5 分钟内有效。`
-    });
-    console.log("[邮件] 验证码已发送成功:", emailMasked);
-    res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
-  } catch (mailErr) {
-    const msg = mailErr.message || String(mailErr);
-    const codeNum = mailErr.responseCode || mailErr.code;
-    console.error("[邮件] 发送失败:", emailMasked, "error:", msg, "responseCode:", codeNum, mailErr.response ? String(mailErr.response).slice(0, 200) : "");
-    let userMsg = "邮件发送失败，请稍后重试";
-    if (codeNum === 535 || /authentication|auth|login|535/i.test(msg)) {
-      userMsg = "SMTP 认证失败，请检查 SMTP 授权码（163 邮箱需使用「授权码」而非登录密码）";
-    } else if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(msg)) {
-      userMsg = "无法连接邮件服务器，请检查 SMTP 地址与端口";
-    } else if (/recipient|550|553/i.test(msg)) {
-      userMsg = "收件地址被拒绝，请确认邮箱正确";
-    }
-    res.send({ code: 500, msg: userMsg });
+  if (mailResult.testMode) {
+    res.send({ code: 200, msg: "当前为测试模式，验证码已记录到服务器日志", school: schoolName });
+    return;
   }
+  const msg = (mailResult.error && mailResult.error.message) || mailResult.msg || "邮件发送失败";
+  const codeNum = mailResult.error && (mailResult.error.responseCode || mailResult.error.code);
+  let userMsg = "邮件发送失败，请稍后重试";
+  if (codeNum === 535 || /authentication|auth|login|535/i.test(String(msg))) {
+    userMsg = "SMTP 认证失败，请检查 SMTP 授权码（163 邮箱需使用「授权码」而非登录密码）";
+  } else if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(String(msg))) {
+    userMsg = "无法连接邮件服务器，请检查 SMTP 地址与端口";
+  } else if (/recipient|550|553/i.test(String(msg))) {
+    userMsg = "收件地址被拒绝，请确认邮箱正确";
+  }
+  res.send({ code: 500, msg: userMsg });
 });
 
 // POST 验证码校验：正确则写入 verified_users 并返回 authToken，用于后续发帖等
