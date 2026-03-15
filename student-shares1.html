@@ -589,8 +589,8 @@
 
   <script>
     // 支持通过 URL 参数指定接口地址，便于排查：?api_base=https://你的后端域名:端口
-
-   // 1. 优先处理URL参数（例如: ?api_base=https://your-backend.com）
+    (function () {
+      // 1. 优先处理URL参数（例如: ?api_base=https://your-backend.com）
 const urlParams = new URLSearchParams(window.location.search);
 const urlApiBase = urlParams.get('api_base');
   
@@ -624,7 +624,7 @@ window.API_CONFIG = {
   BASE_URL: baseUrl,
   isLocalDev: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 };
-    
+    })();
     const API_BASE = localStorage.getItem('api_base_override') || '';
     let selectedImages = [];
     let allShares = [];
