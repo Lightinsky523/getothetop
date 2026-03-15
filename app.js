@@ -555,12 +555,12 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));  // 解析表单
 // 静态文件：当前目录下的 html/css/js 等直接当网站文件提供
 app.use(express.static(path.join(__dirname)));
 
-// ----- 邮件配置（发验证码用；不配置则验证码直接返回在接口里，方便测试） -----
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER = process.env.SMTP_USER;
+// ----- 邮件配置（发验证码用；发件人固定为 ycyzgetothetop120@163.com，需配置 SMTP 才能发送） -----
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.163.com';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
+const SMTP_USER = process.env.SMTP_USER || 'ycyzgetothetop120@163.com';
 const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
+const SMTP_FROM = process.env.SMTP_FROM || 'ycyzgetothetop120@163.com';
 
 // 下面开始的所有 db.run/db.all/db.get 调用，已通过上方的 MySQL 封装实现，
 // 不再依赖本地 SQLite 文件。
@@ -1609,7 +1609,7 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
   return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 }
 
-// POST 发送验证码：校验学校邮箱，生成 6 位码存库，有 SMTP 则发邮件否则在响应里返回（测试用）
+// POST 发送验证码：校验学校邮箱，生成 6 位码存库，由 ycyzgetothetop120@163.com 发送邮件（须配置 SMTP_PASS）
 app.post('/api/auth/send-code', async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   if (!email) {
@@ -1619,6 +1619,12 @@ app.post('/api/auth/send-code', async (req, res) => {
   const suffix = email.split('@')[1] || '';
   if (!suffix.endsWith('.edu') && !suffix.endsWith('.edu.cn')) {
     res.send({ code: 400, msg: "请使用学校邮箱（以 .edu 或 .edu.cn 结尾）" });
+    return;
+  }
+
+  if (!SMTP_PASS) {
+    console.error("未配置 SMTP_PASS，无法发送验证码邮件");
+    res.send({ code: 503, msg: "邮件服务未配置，暂时无法发送验证码" });
     return;
   }
 
@@ -1635,29 +1641,24 @@ app.post('/api/auth/send-code', async (req, res) => {
         res.send({ code: 500, msg: "发送失败" });
         return;
       }
-      if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-        try {
-          const nodemailer = (await import('nodemailer')).default;
-          const transporter = nodemailer.createTransport({
-            host: SMTP_HOST,
-            port: SMTP_PORT,
-            secure: SMTP_PORT === 465,
-            auth: { user: SMTP_USER, pass: SMTP_PASS }
-          });
-          await transporter.sendMail({
-            from: SMTP_FROM,
-            to: email,
-            subject: '【志愿填报参考】邮箱验证码',
-            text: `您的验证码是：${code}，5 分钟内有效。`
-          });
-          res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
-        } catch (mailErr) {
-          console.error("邮件发送失败:", mailErr);
-          res.send({ code: 500, msg: "邮件发送失败，请稍后重试" });
-        }
-      } else {
-        console.warn("未配置 SMTP，验证码返回在响应中（仅供测试）");
-        res.send({ code: 200, msg: "验证码已生成（未配置邮件服务，测试模式）", school: schoolName, vc: code });
+      try {
+        const nodemailer = (await import('nodemailer')).default;
+        const transporter = nodemailer.createTransport({
+          host: SMTP_HOST,
+          port: SMTP_PORT,
+          secure: SMTP_PORT === 465,
+          auth: { user: SMTP_USER, pass: SMTP_PASS }
+        });
+        await transporter.sendMail({
+          from: `"志愿填报参考" <${SMTP_FROM}>`,
+          to: email,
+          subject: '【志愿填报参考】邮箱验证码',
+          text: `您的验证码是：${code}，5 分钟内有效。`
+        });
+        res.send({ code: 200, msg: "验证码已发送到您的邮箱", school: schoolName });
+      } catch (mailErr) {
+        console.error("邮件发送失败:", mailErr);
+        res.send({ code: 500, msg: "邮件发送失败，请稍后重试" });
       }
     }
   );
