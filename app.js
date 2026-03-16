@@ -512,14 +512,24 @@ async function loadKeywordCategories() {
 }
 
 // ----- 兼容 SQLite API 的 MySQL 封装：提供 db.run / db.all / db.get -----
+// 防御：MySQL DATETIME 不接受 ISO8601，若 params 中误传了 ISO 字符串则在此统一转换
+function ensureMySQLParams(params) {
+  if (!Array.isArray(params)) return params || [];
+  return params.map((p) => {
+    if (typeof p === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(p)) return toMySQLDateTime(p);
+    return p;
+  });
+}
+
 const db = {
   run(sql, params, callback) {
     if (typeof params === 'function') {
       callback = params;
       params = [];
     }
+    const safeParams = ensureMySQLParams(params);
     initMySQLForKeywords()
-      .then(() => mysqlPool.execute(sql, params || []))
+      .then(() => mysqlPool.execute(sql, safeParams))
       .then(([result]) => {
         if (!callback) return;
         const ctx = {
@@ -538,8 +548,9 @@ const db = {
       callback = params;
       params = [];
     }
+    const safeParams = ensureMySQLParams(params);
     initMySQLForKeywords()
-      .then(() => mysqlPool.execute(sql, params || []))
+      .then(() => mysqlPool.execute(sql, safeParams))
       .then(([rows]) => {
         if (callback) callback(null, rows);
       })
@@ -553,8 +564,9 @@ const db = {
       callback = params;
       params = [];
     }
+    const safeParams = ensureMySQLParams(params);
     initMySQLForKeywords()
-      .then(() => mysqlPool.execute(sql, params || []))
+      .then(() => mysqlPool.execute(sql, safeParams))
       .then(([rows]) => {
         if (callback) callback(null, rows[0] || null);
       })
