@@ -106,11 +106,11 @@ const DB_PATH = path.join(DATA_DIR, 'study_experience.db');
 
 // ----- MySQL 配置：用于存储所有业务数据及“帖子是否有用”的关键词与分类 -----
 // 注意：用户名和密码等敏感信息只从环境变量读取，不在代码中硬编码
-const MYSQL_HOST = process.env.MYSQL_HOST || '172.17.0.1'; // 可用环境变量覆盖
+const MYSQL_HOST = process.env.MYSQL_HOST || '115.29.233.160'; // 可用环境变量覆盖
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || '3306', 10);
-const MYSQL_USER = process.env.MYSQL_USER || 'root';       // 必须在环境变量中设置
-const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '@Ycyz120'; // 必须在环境变量中设置
-const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'ycyz_db';
+const MYSQL_USER = process.env.MYSQL_USER;       // 必须在环境变量中设置
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD; // 必须在环境变量中设置
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'guidance_app';
 
 let mysqlPool = null;
 
