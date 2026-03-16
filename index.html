@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>志愿填报参考</title>
+  <style>
+    :root {
+      --bg: #f8f7f4;
+      --bg-elevated: #ffffff;
+      --accent: #1a1a1a;
+      --accent-muted: #4a5568;
+      --text: #1a1a1a;
+      --text-soft: #5f6b7a;
+      --border-subtle: #e2e4e8;
+      --error: #c53030;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+      color: var(--text);
+      background: #f0ede8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 24px;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1400px;
+      background: #fffef9;
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .app-inner { position: relative; z-index: 1; }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; }
+
+    .logo {
+      width: 42px; height: 42px; border-radius: var(--radius);
+      background: var(--accent); display: flex; align-items: center; justify-content: center;
+      color: #fffef9; font-weight: 600; font-size: 18px; text-decoration: none;
+    }
+
+    .title-block h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.02em; }
+    .title-block p { margin: 4px 0 0; font-size: 14px; color: var(--text-soft); }
+
+    .nav-tabs {
+      display: inline-flex; gap: 2px; padding: 2px;
+      background: #f0ede8; border-radius: var(--radius);
+    }
+
+    .nav-tab {
+      border: none; background: transparent; color: var(--text-soft);
+      padding: 8px 16px; border-radius: 6px; font-size: 13px;
+      cursor: pointer; text-decoration: none; transition: all 0.15s;
+    }
+
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
+
+    .nav-tab.admin-link {
+      background: var(--accent); color: #fffef9; margin-left: 2px;
+    }
+    .nav-tab.admin-link:hover { opacity: 0.9; }
+
+    .main-content {
+      background: #fffef9; border-radius: var(--radius-lg);
+      padding: 24px; border: 1px solid var(--border-subtle);
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+      gap: 32px;
+    }
+
+    @media (max-width: 900px) {
+      .app-shell { border-radius: 24px; padding: 20px 16px; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .nav-tabs { width: 100%; overflow-x: auto; }
+      .nav-tab { white-space: nowrap; }
+      .content-grid { grid-template-columns: 1fr; }
+    }
+
+    .section-title {
+      font-size: 18px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+
+    .section-title .icon-pill {
+      width: 20px; height: 20px; border-radius: 4px;
+      background: var(--accent); color: #fffef9;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+
+    .section-desc { margin: 4px 0 20px; font-size: 13px; color: var(--text-soft); }
+
+    .query-mode-switch {
+      display: inline-flex; gap: 2px; padding: 2px;
+      background: #f0ede8; border-radius: var(--radius); margin-bottom: 16px;
+    }
+
+    .query-mode-switch button {
+      border: none; background: transparent; color: var(--text-soft);
+      padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+
+    .query-mode-switch button.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
+
+    .field-label {
+      font-size: 14px; color: var(--text-soft); margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .field-label .tip { font-size: 12px; color: rgba(148, 163, 184, 0.85); }
+
+    .textarea, .input, .select {
+      width: 100%; border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      background: #fff; padding: 11px 12px; color: var(--text); font-size: 14px;
+      outline: none; resize: none;
+    }
+
+    .textarea { min-height: 120px; line-height: 1.6; }
+    .textarea:focus, .input:focus, .select:focus { border-color: var(--accent); }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+
+    .chip {
+      padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border-subtle);
+      font-size: 11px; color: var(--text-soft); background: #f5f4f0; cursor: pointer;
+    }
+
+    .chip.highlight { border-color: var(--accent); background: #f0ede8; color: var(--text); }
+
+    .actions {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 14px; gap: 10px;
+    }
+
+    .primary-btn {
+      border: 1px solid var(--accent); border-radius: var(--radius);
+      padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+      background: var(--accent); color: #fffef9; display: inline-flex; align-items: center; gap: 6px;
+    }
+
+    .primary-btn:hover { opacity: 0.9; }
+
+    .helper-text { font-size: 11px; color: var(--text-soft); }
+
+    .ai-output {
+      margin-top: 16px; padding: 16px; background: #f8f7f4;
+      border-radius: var(--radius); border: 1px solid var(--border-subtle);
+      min-height: 100px; white-space: pre-wrap; line-height: 1.6;
+    }
+
+    .ai-output-empty { color: var(--text-soft); font-size: 13px; }
+
+    .subgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 500px) { .subgrid { grid-template-columns: 1fr; } }
+
+    .divider { height: 1px; background: var(--border-subtle); margin: 20px 0; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag { padding: 3px 8px; border-radius: 4px; background: #f0ede8; font-size: 11px; }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .pill {
+      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-subtle);
+      background: #fff; font-size: 12px;
+    }
+
+    .xuanke-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    @media (max-width: 500px) { .xuanke-fields { grid-template-columns: 1fr; } }
+
+    .xuanke-checkboxes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .xuanke-checkboxes label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-soft); cursor: pointer; }
+
+    .table-wrapper { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius); margin-top: 16px; }
+    .shared-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .shared-table th, .shared-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .shared-table th { background: #f5f4f0; font-weight: 600; color: var(--text-soft); font-size: 12px; }
+    .shared-table tr:hover { background: #faf9f5; }
+
+    .section-toggle { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .pill-switch { display: inline-flex; gap: 2px; padding: 2px; background: #f0ede8; border-radius: var(--radius); }
+    .pill-switch button { border: none; background: transparent; color: var(--text-soft); padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .pill-switch button.active { background: #fffef9; color: var(--text); box-shadow: var(--shadow); }
+
+    .form-section { display: none; }
+    .form-section.active { display: block; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; z-index: 2000; display: none; }
+    .toast.show { display: block; }
+    .toast.success { background: #38a169; }
+    .toast.error { background: var(--error); }
+
+    .contact-bar {
+      margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-subtle);
+      font-size: 13px; color: var(--text-soft); text-align: center;
+    }
+    .contact-bar a { color: var(--accent); text-decoration: none; }
+    .contact-bar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="app-inner">
+      <header class="header">
+        <div class="brand">
+          <a href="index.html" class="logo">志</a>
+          <div class="title-block">
+            <h1>志愿填报参考</h1>
+            <p>招生信息 + 在读分享，一站式查</p>
+          </div>
+        </div>
+        <nav class="nav-tabs">
+          <a href="index.html" class="nav-tab active">志愿填报</a>
+          <a href="major-info.html" class="nav-tab">专业院校信息概览</a>
+          <a href="student-shares.html" class="nav-tab">学生分享</a>
+          <a href="admin.html" class="nav-tab admin-link" onclick="return checkAdminAccess()">管理者通道</a>
+        </nav>
+      </header>
+
+      <div class="main-content">
+        <div class="content-grid">
+          <!-- 左侧：AI查询 -->
+          <div class="left-column">
+            <div class="section-title">
+              <span class="icon-pill">查</span>
+              智能查询
+            </div>
+            <p class="section-desc">综合查询招生与在读分享；选科查询可查专业限报、科目要求等。</p>
+
+            <div class="query-mode-switch">
+              <button type="button" id="query-mode-general" class="active" onclick="setQueryMode('general')">综合查询</button>
+              <button type="button" id="query-mode-xuanke" onclick="setQueryMode('xuanke')">选科查询</button>
+            </div>
+
+            <div id="xuanke-extra" style="display: none;">
+              <div class="xuanke-fields">
+                <div>
+                  <label class="field-label">省份（选填）</label>
+                  <input id="xuanke-province" class="input" type="text" placeholder="如：浙江、江苏" />
+                </div>
+                <div>
+                  <label class="field-label">首选科目</label>
+                  <select id="xuanke-first" class="select">
+                    <option value="">请选择</option>
+                    <option value="物理">物理</option>
+                    <option value="历史">历史</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-top: 8px;">
+                <span class="field-label">再选科目（可多选）</span>
+                <div class="xuanke-checkboxes">
+                  <label><input type="checkbox" name="xuanke-second" value="化学" /> 化学</label>
+                  <label><input type="checkbox" name="xuanke-second" value="生物" /> 生物</label>
+                  <label><input type="checkbox" name="xuanke-second" value="政治" /> 政治</label>
+                  <label><input type="checkbox" name="xuanke-second" value="地理" /> 地理</label>
+                </div>
+              </div>
+            </div>
+
+            <label class="field-label" for="ai-input" id="ai-input-label">
+              输入想查的内容
+              <span class="tip">例：浙大计算机招生计划 / 华科宿舍 / 620分能报哪些</span>
+            </label>
+            <textarea id="ai-input" class="textarea" placeholder="学校名、专业、分数、城市、宿舍、伙食、保研…"></textarea>
+
+            <div class="chip-row" id="chip-row-general">
+              <span class="chip highlight" onclick="setChip(this)">招生计划</span>
+              <span class="chip" onclick="setChip(this)">录取线</span>
+              <span class="chip" onclick="setChip(this)">在读体验</span>
+              <span class="chip" onclick="setChip(this)">志愿搭配</span>
+            </div>
+            <div class="chip-row" id="chip-row-xuanke" style="display: none;">
+              <span class="chip highlight" onclick="setChip(this)">专业限报</span>
+              <span class="chip" onclick="setChip(this)">科目要求</span>
+              <span class="chip" onclick="setChip(this)">选科组合</span>
+              <span class="chip" onclick="setChip(this)">能报专业</span>
+            </div>
+
+            <div class="actions">
+              <p class="helper-text">数据仅供参考，填报以当年官方招生简章为准。</p>
+              <button id="ai-submit" class="primary-btn" type="button" onclick="submitQuery()">
+                <span>→</span> 查询
+              </button>
+            </div>
+
+            <div class="ai-output" id="ai-output">
+              <div class="ai-output-empty">输入上方内容后点击「查询」，将根据招生信息与在读分享整理结果。</div>
+            </div>
+          </div>
+
+          <!-- 右侧：信息填写 -->
+          <div class="right-column">
+            <div class="section-title">
+              <span class="icon-pill">填</span>
+              我的信息
+            </div>
+            <p class="section-desc">填写后，查询时作为参考依据。</p>
+
+            <div class="subgrid">
+              <div>
+                <label class="field-label">年份</label>
+                <input id="year-input" class="input" type="text" placeholder="例如：2025" />
+              </div>
+              <div>
+                <label class="field-label">生源地省份</label>
+                <input id="province-input" class="input" type="text" placeholder="例如：浙江 / 河南" />
+              </div>
+            </div>
+
+            <div class="subgrid">
+              <div>
+                <label class="field-label">高考成绩</label>
+                <input id="score-input" class="input" type="number" placeholder="例如：615" />
+              </div>
+              <div>
+                <label class="field-label">全省位次</label>
+                <input id="rank-input" class="input" type="number" placeholder="例如：8235" />
+              </div>
+            </div>
+
+            <div class="subgrid">
+              <div>
+                <label class="field-label">科类</label>
+                <select id="type-select" class="select">
+                  <option value="">请选择</option>
+                  <option value="science">理科 / 物理方向</option>
+                  <option value="arts">文科 / 历史方向</option>
+                  <option value="other">综合改革 / 其他</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">目标城市 <span class="tip">可多填 1～2 个</span></label>
+                <input id="city-input" class="input" type="text" placeholder="例如：北京、上海" />
+              </div>
+            </div>
+
+            <div class="actions">
+              <p class="helper-text">信息仅在本地用于体验。</p>
+              <button class="primary-btn" type="button" onclick="saveInfo()">
+                <span>✓</span> 保存到本地
+              </button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="section-title">
+              <span class="icon-pill">概</span>
+              当前概要
+            </div>
+            <div class="tag-row" id="summary-tags"></div>
+            <div class="pill-row" id="summary-pills"></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="contact-bar">联系我们：<a href="mailto:GAS_service120@163.com">GAS_service120@163.com</a></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_BASE = localStorage.getItem('api_base_override') || '';
+    let queryMode = 'general';
+
+    function checkAdminAccess() {
+      const password = prompt('请输入管理员密码：');
+      if (password === 'a~a~ycyzword+') {
+        sessionStorage.setItem('adminAuth', 'true');
+        return true;
+      } else if (password !== null) {
+        alert('密码错误！');
+      }
+      return false;
+    }
+
+    function setQueryMode(mode) {
+      queryMode = mode;
+      document.getElementById('query-mode-general').classList.toggle('active', mode === 'general');
+      document.getElementById('query-mode-xuanke').classList.toggle('active', mode === 'xuanke');
+      document.getElementById('xuanke-extra').style.display = mode === 'xuanke' ? 'block' : 'none';
+      document.getElementById('chip-row-general').style.display = mode === 'general' ? 'flex' : 'none';
+      document.getElementById('chip-row-xuanke').style.display = mode === 'xuanke' ? 'flex' : 'none';
+      
+      const aiInput = document.getElementById('ai-input');
+      const tip = document.querySelector('#ai-input-label .tip');
+      if (mode === 'xuanke') {
+        aiInput.placeholder = '如：物化生能报临床吗？某专业要求什么选科？';
+        if (tip) tip.textContent = '例：物化生能报医学吗 / 计算机要选物理吗';
+      } else {
+        aiInput.placeholder = '学校名、专业、分数、城市、宿舍、伙食、保研…';
+        if (tip) tip.textContent = '例：浙大计算机招生计划 / 华科宿舍 / 620分能报哪些';
+      }
+    }
+
+    function setChip(chip) {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('highlight'));
+      chip.classList.add('highlight');
+      document.getElementById('ai-input').value = chip.textContent;
+    }
+
+    async function submitQuery() {
+      const content = document.getElementById('ai-input').value.trim();
+      if (!content) {
+        showToast('请输入查询内容', 'error');
+        return;
+      }
+
+      const output = document.getElementById('ai-output');
+      output.innerHTML = '<div style="color: var(--text-soft);">查询中，请稍候（约需 10～60 秒）…</div>';
+
+      const profile = getProfileSummary();
+      const xuankeContext = queryMode === 'xuanke' ? getXuankeContext() : null;
+
+      try {
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 120000);
+        const res = await fetch(API_BASE + '/ai-query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: content, profileSummary: profile, isXuanke: queryMode === 'xuanke', xuankeContext }),
+          signal: ctrl.signal
+        });
+        clearTimeout(timeoutId);
+        let data = {};
+        try {
+          const text = await res.text();
+          if (text) data = JSON.parse(text);
+        } catch (_) {
+          data = { code: 500, msg: '服务返回格式异常' };
+        }
+        if (data.code === 200) {
+          output.innerHTML = formatResponse(data.data);
+        } else {
+          output.innerHTML = '<div style="color: var(--error);">查询失败：' + (data.msg || '未知错误') + '</div>';
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          output.innerHTML = '<div style="color: var(--error);">查询超时，请稍后重试</div>';
+        } else {
+          output.innerHTML = '<div style="color: var(--error);">网络错误，请稍后重试</div>';
+        }
+      }
+    }
+
+    function formatResponse(text) {
+      return text.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    }
+
+    function getProfileSummary() {
+      const parts = [];
+      const year = document.getElementById('year-input').value;
+      const province = document.getElementById('province-input').value;
+      const score = document.getElementById('score-input').value;
+      const rank = document.getElementById('rank-input').value;
+      const type = document.getElementById('type-select').value;
+      const city = document.getElementById('city-input').value;
+      if (year) parts.push(`年份：${year}`);
+      if (province) parts.push(`省份：${province}`);
+      if (score) parts.push(`分数：${score}`);
+      if (rank) parts.push(`位次：${rank}`);
+      if (type) parts.push(`科类：${type}`);
+      if (city) parts.push(`目标城市：${city}`);
+      return parts.length ? parts.join('，') : '未填写';
+    }
+
+    function getXuankeContext() {
+      const first = document.getElementById('xuanke-first').value;
+      const seconds = Array.from(document.querySelectorAll('input[name=xuanke-second]:checked')).map(cb => cb.value);
+      const province = document.getElementById('xuanke-province').value;
+      return { first, second: seconds, province };
+    }
+
+    const PROFILE_STORAGE_KEY = 'volunteer_profile';
+
+    function saveInfo() {
+      const year = document.getElementById('year-input').value;
+      const province = document.getElementById('province-input').value;
+      const score = document.getElementById('score-input').value;
+      const rank = document.getElementById('rank-input').value;
+      const type = document.getElementById('type-select').value;
+      const city = document.getElementById('city-input').value;
+      try {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ year, province, score, rank, type, city }));
+      } catch (e) {}
+      updateSummary();
+      showToast('信息已保存到本地', 'success');
+    }
+
+    function restoreProfile() {
+      try {
+        const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (p.year != null) document.getElementById('year-input').value = p.year;
+        if (p.province != null) document.getElementById('province-input').value = p.province;
+        if (p.score != null) document.getElementById('score-input').value = p.score;
+        if (p.rank != null) document.getElementById('rank-input').value = p.rank;
+        if (p.type != null) document.getElementById('type-select').value = p.type;
+        if (p.city != null) document.getElementById('city-input').value = p.city;
+      } catch (e) {}
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const tagsContainer = document.getElementById('summary-tags');
+      const pillsContainer = document.getElementById('summary-pills');
+      const year = document.getElementById('year-input').value;
+      const province = document.getElementById('province-input').value;
+      const score = document.getElementById('score-input').value;
+      const rank = document.getElementById('rank-input').value;
+      const type = document.getElementById('type-select').value;
+      const city = document.getElementById('city-input').value;
+      tagsContainer.innerHTML = '';
+      pillsContainer.innerHTML = '';
+      if (year) tagsContainer.innerHTML += `<span class="tag">${year}年</span>`;
+      if (province) tagsContainer.innerHTML += `<span class="tag">${province}</span>`;
+      if (type) tagsContainer.innerHTML += `<span class="tag">${type === 'science' ? '理科' : type === 'arts' ? '文科' : '综合'}</span>`;
+      if (score) pillsContainer.innerHTML += `<span class="pill">${score}分</span>`;
+      if (rank) pillsContainer.innerHTML += `<span class="pill">位次${rank}</span>`;
+      if (city) pillsContainer.innerHTML += `<span class="pill">${city}</span>`;
+    }
+
+    function showToast(msg, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast ' + type + ' show';
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // 回车搜索
+    document.getElementById('ai-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitQuery();
+      }
+    });
+
+    restoreProfile();
+  </script>
+</body>
+</html>
