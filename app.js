@@ -89,6 +89,12 @@ const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
+/** MySQL DATETIME 只接受 'YYYY-MM-DD HH:MM:SS'，不能带 T/Z 或毫秒 */
+function toMySQLDateTime(dateOrIso) {
+  const d = dateOrIso instanceof Date ? dateOrIso : new Date(dateOrIso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+}
+
 // 旧配置（兼容用）
 const AI_API_KEY = process.env.AI_KEY;
 
@@ -716,7 +722,7 @@ function fetchTopSharesBySchool(schoolName, keyword, limit = 100) {
       params.push(k, k, k);
     }
     sql += ` ORDER BY like_count DESC LIMIT ?`;
-    params.push(limit);
+    params.push(String(limit));
     db.all(sql, params, (err, rows) => {
       if (err) return resolve([]);
       resolve(rows || []);
@@ -740,7 +746,7 @@ function fetchTopSharesByKeyword(prompt, limit = 100) {
       (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count
       FROM student_shares s WHERE ${SHARE_LIST_WHERE}`;
     if (keywords.length === 0) {
-      db.all(baseSql + ` ORDER BY like_count DESC LIMIT ?`, [limit], (err, rows) => {
+      db.all(baseSql + ` ORDER BY like_count DESC LIMIT ?`, [String(limit)], (err, rows) => {
         if (err) return resolve([]);
         resolve(rows || []);
       });
@@ -751,7 +757,7 @@ function fetchTopSharesByKeyword(prompt, limit = 100) {
       const p = '%' + k + '%';
       return [p, p, p, p, p];
     });
-    params.push(limit);
+    params.push(String(limit));
     db.all(baseSql + ` AND (${conditions}) ORDER BY like_count DESC LIMIT ?`, params, (err, rows) => {
       if (err) return resolve([]);
       resolve(rows || []);
@@ -1164,7 +1170,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
     const nick = (row.nickname || '').trim() || '在读生';
     db.run(
       'UPDATE student_id_verifications SET status = ?, auth_token = ?, token_expires_at = ? WHERE id = ?',
-      ['approved', authToken, tokenExpiresAt, id],
+      ['approved', authToken, toMySQLDateTime(tokenExpiresAt), id],
       (e) => {
         if (e) {
           console.error('学生证通过-UPDATE失败:', e);
@@ -1179,7 +1185,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
             }
             db.run(
               'REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-              [sid, row.school_name, 'student_id', authToken, tokenExpiresAt, nick],
+              [sid, row.school_name, 'student_id', authToken, toMySQLDateTime(tokenExpiresAt), nick],
               (e3) => {
                 if (e3) console.error('学生证通过-REPLACE verified_users 失败:', e3.message);
                 res.send(e3 ? { code: 500, msg: "写入用户表失败，请查看服务端日志" } : { code: 200, msg: "已通过", authToken });
@@ -1191,7 +1197,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
         };
         db.run(
           'REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-          [sid, row.school_name, 'student_id', authToken, new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString(), nick],
+          [sid, row.school_name, 'student_id', authToken, toMySQLDateTime(new Date(Date.now() + TOKEN_EXPIRY_MS)), nick],
           insertCb
         );
       }
@@ -1716,7 +1722,7 @@ app.post('/api/auth/verify', (req, res) => {
       // 先插入必填列，避免因 nickname 列未就绪导致失败；再单独更新昵称
       db.run(
         'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-        [emailLower, schoolName, 'email', authToken, tokenExpiresAt],
+        [emailLower, schoolName, 'email', authToken, toMySQLDateTime(tokenExpiresAt)],
         function (replaceErr) {
           if (replaceErr) {
             res.send({ code: 500, msg: "认证失败" });
@@ -1888,7 +1894,7 @@ app.post('/api/auth/student-id', async (req, res) => {
         const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
         db.run(
           'UPDATE student_id_verifications SET auth_token = ?, token_expires_at = ? WHERE id = ?',
-          [authToken, tokenExpiresAt, id],
+          [authToken, toMySQLDateTime(tokenExpiresAt), id],
           (updateErr) => {
             if (updateErr) {
               res.send({ code: 200, submissionId: id, status: 'pending_manual', msg: "已提交，等待人工审核" });
@@ -1896,7 +1902,7 @@ app.post('/api/auth/student-id', async (req, res) => {
             }
             db.run(
               'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-              ['sid_' + id, schoolName, 'student_id', authToken, tokenExpiresAt, nick],
+              ['sid_' + id, schoolName, 'student_id', authToken, toMySQLDateTime(tokenExpiresAt), nick],
               () => {
                 res.send({ code: 200, msg: "认证成功", authToken, school: schoolName, nickname: nick, submissionId: id });
               }
@@ -3030,7 +3036,8 @@ app.get('/api/news', (req, res) => {
   sql += random
     ? ` ORDER BY RAND() LIMIT ?`
     : ` ORDER BY is_hot DESC, publish_date DESC, id DESC LIMIT ?`;
-  params.push(limit);
+  // mysql2 在 MySQL 8.0.22+ 下 LIMIT ? 需传字符串，否则会报 ER_WRONG_ARGUMENTS
+  params.push(String(limit));
   db.all(sql, params, (err, rows) => {
     if (err) {
       console.error("获取新闻失败:", err);
