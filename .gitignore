@@ -1,1 +1,6 @@
 ms_deploy.json
+
+# Vim 交换文件，避免误提交/部署到服务器
+*.swp
+*.swo
+*~

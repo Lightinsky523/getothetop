@@ -839,7 +839,10 @@
       var cfgEl = document.getElementById('backend-config-msg');
       cfgEl.style.display = 'block';
       cfgEl.textContent = '正在检查后端…';
-      fetch(API_BASE + '/api/auth/backend-config').then(function(r) { return r.json().catch(function() { return {} }); }).then(function(d) {
+      fetch(API_BASE + '/api/auth/backend-config', { method: 'GET' }).then(function(r) {
+        if (!r.ok) throw new Error('' + r.status);
+        return r.json().catch(function() { return {} });
+      }).then(function(d) {
         if (d.code === 200) {
           var parts = [];
           parts.push(d.smtpConfigured ? '邮件已配置' : '邮件未配置');
@@ -850,8 +853,8 @@
           cfgEl.textContent = '无法获取后端配置';
         }
       }).catch(function() {
-        cfgEl.textContent = '无法连接后端。若为静态页或跨域，请在 URL 加 ?api_base=你的后端地址（如 https://服务器:端口）';
-        cfgEl.style.color = 'var(--danger, #c00)';
+        cfgEl.textContent = '后端状态检查跳过（若邮箱/学生证认证可用则正常）。跨域时请在 URL 加 ?api_base=你的后端地址';
+        cfgEl.style.color = 'var(--text-soft)';
       });
       if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';

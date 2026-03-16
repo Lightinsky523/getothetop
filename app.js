@@ -33,7 +33,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ----- 基础配置：从环境变量读取，没有则用默认值 -----
-const PORT = process.env.PORT || 7860;   // 服务监听的端口号，process.env 是环境变量
+const PORT = process.env.PORT || 3000;   // 服务监听的端口号，process.env 是环境变量
 
 /**
  * 解析数据存放目录。
@@ -86,6 +86,12 @@ const DASHSCOPE_VISION_MODEL = process.env.DASHSCOPE_VISION_MODEL || 'qwen-vl-pl
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+
+/** 将 Date 或 ISO 字符串转为 MySQL datetime 格式 'YYYY-MM-DD HH:mm:ss' */
+function toMySQLDatetime(d) {
+  const date = d instanceof Date ? d : new Date(d);
+  return date.toISOString().replace('T', ' ').replace('Z', '').slice(0, 19);
+}
 
 // 旧配置（兼容用）
 const AI_API_KEY = process.env.AI_KEY;
@@ -1157,7 +1163,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
       return;
     }
     const authToken = require('crypto').randomBytes(32).toString('hex');
-    const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
+    const tokenExpiresAt = toMySQLDatetime(new Date(Date.now() + TOKEN_EXPIRY_MS));
     const sid = 'sid_' + id;
     const nick = (row.nickname || '').trim() || '在读生';
     db.run(
@@ -1189,7 +1195,7 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
         };
         db.run(
           'REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-          [sid, row.school_name, 'student_id', authToken, new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString(), nick],
+          [sid, row.school_name, 'student_id', authToken, tokenExpiresAt, nick],
           insertCb
         );
       }
@@ -1620,6 +1626,7 @@ app.get('/api/auth/backend-config', (req, res) => {
     code: 200,
     smtpConfigured: !!transporter,
     bailianConfigured: !!BAILIAN_API_KEY,
+    bailianVisionConfigured: !!BAILIAN_API_KEY,
     msg: 'OK'
   });
 });
@@ -1741,8 +1748,11 @@ async function callBailianVisionStudentId(imageBase64) {
   }
   const fetch = (await import('node-fetch')).default;
   const imageUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
+  console.log('[学生证鉴伪] 开始调用百炼视觉 API，模型:', DASHSCOPE_VISION_MODEL, '，图片大小:', imageUrl.length);
   try {
-    const response = await fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
+    const apiUrl = `${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`;
+    console.log('[学生证鉴伪] 请求 URL:', apiUrl);
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1775,9 +1785,16 @@ async function callBailianVisionStudentId(imageBase64) {
       return 'review';
     }
     const text = (result.choices?.[0]?.message?.content || result.output?.text || result.output?.choices?.[0]?.message?.content || '').trim();
-    if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/^否|不真实|假|非学生证/.test(text)) return 'pass';
-    if (/^否|不真实|假|非学生证/.test(text)) return 'rejected';
-    console.warn('[学生证鉴伪] 模型输出无法判定，转人工:', JSON.stringify(text).slice(0, 100));
+    console.log('[学生证鉴伪] AI 原始回复:', text);
+    if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/^否|不真实|假|非学生证/.test(text)) {
+      console.log('[学生证鉴伪] -> 判定：通过 (pass)');
+      return 'pass';
+    }
+    if (/^否|不真实|假|非学生证/.test(text)) {
+      console.log('[学生证鉴伪] -> 判定：拒绝 (rejected)');
+      return 'rejected';
+    }
+    console.warn('[学生证鉴伪] -> 判定：无法判定，转人工审核 (review)。原文:', JSON.stringify(text).slice(0, 100));
   } catch (e) {
     console.error('[学生证鉴伪] 请求异常:', e.message);
   }
@@ -1883,7 +1900,7 @@ app.post('/api/auth/student-id', async (req, res) => {
       const id = this.lastID;
       if (status === 'approved') {
         const authToken = require('crypto').randomBytes(32).toString('hex');
-        const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
+        const tokenExpiresAt = toMySQLDatetime(new Date(Date.now() + TOKEN_EXPIRY_MS));
         db.run(
           'UPDATE student_id_verifications SET auth_token = ?, token_expires_at = ? WHERE id = ?',
           [authToken, tokenExpiresAt, id],
@@ -3058,6 +3075,7 @@ if (process.env.VERCEL) {
     console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
     console.log(`📊 数据目录: ${DATA_DIR}`);
     console.log(`🤖 智能查询（百炼应用）: ${BAILIAN_API_KEY && BAILIAN_APP_ID ? '已配置' : '未配置'}`);
+    console.log(`🤖 学生证鉴伪（百炼视觉）: ${BAILIAN_API_KEY ? '已配置' : '未配置（将仅人工审核）'}`);
     console.log(`🤖 DeepSeek（邮箱识别+数据录入）: ${DEEPSEEK_API_KEY ? '已配置' : '未配置'}`);
     // 启动时预建 MySQL 连接池，避免首个请求因懒初始化（建库建表等）而很慢
     if (MYSQL_USER && MYSQL_PASSWORD) {
