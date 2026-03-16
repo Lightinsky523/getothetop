@@ -1651,7 +1651,8 @@ app.post('/api/auth/send-code', async (req, res) => {
 
   const schoolName = await getSchoolFromEmailSuffix(suffix);
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  // MySQL DATETIME 只接受 'YYYY-MM-DD HH:MM:SS'，不能用 ISO 8601 带 T/Z 的格式
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
 
   try {
     await mysqlPool.execute(
@@ -2402,7 +2403,7 @@ app.post('/api/student-shares/:shareId/comments/:commentId/like', async (req, re
 app.get('/api/schools', (req, res) => {
   const sql = `SELECT school_name, school_level, location FROM schools
                UNION
-               SELECT school_name, school_level, location FROM school_programs WHERE school_name NOT IN (SELECT school_name FROM schools)
+               SELECT school_name, ANY_VALUE(school_level), ANY_VALUE(location) FROM school_programs WHERE school_name NOT IN (SELECT school_name FROM schools)
                GROUP BY school_name
                ORDER BY school_name`;
   db.all(sql, [], (err, rows) => {
