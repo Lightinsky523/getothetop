@@ -1675,14 +1675,11 @@ app.post('/api/auth/send-code', async (req, res) => {
 
   const schoolName = await getSchoolFromEmailSuffix(suffix);
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  // MySQL DATETIME 只接受 'YYYY-MM-DD HH:MM:SS'，不能带 T/Z 或毫秒
-  const exp = new Date(Date.now() + 5 * 60 * 1000);
-  const expiresAt = `${exp.getFullYear()}-${String(exp.getMonth() + 1).padStart(2, '0')}-${String(exp.getDate()).padStart(2, '0')} ${String(exp.getHours()).padStart(2, '0')}:${String(exp.getMinutes()).padStart(2, '0')}:${String(exp.getSeconds()).padStart(2, '0')}`;
-
+  // 用 MySQL 的 NOW() 生成过期时间，避免 Node 与 MySQL 时区不一致导致「验证码已过期」
   try {
     await mysqlPool.execute(
-      'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, ?)',
-      [email, code, schoolName, expiresAt]
+      'INSERT INTO verification_codes (email, code, school_name, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))',
+      [email, code, schoolName]
     );
   } catch (err) {
     console.error("保存验证码失败:", err);
