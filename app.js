@@ -1775,8 +1775,15 @@ async function callBailianVisionStudentId(imageBase64) {
       return 'review';
     }
     const text = (result.choices?.[0]?.message?.content || result.output?.text || result.output?.choices?.[0]?.message?.content || '').trim();
-    if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/^否|不真实|假|非学生证/.test(text)) return 'pass';
+    console.log('[学生证鉴伪] 百炼返回原文:', JSON.stringify(text).slice(0, 200));
+    if (!text) {
+      console.warn('[学生证鉴伪] 未解析到文本，响应结构:', JSON.stringify(result).slice(0, 300));
+    }
+    if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/否|不真实|假|非学生证/.test(text)) return 'pass';
+    if (/是/.test(text) && !/否|不真实|假|非学生证/.test(text)) return 'pass';
+    if (/yes|true|real/.test(text.toLowerCase()) && !/no|false|假|非学生证|不真实/.test(text)) return 'pass';
     if (/^否|不真实|假|非学生证/.test(text)) return 'rejected';
+    if (/否|不真实|假|非学生证|no|false/.test(text)) return 'rejected';
     console.warn('[学生证鉴伪] 模型输出无法判定，转人工:', JSON.stringify(text).slice(0, 100));
   } catch (e) {
     console.error('[学生证鉴伪] 请求异常:', e.message);
@@ -1828,7 +1835,7 @@ const ALIYUN_ACCESS_KEY_ID = process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALI
 const ALIYUN_ACCESS_KEY_SECRET = process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
 const ALIYUN_GREEN_REGION = process.env.ALIYUN_GREEN_REGION || 'cn-shanghai';
 if (ALIYUN_ACCESS_KEY_ID && ALIYUN_ACCESS_KEY_SECRET) {
-  console.log('✅ 阿里云内容安全（图片鉴伪）已配置，学生证将走鉴伪接口');
+  console.log('✅ 阿里云内容安全已配置；学生证认证因使用 base64 上传，/green/image/scan 仅支持 URL，故学生证鉴伪仅使用百炼视觉');
 } else {
   console.warn('⚠️ 未配置 ALIYUN_ACCESS_KEY_ID/ALIYUN_ACCESS_KEY_SECRET，学生证仅走百炼鉴伪或人工审核');
 }
@@ -1859,17 +1866,8 @@ app.post('/api/auth/student-id', async (req, res) => {
   } catch (e) {
     console.error("[学生证] AI 鉴伪异常，转人工:", e.message);
   }
-  // 2) 若已配置阿里云内容安全，再走一遍鉴伪（可与 AI 结果合并）
-  if (status === 'pending_manual' && ALIYUN_ACCESS_KEY_ID && ALIYUN_ACCESS_KEY_SECRET) {
-    try {
-      const greenResult = await callAliyunImageScan(rawBase64);
-      console.log('[学生证] 阿里云鉴伪结果:', greenResult);
-      if (greenResult === 'pass') status = 'approved';
-      else if (greenResult === 'rejected') status = 'rejected';
-    } catch (e) {
-      console.error("[学生证] 阿里云图片鉴伪失败，转人工:", e.message);
-    }
-  }
+  // 2) 阿里云内容安全 /green/image/scan 仅支持「图片 URL」传图，不支持 base64（imageBytes 会报 400）。
+  //    当前学生证为 base64 上传，故此处不调用阿里云，仅依赖百炼鉴伪；若需使用阿里云，需先将图片上传至 OSS 再传 URL。
   console.log('[学生证] 最终状态:', status);
 
   db.run(
