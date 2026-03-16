@@ -110,7 +110,7 @@ const MYSQL_HOST = process.env.MYSQL_HOST || '115.29.233.160'; // 可用环境�
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || '3306', 10);
 const MYSQL_USER = process.env.MYSQL_USER;       // 必须在环境变量中设置
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD; // 必须在环境变量中设置
-const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'guidance_app';
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'ycyz_db';
 
 let mysqlPool = null;
 

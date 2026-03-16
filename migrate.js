@@ -14,43 +14,80 @@ const CONFIG = {
 };
 
 const TABLES_TO_MIGRATE = {
-    'student_shares': ['school', 'major', 'city', 'gaokao_year', 'experience', 'label', 'author', 'create_at', 'likes', 'dislikes'],
-    'verified_users': ['email', 'nickname', 'auth_type', 'verified_at'],
-    'schools': ['name', 'city', 'tags', 'intro'],
-    'majors': ['name', 'category'],
-    'school_programs': ['school_id', 'major_id', 'course_intros'],
-    'major_overviews': ['major_name', 'intro', 'employment', 'salary_level', 'admission_plan'],
-    'major_news': ['major_id', 'title', 'content', 'publish_date', 'source_url', 'is_hot']
+    'student_shares': {
+        sqliteColumns: ['school', 'major', 'grade', 'title', 'content', 'tags', 'images', 'status', 'upload_time', 'usefulness_ratio', 'author_nickname', 'analyzed_at', 'delete_after', 'is_emotional'],
+        mysqlColumns: ['school', 'major', 'grade', 'title', 'content', 'tags', 'images', 'status', 'upload_time', 'usefulness_ratio', 'author_nickname', 'analyzed_at', 'delete_after', 'is_emotional']
+    },
+    'verified_users': {
+        sqliteColumns: ['email', 'school_name', 'auth_type', 'auth_token', 'token_expires_at', 'verified_at', 'nickname'],
+        mysqlColumns: ['email', 'school_name', 'auth_type', 'auth_token', 'token_expires_at', 'verified_at', 'nickname']
+    },
+    'schools': {
+        sqliteColumns: ['school_name', 'school_level', 'location', 'description'],
+        mysqlColumns: ['school_name', 'school_level', 'location', 'description']
+    },
+    'major_overviews': {
+        sqliteColumns: ['major_code', 'major_name', 'category', 'degree_type', 'duration', 'description', 'core_courses', 'career_prospects', 'related_majors', 'training_plan', 'admission_plan'],
+        mysqlColumns: ['major_code', 'major_name', 'category', 'degree_type', 'duration', 'description', 'core_courses', 'career_prospects', 'related_majors', 'training_plan', 'admission_plan']
+    },
+    'school_programs': {
+        sqliteColumns: ['major_id', 'school_name', 'school_level', 'location', 'program_features', 'courses', 'course_intros', 'admission_requirements', 'tuition_fee', 'scholarships', 'contact_info'],
+        mysqlColumns: ['major_id', 'school_name', 'school_level', 'location', 'program_features', 'courses', 'course_intros', 'admission_requirements', 'tuition_fee', 'scholarships', 'contact_info']
+    },
+    'major_news': {
+        sqliteColumns: ['major_id', 'title', 'content', 'source', 'publish_date', 'is_hot'],
+        mysqlColumns: ['major_id', 'title', 'content', 'source', 'publish_date', 'is_hot']
+    }
 };
 
 async function migrate() {
     console.log('🚀 开始从 SQLite 迁移数据到 MySQL...');
+    console.log('📂 SQLite 路径:', CONFIG.sqlitePath);
     let mysqlConn;
     try {
         mysqlConn = await mysql.createConnection(CONFIG.mysql);
         console.log('✅ MySQL 连接成功');
         const sqliteDb = new sqlite3.Database(CONFIG.sqlitePath, sqlite3.OPEN_READONLY);
         
-        for (const [tableName, columns] of Object.entries(TABLES_TO_MIGRATE)) {
-            const rows = await new Promise((resolve) => {
+        for (const [tableName, config] of Object.entries(TABLES_TO_MIGRATE)) {
+            const { sqliteColumns, mysqlColumns } = config;
+            console.log(`\n📋 正在处理表: ${tableName}`);
+            const rows = await new Promise((resolve, reject) => {
                 sqliteDb.all(`SELECT * FROM ${tableName}`, [], (err, rows) => {
-                    if (err) resolve([]);
+                    if (err) {
+                        console.error(`❌ 读取表 ${tableName} 失败:`, err.message);
+                        resolve([]);
+                    }
                     else resolve(rows);
                 });
             });
 
+            console.log(`   查询到 ${rows.length} 条数据`);
             if (rows.length === 0) continue;
-            const placeholders = columns.map(() => '?').join(', ');
-            const insertSql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
+
+            const placeholders = mysqlColumns.map(() => '?').join(', ');
+            const insertSql = `INSERT INTO ${tableName} (${mysqlColumns.join(', ')}) VALUES (${placeholders})`;
 
             let count = 0;
+            let failed = 0;
             for (const row of rows) {
                 try {
-                    const values = columns.map(col => row[col] === undefined ? null : row[col]);
+                    const values = sqliteColumns.map(col => {
+                        let val = row[col];
+                        // 转换 ISO 8601 时间格式
+                        if (val && typeof val === 'string' && val.includes('T') && val.endsWith('Z')) {
+                            val = val.replace('T', ' ').replace('Z', '').slice(0, 19);
+                        }
+                        return val === undefined ? null : val;
+                    });
                     await mysqlConn.execute(insertSql, values);
                     count++;
-                } catch (e) { /* 忽略重复项 */ }
+                } catch (e) {
+                    failed++;
+                    if (failed <= 3) console.error(`   ⚠️ 插入失败:`, e.message);
+                }
             }
+            if (failed > 3) console.error(`   ⚠️ 还有 ${failed - 3} 条失败...`);
             console.log(`✅ 表 ${tableName}: 成功迁移 ${count} 条数据`);
         }
         console.log('\n✨ 所有任务已完成！');
