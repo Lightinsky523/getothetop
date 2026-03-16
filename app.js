@@ -512,13 +512,19 @@ async function loadKeywordCategories() {
 }
 
 // ----- 兼容 SQLite API 的 MySQL 封装：提供 db.run / db.all / db.get -----
-// 防御：MySQL DATETIME 不接受 ISO8601，若 params 中误传了 ISO 字符串则在此统一转换
+// 防御：MySQL DATETIME 不接受 ISO8601，若 params 中误传了 ISO 字符串或 Date 对象则在此统一转换
 function ensureMySQLParams(params) {
   if (!Array.isArray(params)) return params || [];
   return params.map((p) => {
+    if (p instanceof Date) return toMySQLDateTime(p);
     if (typeof p === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(p)) return toMySQLDateTime(p);
     return p;
   });
+}
+
+/** 将前端/JSON 的布尔值转为 MySQL TINYINT(1)：避免 true/false/"false" 等与 MySQL 不兼容 */
+function toTinyInt(v) {
+  return (v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true') ? 1 : 0;
 }
 
 const db = {
@@ -1402,7 +1408,7 @@ app.post('/api/admin/news', verifyAdmin, (req, res) => {
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
-  db.run(sql, [major_id, title, content, source, publish_date, is_hot ? 1 : 0], function(err) {
+  db.run(sql, [major_id, title, content, source, publish_date, toTinyInt(is_hot)], function(err) {
     if (err) {
       console.error("添加专业动态失败:", err);
       res.send({ code: 500, msg: "添加失败: " + err.message });
@@ -1418,7 +1424,7 @@ app.put('/api/admin/news/:id', verifyAdmin, (req, res) => {
   const id = req.params.id;
   
   const sql = `UPDATE major_news SET title = ?, content = ?, source = ?, publish_date = ?, is_hot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-  db.run(sql, [title, content, source, publish_date, is_hot ? 1 : 0, id], function(err) {
+  db.run(sql, [title, content, source, publish_date, toTinyInt(is_hot), id], function(err) {
     if (err) {
       console.error("更新专业动态失败:", err);
       res.send({ code: 500, msg: "更新失败: " + err.message });
