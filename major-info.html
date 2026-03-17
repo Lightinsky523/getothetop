@@ -357,6 +357,7 @@
 
     .news-modal-body {
       font-size: 14px; line-height: 1.8; color: var(--text-soft);
+      white-space: pre-wrap; word-break: break-word;
     }
 
     .news-modal-body p { margin-bottom: 12px; }
@@ -1054,7 +1055,8 @@
       if (!item) return;
       
       document.getElementById('news-modal-title').textContent = item.title;
-      document.getElementById('news-modal-body').innerHTML = item.content || item.summary;
+      const bodyEl = document.getElementById('news-modal-body');
+      bodyEl.textContent = (item.content || item.summary || '').trim() || '暂无正文';
       document.getElementById('news-modal-source').textContent = '来源：' + (item.source || '未知');
       document.getElementById('news-modal-date').textContent = item.publish_date || '';
       
