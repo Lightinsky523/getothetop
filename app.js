@@ -3083,7 +3083,30 @@ app.post('/admin/news', async (req, res) => {
     res.json({ code: 500, msg: '存储失败', error: err.message });
   }
 });
+// GET /api/admin/news：按专业加载动态趣闻列表
+app.get('/api/admin/news', async (req, res) => {
+  const majorId = req.query.major_id;
 
+  // 前端未选择专业
+  if (!majorId) {
+    return res.json({ code: 400, msg: '未选择专业', data: [] });
+  }
+
+  try {
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, major_id, title, content, source, publish_date, is_hot 
+       FROM major_news 
+       WHERE major_id = ? 
+       ORDER BY publish_date DESC`,
+      [majorId]
+    );
+
+    res.json({ code: 200, data: rows });
+  } catch (err) {
+    console.error('加载专业动态失败:', err);
+    res.json({ code: 500, msg: '加载失败', data: [] });
+  }
+});
 
 // 单条新闻详情
 app.get('/api/news/:id', (req, res) => {
