@@ -3101,25 +3101,7 @@ app.get('/admin/majors/:majorId/news', async (req, res) => {
     res.json({ code: 500, msg: '加载失败', data: [] });
   }
 });
-// GET /admin/majors/:majorId/news
-app.get('/admin/majors/:majorId/news', async (req, res) => {
-  const majorId = req.params.majorId;
-  if (!majorId) return res.json({ code: 400, msg: '未选择专业', data: [] });
 
-  try {
-    const [rows] = await mysqlPool.execute(
-      `SELECT id, major_id, title, content, source, publish_date, is_hot
-       FROM major_news
-       WHERE major_id = ?
-       ORDER BY publish_date DESC`,
-      [majorId]
-    );
-    res.json({ code: 200, data: rows });
-  } catch (err) {
-    console.error('加载专业动态失败:', err);
-    res.json({ code: 500, msg: '加载失败', data: [] });
-  }
-});
 
 // 单条新闻详情
 app.get('/api/news/:id', (req, res) => {
