@@ -3038,7 +3038,7 @@ app.post('/admin/ai-add-school-all-majors', verifyAdmin, handleAiAddSchoolAllMaj
 
 // ========== 专业动态/新闻 API ==========
 // 新闻列表：limit 条数，random=1 随机，major_id 按专业筛
-app.get('/api/news', (req, res) => {
+app.get('/admin/news', (req, res) => {
   const limit = Math.min(100, parseInt(req.query.limit, 10) || 6);
   const random = req.query.random === '1' || req.query.random === 'true';
   const majorId = req.query.major_id ? parseInt(req.query.major_id, 10) : null;
