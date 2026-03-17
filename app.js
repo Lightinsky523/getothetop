@@ -3094,3 +3094,69 @@ if (process.env.VERCEL) {
     }
   });
 }
+
+// ========== 专业动态管理路由 ==========
+
+// 添加专业动态
+app.post('/admin/news', async (req, res) => {
+  const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
+
+  // 验证管理员密码
+  if (password !== ADMIN_PASSWORD) return res.status(403).json({ code: 403, msg: '密码错误' });
+
+  // 必填字段校验
+  if (!major_id || !title) return res.json({ code: 400, msg: 'major_id 和 title 必填' });
+
+  try {
+    const [result] = await mysqlPool.execute(
+      `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+      [major_id, title, content, source, publish_date, is_hot ? 1 : 0]
+    );
+    res.json({ code: 200, msg: '添加成功', lastID: result.insertId });
+  } catch (err) {
+    console.error('添加专业动态失败:', err);
+    res.json({ code: 500, msg: '存储失败', error: err.message });
+  }
+});
+
+// 更新专业动态
+app.put('/admin/news/:id', async (req, res) => {
+  const id = req.params.id;
+  const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
+
+  if (password !== ADMIN_PASSWORD) return res.status(403).json({ code: 403, msg: '密码错误' });
+  if (!major_id || !title) return res.json({ code: 400, msg: 'major_id 和 title 必填' });
+
+  try {
+    const [result] = await mysqlPool.execute(
+      `UPDATE major_news
+        SET major_id=?, title=?, content=?, source=?, publish_date=?, is_hot=?
+        WHERE id=?`,
+      [major_id, title, content, source, publish_date, is_hot ? 1 : 0, id]
+    );
+    res.json({ code: 200, msg: '更新成功' });
+  } catch (err) {
+    console.error('更新专业动态失败:', err);
+    res.json({ code: 500, msg: '更新失败', error: err.message });
+  }
+});
+
+// 删除专业动态
+app.delete('/admin/news/:id', async (req, res) => {
+  const id = req.params.id;
+  const { password } = req.body;
+
+  if (password !== ADMIN_PASSWORD) return res.status(403).json({ code: 403, msg: '密码错误' });
+
+  try {
+    const [result] = await mysqlPool.execute(
+      `DELETE FROM major_news WHERE id=?`,
+      [id]
+    );
+    res.json({ code: 200, msg: '删除成功' });
+  } catch (err) {
+    console.error('删除专业动态失败:', err);
+    res.json({ code: 500, msg: '删除失败', error: err.message });
+  }
+});
