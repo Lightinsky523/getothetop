@@ -503,7 +503,14 @@
               <select class="select" id="filter-location">
                 <option value="">全部地区</option>
               </select>
+              <select class="select" id="filter-school">
+                <option value="">全部院校</option>
+              </select>
+              <input type="text" class="input" id="filter-keyword" placeholder="输入院校名 / 地区 / 特色关键词..." />
               <button class="primary-btn" onclick="filterSchools()">筛选</button>
+              <button type="button" class="primary-btn" id="btn-toggle-schools" onclick="toggleSchools()" style="background:#f0ede8;color:var(--text);border-color:var(--border-subtle);margin-left:auto;display:none;">
+                展开院校列表
+              </button>
             </div>
             
             <div class="school-list" id="school-list">
@@ -595,6 +602,8 @@
     let currentMajor = null;
     let currentPrograms = [];
     let searchMode = 'major';
+    let filteredPrograms = [];
+    let schoolsExpanded = false;
 
     // 检查管理员权限
     function checkAdminAccess() {
@@ -843,6 +852,8 @@
         if (data.code === 200) {
           currentMajor = data.data;
           currentPrograms = currentMajor.programs || [];
+          filteredPrograms = currentPrograms.slice();
+          schoolsExpanded = false;
           
           // 填充详情
           document.getElementById('detail-major-name').textContent = currentMajor.major_name;
@@ -857,9 +868,17 @@
           if (currentMajor.degree_type) tagsHtml.push(`<span class="tag">${currentMajor.degree_type}</span>`);
           if (currentMajor.duration) tagsHtml.push(`<span class="tag">${currentMajor.duration}</span>`);
           document.getElementById('detail-major-tags').innerHTML = tagsHtml.join('');
+
+          // 填充按院校名筛选下拉
+          const schoolSelect = document.getElementById('filter-school');
+          if (schoolSelect) {
+            const names = [...new Set((currentPrograms || []).map(p => p.school_name).filter(Boolean))].sort();
+            schoolSelect.innerHTML = '<option value=\"\">全部院校</option>' + names.map(n => `<option value=\"${n}\">${n}</option>`).join('');
+          }
           
-          // 渲染院校列表
-          renderSchools(currentPrograms);
+          // 更新折叠按钮与院校列表
+          updateSchoolToggleUI();
+          renderSchools();
           
           // 显示详情区域
           document.getElementById('major-list').style.display = 'none';
@@ -874,16 +893,33 @@
       }
     }
 
-    // 渲染院校列表
-    function renderSchools(programs) {
+    // 渲染院校列表（支持折叠 + 随机 5 所）
+    function renderSchools() {
       const list = document.getElementById('school-list');
+      const programs = filteredPrograms || [];
+      const total = programs.length;
       
-      if (programs.length === 0) {
+      if (total === 0) {
         list.innerHTML = '<div class="empty-state">该专业暂无开设院校数据</div>';
         return;
       }
       
-      list.innerHTML = programs.map(p => `
+      let toRender = programs;
+      
+      if (total > 5) {
+        if (!schoolsExpanded) {
+          list.innerHTML = '<div class="empty-state">该专业开设院校较多，请点击上方“展开院校列表”随机查看 5 所院校。</div>';
+          return;
+        }
+        const shuffled = programs.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        toRender = shuffled.slice(0, 5);
+      }
+      
+      list.innerHTML = toRender.map(p => `
         <div class="school-card">
           <div class="school-header">
             <h3 class="school-name">${p.school_name}</h3>
@@ -920,26 +956,52 @@
           </div>
           `;
           })()}
-          ${p.stream_division ? `
+          ${(p.stream_division || p.admission_requirements || p.scholarships || p.contact_info) ? `
           <div class="stream-info">
-            <strong>大类分流方案：</strong>${p.stream_division}
-          </div>
-          ` : ''}
-          ${p.admission_requirements ? `
-          <div class="stream-info">
-            <strong>招生要求：</strong>${p.admission_requirements}
+            ${p.stream_division ? `<div><strong>大类分流方案：</strong>${p.stream_division}</div>` : ''}
+            ${p.admission_requirements ? `<div><strong>招生要求：</strong>${p.admission_requirements}</div>` : ''}
+            ${p.scholarships ? `<div><strong>奖学金：</strong>${p.scholarships}</div>` : ''}
+            ${p.contact_info ? `<div><strong>招生办联系方式：</strong>${p.contact_info}</div>` : ''}
           </div>
           ` : ''}
         </div>
       `).join('');
+    }
+    
+    function updateSchoolToggleUI() {
+      const btn = document.getElementById('btn-toggle-schools');
+      if (!btn) return;
+      const total = (filteredPrograms || []).length;
+      if (!total) {
+        btn.style.display = 'none';
+        return;
+      }
+      btn.style.display = 'inline-flex';
+      if (total <= 5) {
+        btn.textContent = '全部院校（共 ' + total + ' 所）';
+      } else if (!schoolsExpanded) {
+        btn.textContent = '展开院校列表（共 ' + total + ' 所，随机展示 5 所）';
+      } else {
+        btn.textContent = '收起院校列表';
+      }
+    }
+    
+    function toggleSchools() {
+      const total = (filteredPrograms || []).length;
+      if (total <= 5) return;
+      schoolsExpanded = !schoolsExpanded;
+      updateSchoolToggleUI();
+      renderSchools();
     }
 
     // 筛选院校
     function filterSchools() {
       const level = document.getElementById('filter-level').value;
       const location = document.getElementById('filter-location').value;
+      const schoolName = (document.getElementById('filter-school').value || '').trim();
+      const keyword = (document.getElementById('filter-keyword').value || '').trim().toLowerCase();
       
-      let filtered = currentPrograms;
+      let filtered = currentPrograms || [];
       
       if (level) {
         filtered = filtered.filter(p => p.school_level && p.school_level.includes(level));
@@ -948,8 +1010,27 @@
       if (location) {
         filtered = filtered.filter(p => p.location === location);
       }
+
+      if (schoolName) {
+        filtered = filtered.filter(p => p.school_name === schoolName);
+      }
+
+      if (keyword) {
+        filtered = filtered.filter(p => {
+          const text = [
+            p.school_name || '',
+            p.location || '',
+            p.program_features || '',
+            p.courses || ''
+          ].join(' ').toLowerCase();
+          return text.includes(keyword);
+        });
+      }
       
-      renderSchools(filtered);
+      filteredPrograms = filtered;
+      schoolsExpanded = false;
+      updateSchoolToggleUI();
+      renderSchools();
     }
 
     // 返回列表
@@ -1085,6 +1166,10 @@
       const newsKw = document.getElementById('news-major-keyword');
       if (newsKw) newsKw.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); searchNewsByMajorKeyword(); }
+      });
+      const schoolKwInput = document.getElementById('filter-keyword');
+      if (schoolKwInput) schoolKwInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); filterSchools(); }
       });
     };
   </script>
