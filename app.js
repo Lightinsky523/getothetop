@@ -3062,6 +3062,28 @@ app.get('/api/news', (req, res) => {
     res.send({ code: 200, data: rows || [] });
   });
 });
+app.post('/admin/news', async (req, res) => {
+  const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
+  
+  // 校验密码
+  if (password !== ADMIN_PASSWORD) return res.status(403).json({ code: 403, msg: '密码错误' });
+
+  // 检查必填字段
+  if (!major_id || !title) return res.json({ code: 400, msg: 'major_id 和 title 必填' });
+
+  try {
+    const [result] = await mysqlPool.execute(
+      `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [major_id, title, content, source, publish_date, is_hot ? 1 : 0]
+    );
+    res.json({ code: 200, msg: '添加成功', lastID: result.insertId });
+  } catch (err) {
+    console.error('添加专业动态失败:', err);
+    res.json({ code: 500, msg: '存储失败', error: err.message });
+  }
+});
+
 
 // 单条新闻详情
 app.get('/api/news/:id', (req, res) => {
