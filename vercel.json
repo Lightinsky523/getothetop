@@ -5,7 +5,11 @@
       "destination": "http://115.29.233.160:3000/ai-query"
     },
     {
-      "source": "/admin/:path*",
+      "source": "/api/admin/:path*",
+      "destination": "http://115.29.233.160:3000/api/admin/:path*"
+    },
+    {
+      "source": "/admin/api/:path*",
       "destination": "http://115.29.233.160:3000/admin/:path*"
     },
     {
