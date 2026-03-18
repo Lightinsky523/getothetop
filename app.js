@@ -89,6 +89,12 @@ const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
+/** MySQL DATETIME 只接受 'YYYY-MM-DD HH:MM:SS'，不能带 T/Z 或毫秒 */
+function toMySQLDateTime(dateOrIso) {
+  const d = dateOrIso instanceof Date ? dateOrIso : new Date(dateOrIso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+}
+
 // 旧配置（兼容用）
 const AI_API_KEY = process.env.AI_KEY;
 
@@ -1278,7 +1284,7 @@ app.post('/admin/student-id-review', verifyAdminLegacy, (req, res) => {
         };
         db.run(
           'REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
-          [sid, row.school_name, 'student_id', authToken, new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString(), nick],
+          [sid, row.school_name, 'student_id', authToken, toMySQLDateTime(new Date(Date.now() + TOKEN_EXPIRY_MS)), nick],
           insertCb
         );
       }
@@ -1494,7 +1500,11 @@ app.post('/api/admin/news', verifyAdminLegacy, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news
+<<<<<<< HEAD
 app.post('/admin/news', verifyAdminLegacy, (req, res) => {
+=======
+app.post('/admin/news', verifyAdmin, (req, res) => {
+>>>>>>> feefa4f812fda41c5efe10c4a5f206fd8e2a06ce
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
@@ -1524,7 +1534,11 @@ app.put('/api/admin/news/:id', verifyAdminLegacy, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news/:id
+<<<<<<< HEAD
 app.put('/admin/news/:id', verifyAdminLegacy, (req, res) => {
+=======
+app.put('/admin/news/:id', verifyAdmin, (req, res) => {
+>>>>>>> feefa4f812fda41c5efe10c4a5f206fd8e2a06ce
   const { password, title, content, source, publish_date, is_hot } = req.body;
   const id = req.params.id;
   
@@ -1556,6 +1570,21 @@ app.delete('/api/admin/news/:id', verifyAdminLegacy, (req, res) => {
 });
 // 兼容旧前端路径：/admin/news/:id
 app.delete('/admin/news/:id', verifyAdminLegacy, (req, res) => {
+  const { password } = req.body;
+  const id = req.params.id;
+  
+  const sql = `DELETE FROM major_news WHERE id = ?`;
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error("删除专业动态失败:", err);
+      res.send({ code: 500, msg: "删除失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "删除成功" });
+  });
+});
+// 兼容旧前端路径：/admin/news/:id
+app.delete('/admin/news/:id', verifyAdmin, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
