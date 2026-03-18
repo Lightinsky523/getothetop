@@ -876,7 +876,14 @@
           headers: getAuthHeaders(),
           body: JSON.stringify({ password })
         });
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          console.error('登录响应非 JSON:', res.status, await res.text());
+          showToast('后端返回异常，请确认 ECS 服务已启动且 3000 端口已开放', 'error');
+          return;
+        }
 
         if (data.code === 200 && data.token) {
           adminPassword = password;
@@ -888,7 +895,8 @@
           showToast(data.msg || '密码错误', 'error');
         }
       } catch (err) {
-        showToast('登录失败，请检查后端服务', 'error');
+        console.error('登录请求失败:', err);
+        showToast('无法连接后端，请检查：1) ECS 上 Node 或 Docker 是否运行 2) 安全组是否放行 3000 端口', 'error');
       }
     }
 
