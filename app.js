@@ -1403,9 +1403,36 @@ app.get('/api/admin/majors/:id/news', (req, res) => {
     res.send({ code: 200, data: rows });
   });
 });
+// 兼容旧前端路径：/admin/majors/:id/news
+app.get('/admin/majors/:id/news', (req, res) => {
+  const majorId = req.params.id;
+  const sql = `SELECT * FROM major_news WHERE major_id = ? ORDER BY is_hot DESC, created_at DESC`;
+  db.all(sql, [majorId], (err, rows) => {
+    if (err) {
+      console.error("获取专业动态失败:", err);
+      res.send({ code: 500, msg: "获取失败" });
+      return;
+    }
+    res.send({ code: 200, data: rows });
+  });
+});
 
 // 添加专业动态趣闻
 app.post('/api/admin/news', verifyAdmin, (req, res) => {
+  const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
+  
+  const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [major_id, title, content, source, publish_date, toTinyInt(is_hot)], function(err) {
+    if (err) {
+      console.error("添加专业动态失败:", err);
+      res.send({ code: 500, msg: "添加失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "添加成功", id: this.lastID });
+  });
+});
+// 兼容旧前端路径：/admin/news
+app.post('/admin/news', verifyAdmin, (req, res) => {
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
@@ -1434,9 +1461,39 @@ app.put('/api/admin/news/:id', verifyAdmin, (req, res) => {
     res.send({ code: 200, msg: "更新成功" });
   });
 });
+// 兼容旧前端路径：/admin/news/:id
+app.put('/admin/news/:id', verifyAdmin, (req, res) => {
+  const { password, title, content, source, publish_date, is_hot } = req.body;
+  const id = req.params.id;
+  
+  const sql = `UPDATE major_news SET title = ?, content = ?, source = ?, publish_date = ?, is_hot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  db.run(sql, [title, content, source, publish_date, toTinyInt(is_hot), id], function(err) {
+    if (err) {
+      console.error("更新专业动态失败:", err);
+      res.send({ code: 500, msg: "更新失败: " + err.message });
+      return;
+    }
+    res.send({ code: 200, msg: "更新成功" });
+  });
+});
 
 // 删除专业动态趣闻
 app.delete('/api/admin/news/:id', verifyAdmin, (req, res) => {
+  const { password } = req.body;
+  const id = req.params.id;
+  
+  const sql = `DELETE FROM major_news WHERE id = ?`;
+  db.run(sql, [id], function(err) {
+    if (err) {
+      console.error("删除专业动态失败:", err);
+      res.send({ code: 500, msg: "删除失败" });
+      return;
+    }
+    res.send({ code: 200, msg: "删除成功" });
+  });
+});
+// 兼容旧前端路径：/admin/news/:id
+app.delete('/admin/news/:id', verifyAdmin, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
