@@ -93,8 +93,8 @@ license: Apache License 2.0
 .
 ├── app.js                 # 后端入口：Express 路由、SQLite、认证、审核逻辑
 ├── package.json           # Node 依赖与 start 脚本
-├── Dockerfile             # 魔搭创空间 Docker 镜像（Node 18，端口 7860）
-├── ms_deploy.json         # 魔搭创空间部署配置（sdk_type: docker, port: 7860）
+├── Dockerfile             # 魔搭创空间 Docker 镜像（Node 18，端口 3000）
+├── ms_deploy.json         # 魔搭创空间部署配置（sdk_type: docker, port: 3000）
 ├── README.md
 ├── index.html             # 志愿填报参考首页（智能查询等）
 ├── major-info.html        # 专业院校信息概览
@@ -126,13 +126,13 @@ cd Guidance_on_Application_and_streaming
 # 2. 安装依赖
 npm install
 
-# 3. 启动服务（默认端口 7860）
+# 3. 启动服务（默认端口 3000）
 npm start
 # 或指定端口
 PORT=3000 node app.js
 ```
 
-- 浏览器访问：**http://localhost:7860**（或你设置的端口）。
+- 浏览器访问：**http://localhost:3000**（或你设置的端口）。
 - 数据目录：未设置 `DATA_DIR` 时，在创空间默认使用 `/home/user/app/data`；本地通常为当前目录下自动创建的 `data`（具体以 `resolveDataDir()` 逻辑为准，见 `app.js`）。
 
 ### 首次使用建议
@@ -147,7 +147,7 @@ PORT=3000 node app.js
 
 | 变量名 | 必填 | 说明 | 示例 |
 |--------|------|------|------|
-| `PORT` | 否 | 服务监听端口 | `7860`（默认） |
+| `PORT` | 否 | 服务监听端口 | `3000`（默认） |
 | `DATA_DIR` | 否 | 数据目录绝对路径，SQLite 库与上传等存放于此 | `/home/user/app/data` |
 | `DATASET_MOUNT_PATH` | 否 | 创空间关联数据集后的挂载路径，优先于默认 DATA_DIR | 以创空间文档为准 |
 | `AUTO_CLONE_DATASET` | 否 | 自动克隆的数据集 ID，用于持久化；克隆目录由 `DATASET_LOCAL_PATH` 指定 | `taoyao0498/Data_for_GAS` |
@@ -178,7 +178,7 @@ PORT=3000 node app.js
 
 - **类型**：Docker（`ms_deploy.json` 中 `sdk_type: "docker"`）。
 - **入口**：`Dockerfile` 中 `ENTRYPOINT ["node", "app.js"]`。
-- **端口**：服务监听 `0.0.0.0:7860`，与 `ms_deploy.json` 的 `port: 7860` 一致。
+- **端口**：服务监听 `0.0.0.0:3000`，与 `ms_deploy.json` 的 `port: 3000` 一致。
 - **资源**：`ms_deploy.json` 中可配置 `resource_configuration`（如 `platform/2v-cpu-16g-mem`）。
 
 ### 部署步骤概要
@@ -226,7 +226,7 @@ PORT=3000 node app.js
 
 ## 管理后台详解
 
-- **入口**：打开 **admin.html**（例如 `http://localhost:7860/admin.html`），输入管理员密码登录。
+- **入口**：打开 **admin.html**（例如 `http://localhost:3000/admin.html`），输入管理员密码登录。
 - **密码**：在服务端 `app.js` 中配置，请自行修改并妥善保管。
 
 ### 功能模块
