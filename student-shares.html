@@ -239,7 +239,17 @@
     .share-content {
       font-size: 14px; line-height: 1.7; color: var(--text-soft);
       margin-bottom: 12px;
+      white-space: pre-wrap; word-break: break-word;
     }
+    .share-content-wrap { margin-bottom: 8px; }
+    .share-content-wrap .share-content-full { display: none; }
+    .share-content-wrap.expanded .share-content-preview { display: none; }
+    .share-content-wrap.expanded .share-content-full { display: block; }
+    .btn-expand-content {
+      background: none; border: none; color: var(--accent); font-size: 13px;
+      cursor: pointer; padding: 0; margin-top: 4px;
+    }
+    .btn-expand-content:hover { text-decoration: underline; }
 
     .share-images {
       display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
@@ -839,10 +849,7 @@
       var cfgEl = document.getElementById('backend-config-msg');
       cfgEl.style.display = 'block';
       cfgEl.textContent = '正在检查后端…';
-      fetch(API_BASE + '/api/auth/backend-config', { method: 'GET' }).then(function(r) {
-        if (!r.ok) throw new Error('' + r.status);
-        return r.json().catch(function() { return {} });
-      }).then(function(d) {
+      fetch(API_BASE + '/api/auth/backend-config').then(function(r) { return r.json().catch(function() { return {} }); }).then(function(d) {
         if (d.code === 200) {
           var parts = [];
           parts.push(d.smtpConfigured ? '邮件已配置' : '邮件未配置');
@@ -853,8 +860,8 @@
           cfgEl.textContent = '无法获取后端配置';
         }
       }).catch(function() {
-        cfgEl.textContent = '后端状态检查跳过（若邮箱/学生证认证可用则正常）。跨域时请在 URL 加 ?api_base=你的后端地址';
-        cfgEl.style.color = 'var(--text-soft)';
+        cfgEl.textContent = '无法连接后端。若为静态页或跨域，请在 URL 加 ?api_base=你的后端地址（如 https://服务器:端口）';
+        cfgEl.style.color = 'var(--danger, #c00)';
       });
       if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
@@ -1309,6 +1316,16 @@
           ? (share.school === '高考生' ? '高考生' : (share.school + (share.major ? ' · ' + share.major : '') + (share.grade ? ' · ' + share.grade : '')))
           : ((share.school || '') + (share.major ? ' · ' + share.major : '') + ' · ' + (share.grade || '未知年级'));
         const firstChar = authorName.charAt(0);
+        const CONTENT_PREVIEW_LEN = 200;
+        const rawContent = (share.content || '').trim();
+        const contentEscaped = escapeHtml(rawContent);
+        const contentBlock = rawContent.length > CONTENT_PREVIEW_LEN
+          ? `<div class="share-content-wrap" id="share-content-wrap-${share.id}">
+              <div class="share-content share-content-preview">${escapeHtml(rawContent.substring(0, CONTENT_PREVIEW_LEN))}...</div>
+              <div class="share-content share-content-full">${contentEscaped}</div>
+              <button type="button" class="btn-expand-content" onclick="toggleShareContent(this)" data-share-id="${share.id}">展开阅读</button>
+            </div>`
+          : `<div class="share-content">${contentEscaped}</div>`;
         
         return `
           <div class="share-card">
@@ -1323,7 +1340,7 @@
               <span class="share-school-tag">${share.school === '高考生' ? '高考生分享' : '在读分享'}</span>
             </div>
             <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 10px 0;">${share.title || '无标题'}</h3>
-            <div class="share-content">${share.content}</div>
+            ${contentBlock}
             ${imagesHtml ? `<div class="share-images">${imagesHtml}</div>` : ''}
             ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
             <div class="share-footer">
@@ -1371,6 +1388,13 @@
       const btn = document.getElementById('btn-toggle-folded');
       if (el) el.style.display = showFolded ? 'block' : 'none';
       if (btn) btn.textContent = showFolded ? '收起更多帖子' : '展开更多帖子（共 ' + foldedShares.length + ' 条）';
+    }
+
+    function toggleShareContent(btn) {
+      const wrap = btn && btn.closest && btn.closest('.share-content-wrap');
+      if (!wrap) return;
+      const expanded = wrap.classList.toggle('expanded');
+      btn.textContent = expanded ? '收起' : '展开阅读';
     }
 
     function escapeHtml(s) {

@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理后台 - 志愿填报参考</title>
+  <style>
+    :root {
+      --bg: #f8f7f4;
+      --bg-elevated: #ffffff;
+      --accent: #1a1a1a;
+      --accent-muted: #4a5568;
+      --text: #1a1a1a;
+      --text-soft: #5f6b7a;
+      --border-subtle: #e2e4e8;
+      --error: #c53030;
+      --success: #38a169;
+      --warning: #d69e2e;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+      color: var(--text);
+      background: #f0ede8;
+      padding: 32px 24px;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fffef9;
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fffef9;
+      font-weight: 600;
+      font-size: 18px;
+      text-decoration: none;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .title-block p {
+      margin: 4px 0 0;
+      font-size: 14px;
+      color: var(--text-soft);
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 4px;
+      background: #f0ede8;
+      border-radius: var(--radius);
+    }
+
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-soft);
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-tab:hover {
+      background: #fff;
+      color: var(--text);
+    }
+
+    .login-panel {
+      max-width: 400px;
+      margin: 80px auto;
+      text-align: center;
+    }
+
+    .login-panel h2 {
+      margin: 0 0 24px;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    .input {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      background: var(--bg-elevated);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(26,26,26,0.1);
+    }
+
+    .btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 500;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #333;
+    }
+
+    .btn-danger {
+      background: var(--error);
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      background: #9b2c2c;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .btn-success:hover {
+      background: #2f855a;
+    }
+
+    .btn-secondary {
+      background: #e2e4e8;
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: #cbd0d8;
+    }
+
+    .admin-panel {
+      display: none;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 12px;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      font-size: 14px;
+      background: none;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--text-soft);
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: #f0ede8;
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-soft);
+    }
+
+    .card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    th {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-soft);
+      background: #f8f7f4;
+    }
+
+    td {
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+
+    .badge-success {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+
+    .badge-warning {
+      background: #fefcbf;
+      color: #744210;
+    }
+
+    .badge-error {
+      background: #fed7d7;
+      color: #822727;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-elevated);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-soft);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      display: none;
+      z-index: 2000;
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    .toast-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .toast-error {
+      background: var(--error);
+      color: #fff;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px;
+      color: var(--text-soft);
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logout-btn {
+      padding: 8px 16px;
+      font-size: 14px;
+      background: none;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--text-soft);
+    }
+
+    .logout-btn:hover {
+      background: #f0ede8;
+    }
+
+    @media (max-width: 768px) {
+      body { padding: 16px; }
+      .app-shell { padding: 20px 16px; }
+      .header { flex-direction: column; gap: 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="header">
+      <div class="brand">
+        <a href="index.html" class="logo">志愿</a>
+        <div class="title-block">
+          <h1>管理后台</h1>
+          <p>专业与院校信息管理</p>
+        </div>
+      </div>
+      <nav class="nav-tabs">
+        <a href="index.html" class="nav-tab">志愿填报</a>
+        <a href="major-info.html" class="nav-tab">专业院校信息概览</a>
+        <a href="student-shares.html" class="nav-tab">学生分享</a>
+      </nav>
+    </header>
+
+    <!-- 登录面板 -->
+    <div class="login-panel" id="loginPanel">
+      <h2>管理员登录</h2>
+      <input type="password" class="input" id="passwordInput" placeholder="请输入管理员密码" />
+      <button class="btn btn-primary" onclick="login()" style="width: 100%;">登录</button>
+      <p style="margin-top: 16px; font-size: 13px; color: var(--text-soft);">
+        密码验证在后端进行，前端不存储密码
+      </p>
+    </div>
+
+    <!-- 管理面板 -->
+    <div class="admin-panel" id="adminPanel">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('infoEntry')">信息录入</button>
+          <button class="tab" onclick="switchTab('news')">专业动态管理</button>
+          <button class="tab" onclick="switchTab('studentId')">学生证审核</button>
+          <button class="tab" onclick="switchTab('shareReview')">分享内容审核</button>
+        </div>
+        <div class="user-info">
+          <span style="color: var(--text-soft); font-size: 14px;">已登录</span>
+          <button class="logout-btn" onclick="logout()">退出登录</button>
+        </div>
+      </div>
+
+      <!-- 信息录入 -->
+      <div class="tab-content active" id="infoEntry">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">专业管理</span>
+            <button class="btn btn-primary btn-sm" onclick="openMajorModal()">+ 添加专业</button>
+          </div>
+          <div class="table-container">
+            <table id="majorsTable">
+              <thead>
+                <tr>
+                  <th>专业代码</th>
+                  <th>专业名称</th>
+                  <th>类别</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="majorsEmpty" style="display: none;">暂无专业数据</div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header">
+            <span class="card-title">AI 快速录入</span>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>学校名称</label>
+              <input type="text" class="input" id="aiSchoolName" placeholder="如：浙江大学" />
+            </div>
+            <div class="form-group">
+              <label>专业名称（单专业模式）</label>
+              <input type="text" class="input" id="aiMajorName" placeholder="如：计算机科学与技术" />
+            </>
+          </div>
+          <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+            <button class="btn btn-primary btn-sm" onclick="aiAddSingleProgram()">单专业 AI 录入</button>
+          </div>
+          <div id="aiAddResult" style="display: none;"></div>
+
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-subtle);" />
+
+          <div class="form-group">
+            <label>批量专业（每行一个）</label>
+            <textarea class="input" id="aiBatchMajors" rows="5" placeholder="计算机科学与技术&#10;软件工程&#10;人工智能"></textarea>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="aiBatchAdd()">批量 AI 录入</button>
+          <div id="aiBatchResult" style="display: none; margin-top: 16px;"></div>
+
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-subtle);" />
+
+          <div class="form-group">
+            <label>学校名称（获取所有专业）</label>
+            <input type="text" class="input" id="aiSchoolOnlyName" placeholder="如：北京大学" />
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="aiAddSchoolAllMajors()">获取学校所有招生专业</button>
+          <div id="aiSchoolOnlyResult" style="display: none; margin-top: 16px;"></div>
+        </div>
+      </div>
+
+      <!-- 专业动态管理 -->
+      <div class="tab-content" id="news">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">动态列表</span>
+            <button class="btn btn-primary btn-sm" onclick="openNewsModal()">+ 添加动态</button>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label>选择专业</label>
+            <select class="input" id="newsMajorSelect" onchange="loadNews()">
+              <option value="">加载中...</option>
+            </select>
+          </div>
+          <div class="table-container">
+            <table id="newsTable">
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>专业</th>
+                  <th>热门</th>
+                  <th>发布时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="newsEmpty" style="display: none;">暂无动态</div>
+        </div>
+      </div>
+
+      <!-- 学生证审核 -->
+      <div class="tab-content" id="studentId">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">待审核学生证</span>
+          </div>
+          <div class="table-container">
+            <table id="studentIdTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>学校名称</th>
+                  <th>状态</th>
+                  <th>提交时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="studentIdTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="studentIdEmpty" style="display: none;">暂无待审核</div>
+        </div>
+      </div>
+
+      <!-- 分享内容审核 -->
+      <div class="tab-content" id="shareReview">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">被举报帖子</span>
+          </div>
+          <div class="table-container">
+            <table id="shareReviewTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>内容摘要</th>
+                  <th>举报数</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="shareReviewTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="shareReviewEmpty" style="display: none;">暂无待审核</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 专业编辑弹窗 -->
+  <div class="modal-overlay" id="majorModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="majorModalTitle">添加专业</span>
+        <button class="modal-close" onclick="closeModal('majorModal')">&times;</button>
+      </div>
+      <input type="hidden" id="majorId" />
+      <div class="form-grid">
+        <div class="form-group">
+          <label>专业代码</label>
+          <input type="text" class="input" id="majorCode" placeholder="如：080901" />
+        </div>
+        <div class="form-group">
+          <label>专业名称</label>
+          <input type="text" class="input" id="majorName" placeholder="如：计算机科学与技术" />
+        </div>
+        <div class="form-group">
+          <label>类别</label>
+          <input type="text" class="input" id="majorCategory" placeholder="如：工学" />
+        </div>
+        <div class="form-group">
+          <label>学位类型</label>
+          <select class="input" id="degreeType">
+            <option value="工学学士">工学学士</option>
+            <option value="理学学士">理学学士</option>
+            <option value="管理学学士">管理学学士</option>
+            <option value="经济学学士">经济学学士</option>
+            <option value="法学学士">法学学士</option>
+            <option value="医学学士">医学学士</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>学制</label>
+          <input type="text" class="input" id="duration" placeholder="如：4年" />
+        </div>
+        <div class="form-group">
+          <label>核心课程</label>
+          <input type="text" class="input" id="coreCourses" placeholder="用逗号分隔" />
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>专业描述</label>
+        <textarea class="input" id="description" rows="3"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>就业前景</label>
+        <textarea class="input" id="careerProspects" rows="3"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>相关相近专业</label>
+        <input type="text" class="input" id="relatedMajors" placeholder="用逗号分隔" />
+      </div>
+      <button class="btn btn-primary" onclick="saveMajor()" style="width: 100%;">保存</button>
+    </div>
+  </div>
+
+  <!-- 动态编辑弹窗 -->
+  <div class="modal-overlay" id="newsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="newsModalTitle">添加动态</span>
+        <button class="modal-close" onclick="closeModal('newsModal')">&times;</button>
+      </div>
+      <input type="hidden" id="newsId" />
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>专业</label>
+        <select class="input" id="newsMajorId">
+          <option value="">选择专业</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>标题</label>
+        <input type="text" class="input" id="newsTitle" />
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>内容</label>
+        <textarea class="input" id="newsContent" rows="4"></textarea>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>来源</label>
+          <input type="text" class="input" id="newsSource" placeholder="如：学校官网" />
+        </div>
+        <div class="form-group">
+          <label>发布日期</label>
+          <input type="date" class="input" id="newsDate" />
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>
+          <input type="checkbox" id="newsIsHot" /> 标记为热门
+        </label>
+      </div>
+      <button class="btn btn-primary" onclick="saveNews()" style="width: 100%;">保存</button>
+    </div>
+  </div>
+
+  <!-- 学生证查看弹窗 -->
+  <div class="modal-overlay" id="studentIdImageModal">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <span class="modal-title">学生证图片</span>
+        <button class="modal-close" onclick="closeModal('studentIdImageModal')">&times;</button>
+      </div>
+      <img id="studentIdImageEl" style="width: 100%; border-radius: 8px; margin-bottom: 12px;" />
+      <p id="studentIdImageMeta" style="color: var(--text-soft); font-size: 14px; margin-bottom: 16px;"></p>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn btn-success" id="studentIdApproveBtn">通过</button>
+        <button class="btn btn-danger" id="studentIdRejectBtn">拒绝</button>
+        <button class="btn btn-secondary" onclick="closeModal('studentIdImageModal')">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // 配置：后端 API 地址（修改这里指向你的阿里云 ECS）
+    const API_BASE = 'https://your-ecs-domain.com'; // 替换为你的后端地址
+    
+    let adminToken = localStorage.getItem('adminToken');
+    let majors = [];
+    let currentStudentIdReviewId = null;
+
+    // 检查登录状态
+    if (adminToken) {
+      document.getElementById('loginPanel').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadMajors();
+    }
+
+    // 登录
+    async function login() {
+      const password = document.getElementById('passwordInput').value;
+      if (!password) {
+        showToast('请输入密码', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(API_BASE + '/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        
+        if (data.code === 200 && data.token) {
+          adminToken = data.token;
+          localStorage.setItem('adminToken', adminToken);
+          document.getElementById('loginPanel').style.display = 'none';
+          document.getElementById('adminPanel').style.display = 'block';
+          loadMajors();
+        } else {
+          showToast(data.msg || '密码错误', 'error');
+        }
+      } catch (err) {
+        showToast('登录失败，请检查后端服务', 'error');
+      }
+    }
+
+    // 登出
+    async function logout() {
+      try {
+        await fetch(API_BASE + '/api/admin/logout', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-admin-token': adminToken
+          }
+        });
+      } catch (e) {}
+      adminToken = null;
+      localStorage.removeItem('adminToken');
+      location.reload();
+    }
+
+    // 切换标签页
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tab).classList.add('active');
+      
+      if (tab === 'news') loadNewsMajorSelect();
+      if (tab === 'studentId') loadStudentIdPending();
+      if (tab === 'shareReview') loadShareReviewPending();
+    }
+
+    // 显示提示
+    function showToast(msg, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast toast-' + type + ' show';
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // 关闭弹窗
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    // 获取带认证的请求头
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'x-admin-token': adminToken
+      };
+    }
+
+    // ========== 专业管理 ==========
+    async function loadMajors() {
+      try {
+        const res = await fetch(API_BASE + '/admin/majors');
+        const data = await res.json();
+        majors = data.data || [];
+        const tbody = document.querySelector('#majorsTable tbody');
+        const empty = document.getElementById('majorsEmpty');
+        
+        if (majors.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = majors.map(m => `
+          <tr>
+            <td>${escapeHtml(m.major_code)}</td>
+            <td>${escapeHtml(m.major_name)}</td>
+            <td>${escapeHtml(m.category)}</td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-secondary btn-sm" onclick="editMajor(${m.id})">编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteMajor(${m.id})">删除</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    function openMajorModal(id = null) {
+      document.getElementById('majorId').value = id || '';
+      document.getElementById('majorModalTitle').textContent = id ? '编辑专业' : '添加专业';
+      if (id) {
+        const major = majors.find(m => m.id === id);
+        if (major) {
+          document.getElementById('majorCode').value = major.major_code || '';
+          document.getElementById('majorName').value = major.major_name || '';
+          document.getElementById('majorCategory').value = major.category || '';
+          document.getElementById('degreeType').value = major.degree_type || '工学学士';
+          document.getElementById('duration').value = major.duration || '';
+          document.getElementById('description').value = major.description || '';
+          document.getElementById('coreCourses').value = major.core_courses || '';
+          document.getElementById('careerProspects').value = major.career_prospects || '';
+          document.getElementById('relatedMajors').value = major.related_majors || '';
+        }
+      } else {
+        document.getElementById('majorCode').value = '';
+        document.getElementById('majorName').value = '';
+        document.getElementById('majorCategory').value = '';
+        document.getElementById('degreeType').value = '工学学士';
+        document.getElementById('duration').value = '';
+        document.getElementById('description').value = '';
+        document.getElementById('coreCourses').value = '';
+        document.getElementById('careerProspects').value = '';
+        document.getElementById('relatedMajors').value = '';
+      }
+      document.getElementById('majorModal').classList.add('active');
+    }
+
+    function editMajor(id) {
+      openMajorModal(id);
+    }
+
+    async function saveMajor() {
+      const id = document.getElementById('majorId').value;
+      const data = {
+        major_code: document.getElementById('majorCode').value,
+        major_name: document.getElementById('majorName').value,
+        category: document.getElementById('majorCategory').value,
+        degree_type: document.getElementById('degreeType').value,
+        duration: document.getElementById('duration').value,
+        description: document.getElementById('description').value,
+        core_courses: document.getElementById('coreCourses').value,
+        career_prospects: document.getElementById('careerProspects').value,
+        related_majors: document.getElementById('relatedMajors').value
+      };
+      
+      if (!data.major_name) {
+        showToast('请输入专业名称', 'error');
+        return;
+      }
+
+      try {
+        const url = id ? API_BASE + '/admin/majors/' + id : API_BASE + '/admin/majors';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: getHeaders(),
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast(id ? '更新成功' : '添加成功', 'success');
+          closeModal('majorModal');
+          loadMajors();
+        } else {
+          showToast(result.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    async function deleteMajor(id) {
+      if (!confirm('确定要删除这个专业吗？')) return;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + id, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast('删除成功', 'success');
+          loadMajors();
+        } else {
+          showToast(result.msg || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    // ========== AI 录入 ==========
+    async function aiAddSingleProgram() {
+      const schoolName = document.getElementById('aiSchoolName').value.trim();
+      const majorName = document.getElementById('aiMajorName').value.trim();
+      if (!schoolName || !majorName) {
+        showToast('请填写学校名称和专业名称', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('aiAddResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 AI正在检索院校官网信息，请稍候...</div>';
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-add-program', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ school_name: schoolName, major_name: majorName })
+        });
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          if (data.skipped) {
+            resultDiv.innerHTML = `<div style="background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px;">⚠️ ${data.msg}</div>`;
+          } else {
+            resultDiv.innerHTML = `<div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">✅ ${data.msg}</div>`;
+            loadMajors();
+          }
+        } else {
+          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ ${data.msg}</div>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ 请求失败: ${err.message}</div>`;
+      }
+    }
+
+    async function aiBatchAdd() {
+      const schoolName = document.getElementById('aiSchoolName').value.trim();
+      const majorsText = document.getElementById('aiBatchMajors').value.trim();
+      if (!schoolName || !majorsText) {
+        showToast('请填写学校名称和批量专业', 'error');
+        return;
+      }
+      const majors = majorsText.split('\n').map(m => m.trim()).filter(m => m);
+      
+      const resultDiv = document.getElementById('aiBatchResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `<div style="color: var(--text-soft);">🤖 正在批量检索 ${majors.length} 个专业，请稍候...</div>`;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-batch-add', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ school_name: schoolName, majors })
+        });
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          const successCount = data.results ? data.results.filter(r => r.status === 'success').length : 0;
+          const skippedCount = data.results ? data.results.filter(r => r.status === 'skipped').length : 0;
+          const failCount = data.errors ? data.errors.length : 0;
+          resultDiv.innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">
+              ✅ 批量添加完成<br>
+              成功: ${successCount} | 跳过: ${skippedCount} | 失败: ${failCount}
+            </div>
+          `;
+          loadMajors();
+        } else {
+          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ ${data.msg}</div>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ 请求失败</div>`;
+      }
+    }
+
+    async function aiAddSchoolAllMajors() {
+      const schoolName = document.getElementById('aiSchoolOnlyName').value.trim();
+      if (!schoolName) {
+        showToast('请输入学校名称', 'error');
+        return;
+      }
+      
+      const resultDiv = document.getElementById('aiSchoolOnlyResult');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div style="color: var(--text-soft);">🤖 正在检索该校招生专业并逐个添加，请稍候...</div>';
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/ai-add-school-all-majors', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ school_name: schoolName })
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (_) {
+          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ 请求失败</div>`;
+          return;
+        }
+        
+        if (data.code === 200) {
+          resultDiv.innerHTML = `<div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 6px;">✅ ${data.msg}</div>`;
+          loadMajors();
+        } else {
+          resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ ${data.msg}</div>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div style="background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px;">❌ 请求失败</div>`;
+      }
+    }
+
+    // ========== 专业动态 ==========
+    async function loadNewsMajorSelect() {
+      const select = document.getElementById('newsMajorSelect');
+      const newsSelect = document.getElementById('newsMajorId');
+      try {
+        const res = await fetch(API_BASE + '/admin/majors');
+        const data = await res.json();
+        majors = data.data || [];
+        const options = majors.map(m => `<option value="${m.id}">${escapeHtml(m.major_name)}</option>`).join('');
+        select.innerHTML = '<option value="">选择专业</option>' + options;
+        newsSelect.innerHTML = '<option value="">选择专业</option>' + options;
+      } catch (err) {
+        select.innerHTML = '<option value="">加载失败</option>';
+      }
+    }
+
+    async function loadNews() {
+      const majorId = document.getElementById('newsMajorSelect').value;
+      if (!majorId) {
+        document.querySelector('#newsTable tbody').innerHTML = '';
+        document.getElementById('newsEmpty').style.display = 'block';
+        return;
+      }
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/majors/' + majorId + '/news');
+        const data = await res.json();
+        const news = data.data || [];
+        const tbody = document.querySelector('#newsTable tbody');
+        const empty = document.getElementById('newsEmpty');
+        
+        if (news.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        
+        const major = majors.find(m => m.id === parseInt(majorId));
+        tbody.innerHTML = news.map(n => `
+          <tr>
+            <td>${escapeHtml(n.title)}</td>
+            <td>${escapeHtml(major ? major.major_name : '')}</td>
+            <td>${n.is_hot ? '<span class="badge badge-success">热门</span>' : '-'}</td>
+            <td>${n.publish_date || '-'}</td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-secondary btn-sm" onclick="editNews(${n.id}, '${escapeHtml(n.title)}', '${escapeHtml(n.content)}', '${n.source || ''}', '${n.publish_date || ''}', ${n.is_hot})">编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteNews(${n.id})">删除</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    function openNewsModal(id = null) {
+      document.getElementById('newsId').value = id || '';
+      document.getElementById('newsModalTitle').textContent = id ? '编辑动态' : '添加动态';
+      document.getElementById('newsMajorId').value = document.getElementById('newsMajorSelect').value;
+      if (id) {
+        // 编辑时需要从表格获取数据，这里简化处理
+        document.getElementById('newsTitle').value = '';
+        document.getElementById('newsContent').value = '';
+        document.getElementById('newsSource').value = '';
+        document.getElementById('newsDate').value = '';
+        document.getElementById('newsIsHot').checked = false;
+      } else {
+        document.getElementById('newsTitle').value = '';
+        document.getElementById('newsContent').value = '';
+        document.getElementById('newsSource').value = '';
+        document.getElementById('newsDate').value = '';
+        document.getElementById('newsIsHot').checked = false;
+      }
+      document.getElementById('newsModal').classList.add('active');
+    }
+
+    function editNews(id, title, content, source, publish_date, is_hot) {
+      document.getElementById('newsId').value = id;
+      document.getElementById('newsModalTitle').textContent = '编辑动态';
+      document.getElementById('newsTitle').value = title;
+      document.getElementById('newsContent').value = content;
+      document.getElementById('newsSource').value = source;
+      document.getElementById('newsDate').value = publish_date;
+      document.getElementById('newsIsHot').checked = is_hot;
+      document.getElementById('newsModal').classList.add('active');
+    }
+
+    async function saveNews() {
+      const id = document.getElementById('newsId').value;
+      const majorId = document.getElementById('newsMajorId').value;
+      const data = {
+        major_id: parseInt(majorId),
+        title: document.getElementById('newsTitle').value,
+        content: document.getElementById('newsContent').value,
+        source: document.getElementById('newsSource').value,
+        publish_date: document.getElementById('newsDate').value,
+        is_hot: document.getElementById('newsIsHot').checked
+      };
+      
+      if (!data.title || !majorId) {
+        showToast('请填写标题并选择专业', 'error');
+        return;
+      }
+
+      try {
+        const url = id ? (API_BASE + '/admin/news/' + id) : (API_BASE + '/admin/news');
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: getHeaders(),
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast(id ? '更新成功' : '添加成功', 'success');
+          closeModal('newsModal');
+          loadNews();
+        } else {
+          showToast(result.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    async function deleteNews(id) {
+      if (!confirm('确定要删除这条动态吗？')) return;
+      
+      try {
+        const res = await fetch(API_BASE + '/admin/news/' + id, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        const result = await res.json();
+        
+        if (result.code === 200) {
+          showToast('删除成功', 'success');
+          loadNews();
+        } else {
+          showToast(result.msg || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    // ========== 学生证审核 ==========
+    async function loadStudentIdPending() {
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-pending', {
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        const tbody = document.getElementById('studentIdTableBody');
+        const empty = document.getElementById('studentIdEmpty');
+        
+        if (data.code !== 200 || !data.data || data.data.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = data.data.map(r => `
+          <tr>
+            <td>${r.id}</td>
+            <td>${escapeHtml(r.school_name)}</td>
+            <td><span class="badge badge-warning">待审核</span></td>
+            <td>${r.created_at || '-'}</td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-primary btn-sm" onclick="viewStudentIdImage(${r.id})">查看</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    async function viewStudentIdImage(id) {
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-pending/' + id, {
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.code !== 200 || !data.data) {
+          showToast('获取失败', 'error');
+          return;
+        }
+        currentStudentIdReviewId = id;
+        document.getElementById('studentIdImageEl').src = data.data.imageDataUrl || '';
+        document.getElementById('studentIdImageMeta').textContent = `ID: ${data.data.id} | 学校: ${data.data.school_name} | 提交时间: ${data.data.created_at || '-'}`;
+        document.getElementById('studentIdImageModal').classList.add('active');
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    async function reviewStudentId(id, action) {
+      if (!confirm(action === 'approve' ? '确认通过该学生证认证？' : '确认拒绝？')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-id-review', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ id: String(id), action })
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast(data.msg || (action === 'approve' ? '已通过' : '已拒绝'), 'success');
+          closeModal('studentIdImageModal');
+          loadStudentIdPending();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    document.getElementById('studentIdApproveBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'approve'); };
+    document.getElementById('studentIdRejectBtn').onclick = () => { if (currentStudentIdReviewId) reviewStudentId(currentStudentIdReviewId, 'reject'); };
+
+    // ========== 分享内容审核 ==========
+    async function loadShareReviewPending() {
+      try {
+        const res = await fetch(API_BASE + '/admin/reported-shares', {
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        const tbody = document.getElementById('shareReviewTableBody');
+        const empty = document.getElementById('shareReviewEmpty');
+        
+        if (data.code !== 200 || !data.data || data.data.length === 0) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        tbody.innerHTML = data.data.map(r => `
+          <tr>
+            <td>${r.id}</td>
+            <td>${escapeHtml(r.content ? r.content.substring(0, 50) + '...' : '-')}</td>
+            <td>${r.report_count}</td>
+            <td><span class="badge badge-error">待审核</span></td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-success btn-sm" onclick="approveShare(${r.id})">通过</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteShare(${r.id})">删除</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('加载失败', 'error');
+      }
+    }
+
+    async function approveShare(id) {
+      if (!confirm('确认通过该帖子？通过后将公开展示。')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/approve', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('已通过', 'success');
+          loadShareReviewPending();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    async function deleteShare(id) {
+      if (!confirm('确认删除该帖子？')) return;
+      try {
+        const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/delete', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.code === 200) {
+          showToast('已删除', 'success');
+          loadShareReviewPending();
+        } else {
+          showToast(data.msg || '操作失败', 'error');
+        }
+      } catch (err) {
+        showToast('请求失败', 'error');
+      }
+    }
+
+    // 工具函数
+    function escapeHtml(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // 回车登录
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>

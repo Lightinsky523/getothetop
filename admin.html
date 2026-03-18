@@ -1346,7 +1346,7 @@
       }
       
       try {
-        const url = id ? API_BASE + '/admin/news/' + id : API_BASE + '/admin/news';
+        const url = id ? API_BASE + '/api/admin/news/' + id : API_BASE + '/api/admin/news';
         const method = id ? 'PUT' : 'POST';
         const res = await fetch(url, {
           method,

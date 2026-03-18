@@ -1087,21 +1087,89 @@ app.get('/get-student-shares', (req, res) => {
 
 // ----- 管理员校验：请求体里带正确 password 才放行 -----
 const ADMIN_PASSWORD = 'a~a~ycyzword+';
-function verifyAdmin(req, res, next) {
+const ADMIN_TOKEN_EXPIRE = 24 * 60 * 60 * 1000; // 24小时
+const adminTokens = new Map(); // token -> { password, expiresAt }
+
+// 登录接口 - 返回 token
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    res.send({ code: 403, msg: "密码错误" });
+    return;
+  }
+  // 生成简单 token
+  const token = crypto.randomBytes(32).toString('hex');
+  adminTokens.set(token, { password, expiresAt: Date.now() + ADMIN_TOKEN_EXPIRE });
+  res.send({ code: 200, msg: "登录成功", token });
+});
+
+// 验证 token 的中间件
+function verifyAdminLegacy(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  const tokenData = adminTokens.get(token);
+  if (!tokenData || tokenData.expiresAt < Date.now()) {
+    res.send({ code: 401, msg: "登录已过期，请重新登录" });
+    return;
+  }
+  req.adminPassword = tokenData.password;
+  next();
+}
+
+// 兼容旧版：带 password 的请求也支持
+function verifyAdminLegacyLegacy(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  const tokenData = adminTokens.get(token);
+  if (tokenData && tokenData.expiresAt >= Date.now()) {
+    req.adminPassword = tokenData.password;
+    return next();
+  }
+  // 兼容旧版
   const { password } = req.body;
   if (password !== ADMIN_PASSWORD) {
     res.send({ code: 403, msg: "密码错误，无权限访问" });
     return;
   }
-  next();  // 通过则交给下一个处理函数
+  req.adminPassword = password;
+  next();
 }
+
+// 登出接口
+app.post('/api/admin/logout', (req, res) => {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (token) {
+    adminTokens.delete(token);
+  }
+  res.send({ code: 200, msg: "已退出登录" });
+});
+
+// 清理过期 token
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of adminTokens) {
+    if (data.expiresAt < now) adminTokens.delete(token);
+  }
+}, 60 * 60 * 1000);
 
 // ========== 管理后台接口（需密码或 query/body 里的 password） ==========
 
+// 通用认证检查：支持 token 和 password
+function checkAdminAuth(req) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  const tokenData = adminTokens.get(token);
+  if (tokenData && tokenData.expiresAt >= Date.now()) {
+    return tokenData.password;
+  }
+  const pwd = req.query.password || (req.body && req.body.password);
+  if (pwd === ADMIN_PASSWORD) {
+    return pwd;
+  }
+  return null;
+}
+
 // 下载数据库备份文件（方便本机保存）
 app.get('/admin/backup/download-db', (req, res) => {
-  const pwd = req.query.password || (req.body && req.body.password);
-  if (pwd !== ADMIN_PASSWORD) {
+  const pwd = checkAdminAuth(req);
+  if (!pwd) {
     res.status(403).send('无权限');
     return;
   }
@@ -1121,8 +1189,8 @@ app.get('/admin/backup/download-db', (req, res) => {
 
 // 待人工审核的学生证列表
 app.get('/admin/student-id-pending', (req, res) => {
-  const pwd = req.query.password || (req.body && req.body.password);
-  if (pwd !== ADMIN_PASSWORD) {
+  const pwd = checkAdminAuth(req);
+  if (!pwd) {
     res.send({ code: 403, msg: "无权限" });
     return;
   }
@@ -1141,8 +1209,8 @@ app.get('/admin/student-id-pending', (req, res) => {
 
 // 查看某条学生证图片（base64，用于人工审核）
 app.get('/admin/student-id-pending/:id', (req, res) => {
-  const pwd = req.query.password;
-  if (pwd !== ADMIN_PASSWORD) {
+  const pwd = checkAdminAuth(req);
+  if (!pwd) {
     res.send({ code: 403, msg: "无权限" });
     return;
   }
@@ -1155,8 +1223,8 @@ app.get('/admin/student-id-pending/:id', (req, res) => {
   });
 });
 
-// 通过或拒绝学生证（verifyAdmin 会先校验密码）
-app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
+// 通过或拒绝学生证（verifyAdminLegacy 会先校验密码）
+app.post('/admin/student-id-review', verifyAdminLegacy, (req, res) => {
   const { id, action } = req.body;
   if (!id || !['approve', 'reject'].includes(action)) {
     res.send({ code: 400, msg: "参数错误" });
@@ -1220,8 +1288,8 @@ app.post('/admin/student-id-review', verifyAdmin, (req, res) => {
 
 // 被举报待审核的帖子列表（举报数>50 会变成 pending_review）
 app.get('/admin/reported-shares', (req, res) => {
-  const pwd = req.query.password || (req.body && req.body.password);
-  if (pwd !== ADMIN_PASSWORD) {
+  const pwd = checkAdminAuth(req);
+  if (!pwd) {
     res.send({ code: 403, msg: "无权限" });
     return;
   }
@@ -1241,7 +1309,7 @@ app.get('/admin/reported-shares', (req, res) => {
 });
 
 // 删帖（将 status 改为 deleted）
-app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
+app.post('/admin/student-shares/:id/delete', verifyAdminLegacy, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'deleted' WHERE id = ?", [id], function (err) {
     if (err) {
@@ -1253,7 +1321,7 @@ app.post('/admin/student-shares/:id/delete', verifyAdmin, (req, res) => {
 });
 
 // 通过待审帖子（改为 approved 后公开展示）
-app.post('/admin/student-shares/:id/approve', verifyAdmin, (req, res) => {
+app.post('/admin/student-shares/:id/approve', verifyAdminLegacy, (req, res) => {
   const id = req.params.id;
   db.run("UPDATE student_shares SET status = 'approved' WHERE id = ? AND status = 'pending_review'", [id], function (err) {
     if (err) {
@@ -1277,7 +1345,7 @@ app.get('/admin/majors', (req, res) => {
   });
 });
 
-app.post('/admin/majors', verifyAdmin, (req, res) => {
+app.post('/admin/majors', verifyAdminLegacy, (req, res) => {
   const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
   
   const sql = `INSERT INTO major_overviews (major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -1292,7 +1360,7 @@ app.post('/admin/majors', verifyAdmin, (req, res) => {
 });
 
 // 更新专业
-app.put('/admin/majors/:id', verifyAdmin, (req, res) => {
+app.put('/admin/majors/:id', verifyAdminLegacy, (req, res) => {
   const { password, major_code, major_name, category, degree_type, duration, description, core_courses, career_prospects, related_majors } = req.body;
   const id = req.params.id;
   
@@ -1308,7 +1376,7 @@ app.put('/admin/majors/:id', verifyAdmin, (req, res) => {
 });
 
 // 删除专业
-app.delete('/admin/majors/:id', verifyAdmin, (req, res) => {
+app.delete('/admin/majors/:id', verifyAdminLegacy, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
@@ -1338,7 +1406,7 @@ app.get('/admin/majors/:id/programs', (req, res) => {
 });
 
 // 添加开设院校
-app.post('/admin/programs', verifyAdmin, (req, res) => {
+app.post('/admin/programs', verifyAdminLegacy, (req, res) => {
   const { password, major_id, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   
   const sql = `INSERT INTO school_programs (major_id, school_name, school_level, location, program_features, courses, course_intros, admission_requirements, tuition_fee, scholarships, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -1353,7 +1421,7 @@ app.post('/admin/programs', verifyAdmin, (req, res) => {
 });
 
 // 更新开设院校
-app.put('/api/admin/programs/:id', verifyAdmin, (req, res) => {
+app.put('/api/admin/programs/:id', verifyAdminLegacy, (req, res) => {
   const { password, school_name, school_level, location, program_features, courses, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   const id = req.params.id;
   
@@ -1369,7 +1437,7 @@ app.put('/api/admin/programs/:id', verifyAdmin, (req, res) => {
 });
 
 // 删除开设院校
-app.delete('/api/admin/programs/:id', verifyAdmin, (req, res) => {
+app.delete('/api/admin/programs/:id', verifyAdminLegacy, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
@@ -1412,7 +1480,7 @@ app.get('/admin/majors/:id/news', (req, res) => {
 });
 
 // 添加专业动态趣闻
-app.post('/api/admin/news', verifyAdmin, (req, res) => {
+app.post('/api/admin/news', verifyAdminLegacy, (req, res) => {
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
@@ -1426,7 +1494,7 @@ app.post('/api/admin/news', verifyAdmin, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news
-app.post('/admin/news', verifyAdmin, (req, res) => {
+app.post('/admin/news', verifyAdminLegacy, (req, res) => {
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
@@ -1441,7 +1509,7 @@ app.post('/admin/news', verifyAdmin, (req, res) => {
 });
 
 // 更新专业动态趣闻
-app.put('/api/admin/news/:id', verifyAdmin, (req, res) => {
+app.put('/api/admin/news/:id', verifyAdminLegacy, (req, res) => {
   const { password, title, content, source, publish_date, is_hot } = req.body;
   const id = req.params.id;
   
@@ -1456,7 +1524,7 @@ app.put('/api/admin/news/:id', verifyAdmin, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news/:id
-app.put('/admin/news/:id', verifyAdmin, (req, res) => {
+app.put('/admin/news/:id', verifyAdminLegacy, (req, res) => {
   const { password, title, content, source, publish_date, is_hot } = req.body;
   const id = req.params.id;
   
@@ -1472,7 +1540,7 @@ app.put('/admin/news/:id', verifyAdmin, (req, res) => {
 });
 
 // 删除专业动态趣闻
-app.delete('/api/admin/news/:id', verifyAdmin, (req, res) => {
+app.delete('/api/admin/news/:id', verifyAdminLegacy, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
@@ -1487,7 +1555,7 @@ app.delete('/api/admin/news/:id', verifyAdmin, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news/:id
-app.delete('/admin/news/:id', verifyAdmin, (req, res) => {
+app.delete('/admin/news/:id', verifyAdminLegacy, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
@@ -2511,7 +2579,7 @@ app.get('/api/schools/:schoolName/majors', (req, res) => {
 });
 
 // 管理员：添加学校
-app.post('/api/admin/schools', verifyAdmin, (req, res) => {
+app.post('/api/admin/schools', verifyAdminLegacy, (req, res) => {
   const { password, school_name, school_level, location, description } = req.body;
   
   const sql = `INSERT INTO schools (school_name, school_level, location, description) VALUES (?, ?, ?, ?)`;
@@ -2526,7 +2594,7 @@ app.post('/api/admin/schools', verifyAdmin, (req, res) => {
 });
 
 // 管理员：添加学校专业项目
-app.post('/api/admin/school-programs', verifyAdmin, (req, res) => {
+app.post('/api/admin/school-programs', verifyAdminLegacy, (req, res) => {
   const { password, school_name, major_id, major_name, program_features, courses, stream_division, admission_requirements, tuition_fee, scholarships, contact_info } = req.body;
   
   if (!school_name || !major_id) {
@@ -2848,7 +2916,7 @@ async function getOrCreateMajorAndProgramData(majorName, schoolName) {
 }
 
 // 管理员：输入学校+专业名，AI 检索并写入（专业不存在会先创建；已录入则跳过）
-app.post('/api/admin/ai-add-program', verifyAdmin, async (req, res) => {
+app.post('/api/admin/ai-add-program', verifyAdminLegacy, async (req, res) => {
   const { password, school_name, major_name } = req.body;
   
   if (!school_name || !major_name) {
@@ -2892,7 +2960,7 @@ app.post('/api/admin/ai-add-program', verifyAdmin, async (req, res) => {
     res.send({ code: 500, msg: "AI检索失败: " + e.message + hint });
   }
 });
-app.post('/admin/ai-add-program', verifyAdmin, async function aiAddProgramHandler (req, res) {
+app.post('/admin/ai-add-program', verifyAdminLegacy, async function aiAddProgramHandler (req, res) {
   const { password, school_name, major_name } = req.body;
   if (!school_name || !major_name) {
     res.send({ code: 400, msg: "学校名称和专业名称为必填项" });
@@ -2924,7 +2992,7 @@ app.post('/admin/ai-add-program', verifyAdmin, async function aiAddProgramHandle
 });
 
 // 管理员：批量按学校+专业列表 AI 添加（每个专业不存在会自动创建）
-app.post('/api/admin/ai-batch-add', verifyAdmin, async (req, res) => {
+app.post('/api/admin/ai-batch-add', verifyAdminLegacy, async (req, res) => {
   const { password, school_name, majors } = req.body;
   
   if (!school_name || !majors || !Array.isArray(majors)) {
@@ -2978,7 +3046,7 @@ app.post('/api/admin/ai-batch-add', verifyAdmin, async (req, res) => {
     errors
   });
 });
-app.post('/admin/ai-batch-add', verifyAdmin, async (req, res) => {
+app.post('/admin/ai-batch-add', verifyAdminLegacy, async (req, res) => {
   const { password, school_name, majors } = req.body;
   if (!school_name || !majors || !Array.isArray(majors)) {
     res.send({ code: 400, msg: "参数错误" });
@@ -3087,8 +3155,8 @@ const handleAiAddSchoolAllMajors = async (req, res) => {
     res.send({ code: 500, msg: "检索失败: " + msg + hint });
   }
 };
-app.post('/api/admin/ai-add-school-all-majors', verifyAdmin, handleAiAddSchoolAllMajors);
-app.post('/admin/ai-add-school-all-majors', verifyAdmin, handleAiAddSchoolAllMajors);
+app.post('/api/admin/ai-add-school-all-majors', verifyAdminLegacy, handleAiAddSchoolAllMajors);
+app.post('/admin/ai-add-school-all-majors', verifyAdminLegacy, handleAiAddSchoolAllMajors);
 
 // ========== 专业动态/新闻 API ==========
 // 新闻列表：limit 条数，random=1 随机，major_id 按专业筛
