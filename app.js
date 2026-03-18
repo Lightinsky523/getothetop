@@ -35,7 +35,7 @@ app.use(express.urlencoded({ limit: BODY_LIMIT, extended: true }));
 console.log('[Express] 请求体大小限制:', BODY_LIMIT);
 
 // ----- 基础配置：从环境变量读取，没有则用默认值 -----
-const PORT = process.env.PORT || 3000;   // 服务监听的端口号；默认与反代/部署端口保持一致
+const PORT = process.env.PORT || 7860;   // 服务监听的端口号，process.env 是环境变量
 
 /**
  * 解析数据存放目录。
