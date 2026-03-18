@@ -430,7 +430,6 @@
           <a href="index.html" class="nav-tab">志愿填报</a>
           <a href="major-info.html" class="nav-tab">专业院校信息概览</a>
           <a href="student-shares.html" class="nav-tab active">学生分享</a>
-          <a href="admin.html" class="nav-tab admin-link" onclick="return checkAdminAccess()">管理者通道</a>
         </nav>
       </header>
 
@@ -817,18 +816,6 @@
         msgEl.textContent = '网络错误，请重试';
       }
       queryBtn.disabled = false;
-    }
-
-    // 检查管理员权限
-    function checkAdminAccess() {
-      const password = prompt('请输入管理员密码：');
-      if (password === 'a~a~ycyzword+') {
-        sessionStorage.setItem('adminAuth', 'true');
-        return true;
-      } else if (password !== null) {
-        alert('密码错误！');
-      }
-      return false;
     }
 
     function setAuthBadgeText() {

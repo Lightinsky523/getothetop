@@ -832,20 +832,64 @@
   <script>
     const API_BASE = '';
     let adminPassword = '';
+    let adminToken = localStorage.getItem('adminToken') || '';
     let majors = [];
     let currentMajorId = null;
 
+    // 获取认证 headers
+    function getAuthHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      if (adminToken) {
+        headers['x-admin-token'] = adminToken;
+      } else if (adminPassword) {
+        // 兼容旧版 password 方式
+      }
+      return headers;
+    }
+
+    // 检查登录状态
+    if (adminToken) {
+      document.getElementById('loginPanel').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadMajors();
+    }
+
+    // 登出
+    function logout() {
+      adminToken = '';
+      adminPassword = '';
+      localStorage.removeItem('adminToken');
+      location.reload();
+    }
+
     // 登录
-    function login() {
+    async function login() {
       const password = document.getElementById('passwordInput').value;
       if (!password) {
         showToast('请输入密码', 'error');
         return;
       }
-      adminPassword = password;
-      document.getElementById('loginPanel').style.display = 'none';
-      document.getElementById('adminPanel').style.display = 'block';
-      loadMajors();
+
+      try {
+        const res = await fetch(API_BASE + '/api/admin/login', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+
+        if (data.code === 200 && data.token) {
+          adminPassword = password;
+          localStorage.setItem('adminToken', data.token);
+          document.getElementById('loginPanel').style.display = 'none';
+          document.getElementById('adminPanel').style.display = 'block';
+          loadMajors();
+        } else {
+          showToast(data.msg || '密码错误', 'error');
+        }
+      } catch (err) {
+        showToast('登录失败，请检查后端服务', 'error');
+      }
     }
 
     // 切换标签页
@@ -883,7 +927,7 @@
     // 加载专业列表
     async function loadMajors() {
       try {
-        const res = await fetch(API_BASE + '/admin/majors');
+        const res = await fetch(API_BASE + '/admin/majors', { headers: getAuthHeaders() });
         const data = await res.json();
         if (data.code === 200) {
           majors = data.data;
@@ -985,7 +1029,7 @@
         const method = id ? 'PUT' : 'POST';
         const res = await fetch(url, {
           method,
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(data)
         });
         const result = await res.json();
@@ -1012,7 +1056,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/majors/' + id, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword })
         });
         const result = await res.json();
@@ -1171,7 +1215,7 @@
         const method = id ? 'PUT' : 'POST';
         const res = await fetch(url, {
           method,
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(data)
         });
         const result = await res.json();
@@ -1198,7 +1242,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/programs/' + id, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword })
         });
         const result = await res.json();
@@ -1350,7 +1394,7 @@
         const method = id ? 'PUT' : 'POST';
         const res = await fetch(url, {
           method,
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(data)
         });
         const result = await res.json();
@@ -1377,7 +1421,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/news/' + id, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword })
         });
         const result = await res.json();
@@ -1415,7 +1459,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/ai-add-program', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             password: adminPassword,
             school_name: schoolName,
@@ -1489,7 +1533,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/ai-batch-add', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             password: adminPassword,
             school_name: schoolName,
@@ -1547,7 +1591,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/ai-add-school-all-majors', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword, school_name: schoolName })
         });
         const text = await res.text();
@@ -1599,7 +1643,7 @@
     let currentStudentIdReviewId = null;
     async function loadStudentIdPending() {
       try {
-        const res = await fetch(API_BASE + '/admin/student-id-pending?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/student-id-pending', { headers: getAuthHeaders() });
         const data = await res.json();
         const tbody = document.getElementById('studentIdTableBody');
         const empty = document.getElementById('studentIdEmpty');
@@ -1628,7 +1672,7 @@
 
     async function viewStudentIdImage(id) {
       try {
-        const res = await fetch(API_BASE + '/admin/student-id-pending/' + id + '?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/student-id-pending/' + id, { headers: getAuthHeaders() });
         const data = await res.json();
         if (data.code !== 200 || !data.data) {
           showToast('获取失败', 'error');
@@ -1648,7 +1692,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/student-id-review', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword, id: String(id), action })
         });
         const data = await res.json();
@@ -1673,7 +1717,7 @@
     // 分享内容审核
     async function loadShareReviewPending() {
       try {
-        const res = await fetch(API_BASE + '/admin/reported-shares?password=' + encodeURIComponent(adminPassword));
+        const res = await fetch(API_BASE + '/admin/reported-shares', { headers: getAuthHeaders() });
         const data = await res.json();
         const tbody = document.getElementById('shareReviewTableBody');
         const empty = document.getElementById('shareReviewEmpty');
@@ -1715,7 +1759,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/approve', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword })
         });
         const data = await res.json();
@@ -1737,7 +1781,7 @@
       try {
         const res = await fetch(API_BASE + '/admin/student-shares/' + id + '/delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ password: adminPassword })
         });
         const data = await res.json();

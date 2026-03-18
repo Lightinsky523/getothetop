@@ -1500,11 +1500,7 @@ app.post('/api/admin/news', verifyAdminLegacy, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news
-<<<<<<< HEAD
 app.post('/admin/news', verifyAdminLegacy, (req, res) => {
-=======
-app.post('/admin/news', verifyAdmin, (req, res) => {
->>>>>>> feefa4f812fda41c5efe10c4a5f206fd8e2a06ce
   const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
   
   const sql = `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot) VALUES (?, ?, ?, ?, ?, ?)`;
@@ -1534,11 +1530,7 @@ app.put('/api/admin/news/:id', verifyAdminLegacy, (req, res) => {
   });
 });
 // 兼容旧前端路径：/admin/news/:id
-<<<<<<< HEAD
 app.put('/admin/news/:id', verifyAdminLegacy, (req, res) => {
-=======
-app.put('/admin/news/:id', verifyAdmin, (req, res) => {
->>>>>>> feefa4f812fda41c5efe10c4a5f206fd8e2a06ce
   const { password, title, content, source, publish_date, is_hot } = req.body;
   const id = req.params.id;
   
