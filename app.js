@@ -891,6 +891,7 @@ app.post('/ai-query', async (req, res) => {
     // 参考信息（不含用户问题）：我的信息 + 选科 + 学生分享总结
     const referenceParts = [];
     referenceParts.push('请严格根据下方「参考信息」回答「用户问题」，结合用户填写的我的信息与选科给出专业报考建议；学生分享总结供参考。勿编造参考中未出现的内容。');
+    referenceParts.push('重要：系统会在回答前单独展示「学生分享总结」。因此在你的「综合回答」中不要复述/抄写总结段落，也不要再次输出“总结”部分；只需在需要时引用其中的关键点并给出可执行的建议。');
     referenceParts.push('\n【参考信息】');
     if (profileSummary && profileSummary !== "（未填写）") {
       referenceParts.push(`用户基本信息（我的信息）：${profileSummary}`);
@@ -900,7 +901,7 @@ app.post('/ai-query', async (req, res) => {
       referenceParts.push(`选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}`);
     }
     if (shareSummary) {
-      referenceParts.push(`【学生分享总结（热度最高最多 100 条）】\n${shareSummary}`);
+      referenceParts.push(`【学生分享总结（将单独展示给用户；综合回答中请勿重复该段）】\n${shareSummary}`);
     }
     const referenceBlock = referenceParts.join('\n');
     const userQuestion = (prompt || '').trim();
@@ -2686,10 +2687,12 @@ function schoolProgramExists(majorId, schoolName) {
   });
 }
 
-/** 用 AI 根据学校官网判断是否开设某专业；未检索到则返回 false */
+/** 用 AI 根据学校官网判断是否开设某专业；必须依据官网/招生页等可查证来源，未检索到则返回 false。 */
 async function confirmSchoolOffersMajor(schoolName, majorName) {
-  const prompt = `请仅根据「${schoolName}」官方网站（院校官网）的实际信息，判断该校是否开设「${majorName}」本科专业。只返回一个 JSON：若官网明确有该专业招生或培养信息则 {"offers": true}，若未检索到或无法确认则 {"offers": false}。不得猜测，未查到则必须返回 offers: false。`;
-  const raw = await callDataEntryAI(prompt);
+  const systemPrompt = '你是教育数据录入助手。判断某校是否开设某专业时，必须仅依据该校官方网站、招生网、本科招生目录等可查证来源；未在官网检索到明确信息时一律返回 offers: false，不得凭猜测或训练数据推断。';
+  const prompt = `请仅根据「${schoolName}」官方网站（院校官网、招生网、本科招生目录等）的实际可查信息，判断该校是否开设「${majorName}」本科专业。
+只返回一个 JSON：若在官网/招生页明确查到该专业招生或培养信息则 {"offers": true}，若未检索到或无法从官网确认则 {"offers": false}。不得猜测，未查到则必须返回 offers: false。`;
+  const raw = await callDataEntryAI(prompt, systemPrompt);
   const m = raw.match(/\{[\s\S]*\}/);
   if (m) {
     try {
@@ -2700,7 +2703,7 @@ async function confirmSchoolOffersMajor(schoolName, majorName) {
   return true;
 }
 
-/** 根据专业名+学校名：若专业已存在则只查该校该专业开设信息；否则从阳光高考+官网查全量并建 major_overviews + 返回 program 数据 */
+/** 根据专业名+学校名：若专业已存在则只查该校该专业开设信息；否则从阳光高考+官网查全量并建 major_overviews + 返回 program 数据。 */
 async function getOrCreateMajorAndProgramData(majorName, schoolName) {
   const offers = await confirmSchoolOffersMajor(schoolName, majorName);
   if (!offers) throw new Error('未检索到该校开设该专业，不录入');
@@ -3062,46 +3065,6 @@ app.get('/api/news', (req, res) => {
     res.send({ code: 200, data: rows || [] });
   });
 });
-app.post('/admin/news', async (req, res) => {
-  const { password, major_id, title, content, source, publish_date, is_hot } = req.body;
-  
-  // 校验密码
-  if (password !== ADMIN_PASSWORD) return res.status(403).json({ code: 403, msg: '密码错误' });
-
-  // 检查必填字段
-  if (!major_id || !title) return res.json({ code: 400, msg: 'major_id 和 title 必填' });
-
-  try {
-    const [result] = await mysqlPool.execute(
-      `INSERT INTO major_news (major_id, title, content, source, publish_date, is_hot)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [major_id, title, content, source, publish_date, is_hot ? 1 : 0]
-    );
-    res.json({ code: 200, msg: '添加成功', lastID: result.insertId });
-  } catch (err) {
-    console.error('添加专业动态失败:', err);
-    res.json({ code: 500, msg: '存储失败', error: err.message });
-  }
-});
-app.get('/admin/majors/:majorId/news', async (req, res) => {
-  const majorId = req.params.majorId;
-  if (!majorId) return res.json({ code: 400, msg: '未选择专业', data: [] });
-
-  try {
-    const [rows] = await mysqlPool.execute(
-      `SELECT id, major_id, title, content, source, publish_date, is_hot
-       FROM major_news
-       WHERE major_id = ?
-       ORDER BY publish_date DESC`,
-      [majorId]
-    );
-    res.json({ code: 200, data: rows });
-  } catch (err) {
-    console.error('加载专业动态失败:', err);
-    res.json({ code: 500, msg: '加载失败', data: [] });
-  }
-});
-
 
 // 单条新闻详情
 app.get('/api/news/:id', (req, res) => {
@@ -3134,4 +3097,3 @@ if (process.env.VERCEL) {
     }
   });
 }
-
