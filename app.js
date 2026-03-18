@@ -35,7 +35,7 @@ app.use(express.urlencoded({ limit: BODY_LIMIT, extended: true }));
 console.log('[Express] 请求体大小限制:', BODY_LIMIT);
 
 // ----- 基础配置：从环境变量读取，没有则用默认值 -----
-const PORT = process.env.PORT || 7860;   // 服务监听的端口号，process.env 是环境变量
+const PORT = process.env.PORT || 3000;   // 服务监听的端口号；默认与反代/部署端口保持一致
 
 /**
  * 解析数据存放目录。
@@ -1875,16 +1875,15 @@ app.post('/api/auth/verify', (req, res) => {
       const authToken = require('crypto').randomBytes(32).toString('hex');
       const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
 
-      // 先插入必填列，避免因 nickname 列未就绪导致失败；再单独更新昵称
+      // 允许同一邮箱反复认证：用 REPLACE 覆盖旧记录（uk_verified_email 唯一键冲突时会先删后插）
       db.run(
-        'INSERT INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at) VALUES (?, ?, ?, ?, ?)',
-        [emailLower, schoolName, 'email', authToken, toMySQLDateTime(tokenExpiresAt)],
-        function (replaceErr) {
+        'REPLACE INTO verified_users (email, school_name, auth_type, auth_token, token_expires_at, nickname) VALUES (?, ?, ?, ?, ?, ?)',
+        [emailLower, schoolName, 'email', authToken, toMySQLDateTime(tokenExpiresAt), nick],
+        (replaceErr) => {
           if (replaceErr) {
             res.send({ code: 500, msg: "认证失败" });
             return;
           }
-          db.run('UPDATE verified_users SET nickname = ? WHERE auth_token = ?', [nick, authToken], () => {});
           res.send({
             code: 200,
             msg: "认证成功",
