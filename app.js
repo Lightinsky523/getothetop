@@ -1577,7 +1577,7 @@ app.delete('/admin/news/:id', verifyAdminLegacy, (req, res) => {
 });
 
 // 兼容旧前端路径：/admin/news/:id
-app.delete('/admin/news/:id', verifyAdmin, (req, res) => {
+app.delete('/admin/news/:id', verifyAdminLegacy, (req, res) => {
   const { password } = req.body;
   const id = req.params.id;
   
