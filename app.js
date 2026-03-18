@@ -1104,7 +1104,8 @@ app.post('/api/admin/login', (req, res) => {
     return;
   }
   // 生成简单 token
-  const token = crypto.randomBytes(32).toString('hex');
+    // 注意：不要用全局 `crypto`（WEB Crypto 没有 randomBytes），这里必须显式使用 Node.js 的 crypto 模块
+  const token = require('crypto').randomBytes(32).toString('hex');
   adminTokens.set(token, { password, expiresAt: Date.now() + ADMIN_TOKEN_EXPIRE });
   res.send({ code: 200, msg: "登录成功", token });
 });
