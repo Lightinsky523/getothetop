@@ -822,10 +822,15 @@
     // 按学校搜索（输入学校名称，再选专业或自动进入详情）
     async function searchBySchool() {
       const schoolName = (document.getElementById('school-input').value || '').trim();
-      const majorId = document.getElementById('school-major-select').value;
+      const selectedMajorId = document.getElementById('school-major-select').value;
       
       if (!schoolName) {
         alert('请输入学校名称');
+        return;
+      }
+      // 若用户已在下拉框选中专业，直接进入详情，不再重新拉取（避免拉取时清空下拉导致选中丢失）
+      if (selectedMajorId) {
+        showMajorDetail(selectedMajorId);
         return;
       }
       const majors = await fetchSchoolMajors(schoolName);
@@ -833,10 +838,7 @@
         alert('未找到该校或该校暂无专业数据，请检查学校名称');
         return;
       }
-      const selectedMajorId = document.getElementById('school-major-select').value;
-      if (selectedMajorId) {
-        showMajorDetail(selectedMajorId);
-      } else if (majors.length === 1) {
+      if (majors.length === 1) {
         showMajorDetail(majors[0].major_id);
       } else {
         alert('请从下拉框选择该学校的专业后再次点击检索');
@@ -1160,9 +1162,15 @@
         if (e.key === 'Enter') { e.preventDefault(); searchByMajor(); }
       });
       const schoolInput = document.getElementById('school-input');
-      if (schoolInput) schoolInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); searchBySchool(); }
-      });
+      if (schoolInput) {
+        schoolInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') { e.preventDefault(); searchBySchool(); }
+        });
+        schoolInput.addEventListener('input', function() {
+          var sel = document.getElementById('school-major-select');
+          if (sel && sel.options.length) { sel.innerHTML = '<option value="">选择该学校的专业</option>'; }
+        });
+      }
       const newsKw = document.getElementById('news-major-keyword');
       if (newsKw) newsKw.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); searchNewsByMajorKeyword(); }
