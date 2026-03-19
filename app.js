@@ -89,6 +89,10 @@ const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
 const TOKEN_EXPIRY_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
+// 学生分享：有用度低于此阈值视为无用；新帖宽限期（分钟）内不因分析结果被过滤
+const SHARE_USEFULNESS_THRESHOLD = 30;
+const SHARE_GRACE_MINUTES = 15;
+
 /** MySQL DATETIME 只接受 'YYYY-MM-DD HH:MM:SS'，不能带 T/Z 或毫秒 */
 function toMySQLDateTime(dateOrIso) {
   const d = dateOrIso instanceof Date ? dateOrIso : new Date(dateOrIso);
@@ -696,11 +700,11 @@ app.get('/get-data', (req, res) => {
 });
 
 // ========== 功能3：智能查询（百炼 AI + 学生分享筛选与总结） ==========
-// 下面这个条件：只取已通过、有用度>=40、非情绪化、未到删除时间的帖子
+// 与列表接口一致：已通过、未到删除时间，且（新帖宽限期内 或 有用度达标且非情绪化）
 const SHARE_LIST_WHERE = `s.status = 'approved'
-  AND (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= 40)
-  AND (s.is_emotional IS NULL OR s.is_emotional = 0)
-  AND (s.delete_after IS NULL OR s.delete_after > NOW())`;
+  AND (s.delete_after IS NULL OR s.delete_after > NOW())
+  AND ( s.upload_time >= DATE_SUB(NOW(), INTERVAL ${SHARE_GRACE_MINUTES} MINUTE)
+    OR ( (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= ${SHARE_USEFULNESS_THRESHOLD}) AND (s.is_emotional IS NULL OR s.is_emotional = 0) ) )`;
 
 /**
  * 从用户问题里检测是否提到具体学校名（从学生分享表里出现的学校名匹配）
@@ -790,9 +794,9 @@ function fetchTopSharesByKeyword(prompt, limit = 100) {
 function fetchRelevantShares(prompt, limit = 10) {
   return new Promise((resolve) => {
     const where = `status = 'approved'
-      AND (usefulness_ratio IS NULL OR usefulness_ratio >= 40)
-      AND (is_emotional IS NULL OR is_emotional = 0)
-      AND (delete_after IS NULL OR delete_after > NOW())`;
+      AND (delete_after IS NULL OR delete_after > NOW())
+      AND ( upload_time >= DATE_SUB(NOW(), INTERVAL ${SHARE_GRACE_MINUTES} MINUTE)
+        OR ( (usefulness_ratio IS NULL OR usefulness_ratio >= ${SHARE_USEFULNESS_THRESHOLD}) AND (is_emotional IS NULL OR is_emotional = 0) ) )`;
     db.all(
       `SELECT id, school, major, grade, title, content, tags, author_nickname, upload_time FROM student_shares WHERE ${where} ORDER BY upload_time DESC LIMIT 80`,
       [],
@@ -1104,7 +1108,7 @@ app.post('/api/admin/login', (req, res) => {
     return;
   }
   // 生成简单 token
-    // 注意：不要用全局 `crypto`（WEB Crypto 没有 randomBytes），这里必须显式使用 Node.js 的 crypto 模块
+  // 注意：不要用全局 `crypto`（WEB Crypto 没有 randomBytes），这里必须显式使用 Node.js 的 crypto 模块
   const token = require('crypto').randomBytes(32).toString('hex');
   adminTokens.set(token, { password, expiresAt: Date.now() + ADMIN_TOKEN_EXPIRE });
   res.send({ code: 200, msg: "登录成功", token });
@@ -1653,13 +1657,16 @@ app.post('/api/majors/search', (req, res) => {
 
 // ========== 学生分享 API（新） ==========
 // 获取列表：支持 school/major/keyword 筛选；带点赞数；过滤无用/情绪化/到期删除的；有 token/guestId 时带 user_has_liked
+// 新帖宽限期：刚发布的帖子在分析结果写回前/后都保持展示，避免误判导致刷新后立即消失
 app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND delete_after <= NOW()`, () => {});
   const { school, major, keyword } = req.query;
   let sql = `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.status = 'approved'
-    AND (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= 40)
-    AND (s.is_emotional IS NULL OR s.is_emotional = 0)
-    AND (s.delete_after IS NULL OR s.delete_after > NOW())`;
+    AND (s.delete_after IS NULL OR s.delete_after > NOW())
+    AND (
+      s.upload_time >= DATE_SUB(NOW(), INTERVAL ${SHARE_GRACE_MINUTES} MINUTE)
+      OR ( (s.usefulness_ratio IS NULL OR s.usefulness_ratio >= ${SHARE_USEFULNESS_THRESHOLD}) AND (s.is_emotional IS NULL OR s.is_emotional = 0) )
+    )`;
   const params = [];
 
   if (school) {
@@ -2754,7 +2761,7 @@ ${keywordCategoryDesc}
       if (obj.is_emotional === 1 || obj.is_emotional === true) is_emotional = 1;
     } catch (_) {}
   }
-  const shouldDelete = (usefulness_ratio != null && usefulness_ratio < 40) || is_emotional === 1;
+  const shouldDelete = (usefulness_ratio != null && usefulness_ratio < SHARE_USEFULNESS_THRESHOLD) || is_emotional === 1;
 
   // 基于 MySQL 中的类型词，对帖子进行本地分类占比分析并自动打标签（只作为初始标签，发帖人后续仍可在前端编辑）
   const { autoTags } = analyzeCategoryDistribution(text, keywordCategoriesMap);
