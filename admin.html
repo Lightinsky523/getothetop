@@ -1653,11 +1653,24 @@
     let currentStudentIdReviewId = null;
     async function loadStudentIdPending() {
       try {
+        showToast('刷新中（学生证待审）...', 'success');
         const res = await fetch(API_BASE + '/admin/student-id-pending', { headers: getAuthHeaders() });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         const tbody = document.getElementById('studentIdTableBody');
         const empty = document.getElementById('studentIdEmpty');
-        if (data.code !== 200 || !data.data || data.data.length === 0) {
+        if (res.status !== 200) {
+          tbody && (tbody.innerHTML = '');
+          empty && (empty.style.display = 'block');
+          showToast('加载失败：HTTP ' + res.status, 'error');
+          return;
+        }
+        if (data.code !== 200) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          return;
+        }
+        if (!data.data || data.data.length === 0) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
           return;
@@ -1727,11 +1740,24 @@
     // 分享内容审核
     async function loadShareReviewPending() {
       try {
+        showToast('刷新中（分享审核）...', 'success');
         const res = await fetch(API_BASE + '/admin/reported-shares', { headers: getAuthHeaders() });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         const tbody = document.getElementById('shareReviewTableBody');
         const empty = document.getElementById('shareReviewEmpty');
-        if (data.code !== 200 || !data.data || data.data.length === 0) {
+        if (res.status !== 200) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          showToast('加载失败：HTTP ' + res.status, 'error');
+          return;
+        }
+        if (data.code !== 200) {
+          tbody.innerHTML = '';
+          empty.style.display = 'block';
+          showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          return;
+        }
+        if (!data.data || data.data.length === 0) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
           return;
