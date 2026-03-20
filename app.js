@@ -5,7 +5,7 @@
  * 这是一个 Node.js 后端服务，用 Express 框架提供网页接口（API），
  * 用 MySQL 存数据。主要功能包括：
  * - 在读分享/学生分享的增删查
- * - 智能查询（阿里云百炼 AI）
+ * - 智能查询（Stepfun 阶跃星辰）
  * - 信息认证（邮箱验证码、学生证）
  * - 专业/学校数据管理、评论点赞、举报等
  *
@@ -90,10 +90,8 @@ function resolveDataDir() {
 
 const DATA_DIR = resolveDataDir();
 
-// ----- 阿里云百炼（千问）配置：智能查询 + 学生证鉴伪 + 文本审核 共用同一 Key -----
-// 志愿查询用应用 completion；学生证鉴伪、发帖/评论审核用模型 API（compatible-mode），均使用 BAILIAN_API_KEY
+// ----- 阿里云百炼（千问）配置：仅用于学生证鉴伪、发帖/评论审核；智能查询已改用 Stepfun -----
 const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || process.env.DIRECT_AI_KEY;
-const BAILIAN_APP_ID = process.env.BAILIAN_APP_ID;
 const DASHSCOPE_VISION_MODEL = process.env.DASHSCOPE_VISION_MODEL || 'qwen-vl-plus'; // 学生证视觉模型
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com';
 // 认证 token 有效期：10 年，认证后长期有效，用于发帖、举报等
@@ -832,178 +830,20 @@ function fetchRelevantShares(prompt, limit = 10) {
   });
 }
 
-/** 调用百炼应用：把多条帖子内容拼成一段文字，让 AI 总结成一段文案，最多传 maxTextLen 字符 */
-async function summarizeSharesWithBailian(fetch, postsText, summaryPrompt, maxTextLen = 28000) {
-  const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
-  const body = JSON.stringify({
-    input: { prompt: summaryPrompt + '\n\n帖子内容：\n' + postsText.slice(0, maxTextLen) },
-    parameters: { result_format: 'message' }
+// POST /ai-query：智能查询。使用 Stepfun，含学生分享总结（按学校/关键词热度 top100）、联网搜索、可选锚定 gov.cn/edu.cn、知识库
+const { handleStepfunAiQuery } = require('./stepfun-ai');
+const aiQueryHelpers = { getSchoolFromPrompt, fetchTopSharesBySchool, fetchTopSharesByKeyword };
+app.post('/ai-query', (req, res) => {
+  handleStepfunAiQuery(req, res, aiQueryHelpers).catch((err) => {
+    console.error('智能查询失败:', err);
+    res.send({ code: 500, msg: '智能查询失败: ' + (err.message || String(err)) });
   });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-  try {
-    const res = await fetch(appUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BAILIAN_API_KEY}` },
-      body,
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return '';
-    let text;
-    try {
-      const json = await res.json();
-      text = json.output?.text || json.output?.choices?.[0]?.message?.content || json.data?.output?.text || json.choices?.[0]?.message?.content;
-    } catch (e) {
-      // 如果不是 JSON，获取纯文本
-      const rawText = await res.text();
-      text = rawText.trim();
-    }
-    return typeof text === 'string' ? text.trim() : '';
-  } catch (e) {
-    clearTimeout(timeout);
-    return '';
-  }
-}
-
-// POST /ai-query：智能查询。取学生分享（按学校或关键词热度 top100）总结 + 用户「我的信息」与选科，一起发给百炼，返回报考建议
-app.post('/ai-query', async (req, res) => {
-  const { prompt, profileSummary, isXuanke, xuankeContext } = req.body;
-  
-  try {
-    const fetch = (await import('node-fetch')).default;
-    if (!BAILIAN_API_KEY || !BAILIAN_APP_ID) {
-      res.send({ code: 500, msg: "智能查询未配置（需 BAILIAN_API_KEY 与 BAILIAN_APP_ID）" });
-      return;
-    }
-
-    const MAX_SUMMARY_SNIPPET = 350;
-    let shareSummary = '';
-    let summaryLabel = '';
-
-    // 学生分享总结：涉及具体学校则按该校+关键词取热度 top100；否则按用户输入关键词取热度 top100
-    const detected = await getSchoolFromPrompt(prompt);
-    let topShares;
-    if (detected && detected.school) {
-      topShares = await fetchTopSharesBySchool(detected.school, detected.keyword, 100);
-      summaryLabel = `该校（${detected.school}）学生分享`;
-    } else {
-      topShares = await fetchTopSharesByKeyword(prompt, 100);
-      summaryLabel = '与您问题相关的学生分享（按热度排序）';
-    }
-
-    if (topShares.length > 0) {
-      const postsText = topShares.map((entry, i) => {
-        const contentSnippet = (entry.content || '').slice(0, MAX_SUMMARY_SNIPPET);
-        return `[${i + 1}] 点赞${entry.like_count || 0} · ${entry.title || '无标题'}\n${contentSnippet}${(entry.content || '').length > MAX_SUMMARY_SNIPPET ? '…' : ''}`;
-      }).join('\n\n');
-      const summaryPrompt = `用户问题：${prompt}\n\n请对以下「${summaryLabel}」帖子进行总结，围绕用户问题的关注点归纳（如学习压力、宿舍、就业、保研等）。共 ${topShares.length} 条，已按点赞从高到低排列。总结控制在 500 字以内，条理清晰。`;
-      shareSummary = await summarizeSharesWithBailian(fetch, postsText, summaryPrompt);
-      if (!shareSummary) console.error('学生分享总结调用失败');
-    }
-
-    // 参考信息（不含用户问题）：我的信息 + 选科 + 学生分享总结
-    const referenceParts = [];
-    referenceParts.push('请严格根据下方「参考信息」回答「用户问题」，结合用户填写的我的信息与选科给出专业报考建议；学生分享总结供参考。勿编造参考中未出现的内容。');
-    referenceParts.push('重要：系统会在回答前单独展示「学生分享总结」。因此在你的「综合回答」中不要复述/抄写总结段落，也不要再次输出“总结”部分；只需在需要时引用其中的关键点并给出可执行的建议。');
-    referenceParts.push('\n【参考信息】');
-    if (profileSummary && profileSummary !== "（未填写）") {
-      referenceParts.push(`用户基本信息（我的信息）：${profileSummary}`);
-    }
-    if (isXuanke && xuankeContext) {
-      const combo = [xuankeContext.first, ...(xuankeContext.second || [])].filter(Boolean).join("+");
-      referenceParts.push(`选科：首选 ${xuankeContext.first || '未选'}，再选 ${(xuankeContext.second || []).join('、') || '未选'}（${combo}），省份：${xuankeContext.province || '未填'}`);
-    }
-    if (shareSummary) {
-      referenceParts.push(`【学生分享总结（将单独展示给用户；综合回答中请勿重复该段）】\n${shareSummary}`);
-    }
-    const referenceBlock = referenceParts.join('\n');
-    const userQuestion = (prompt || '').trim();
-
-    // 分列发送：参考信息与用户问题分开，便于模型区分
-    const fullPrompt = `${referenceBlock}\n\n【用户问题】\n${userQuestion}`;
-
-    const appUrl = `${DASHSCOPE_BASE}/api/v1/apps/${BAILIAN_APP_ID}/completion`;
-    const callBailian = (signal) => fetch(appUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BAILIAN_API_KEY}`
-      },
-      body: JSON.stringify({
-        input: { prompt: fullPrompt },
-        parameters: { result_format: 'message' }
-      }),
-      signal
-    });
-    const BAILIAN_TIMEOUT_MS = 90000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), BAILIAN_TIMEOUT_MS);
-    let response;
-    try {
-      response = await callBailian(controller.signal);
-    } catch (fetchErr) {
-      clearTimeout(timeoutId);
-      if (fetchErr.name === 'AbortError') {
-        console.error("智能查询 百炼 请求超时（" + (BAILIAN_TIMEOUT_MS / 1000) + "s）");
-        res.send({ code: 500, msg: "AI 响应超时，请缩短问题或稍后重试" });
-      } else {
-        console.error("智能查询 百炼 网络异常:", fetchErr.message);
-        res.send({ code: 500, msg: "AI 服务暂时不可达，请稍后重试" });
-      }
-      return;
-    }
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const rawErr = await response.text();
-      console.error("智能查询 百炼 API 错误:", response.status, rawErr.slice(0, 400));
-      if (response.status >= 500 && response.status < 600) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const retryController = new AbortController();
-        const retryTimeout = setTimeout(() => retryController.abort(), BAILIAN_TIMEOUT_MS);
-        try {
-          response = await callBailian(retryController.signal);
-          clearTimeout(retryTimeout);
-        } catch (retryErr) {
-          clearTimeout(retryTimeout);
-          res.send({ code: 500, msg: "AI 服务繁忙，请稍后重试" });
-          return;
-        }
-        if (!response.ok) {
-          res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
-          return;
-        }
-      } else {
-        res.send({ code: 500, msg: `AI 服务错误 (${response.status})` });
-        return;
-      }
-    }
-    const rawText = await response.text();
-    let result;
-    let aiText;
-    try {
-      result = JSON.parse(rawText);
-      aiText =
-        result.output?.text ||
-        result.output?.choices?.[0]?.message?.content ||
-        result.data?.output?.text ||
-        result.choices?.[0]?.message?.content;
-    } catch (e) {
-      // 如果不是 JSON，假设是纯文本响应
-      aiText = rawText.trim();
-    }
-    if (aiText) {
-      const finalData = shareSummary
-        ? `【基于学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
-        : aiText;
-      res.send({ code: 200, data: finalData });
-    } else {
-      res.send({ code: 500, msg: "AI 未返回有效内容" });
-    }
-  } catch (error) {
-    console.error("智能查询失败:", error);
-    res.send({ code: 500, msg: "智能查询失败: " + (error.message || String(error)) });
-  }
+});
+app.post('/ai-query-step', (req, res) => {
+  handleStepfunAiQuery(req, res, aiQueryHelpers).catch((err) => {
+    console.error('Stepfun 智能查询异常:', err);
+    res.send({ code: 500, msg: '智能查询失败: ' + (err.message || String(err)) });
+  });
 });
 
 /** 本地模拟 AI 回复（未配置百炼时可用）：根据选科/分享拼一段示例文案 */
@@ -1671,7 +1511,11 @@ app.post('/api/majors/search', (req, res) => {
 app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND delete_after <= NOW()`, () => {});
   const { school, major, keyword } = req.query;
-  let sql = `SELECT s.*, (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count FROM student_shares s WHERE s.status = 'approved'
+  // 只查列表需要的字段，排除 images（base64 大字段），避免全量返回拖慢接口
+  let sql = `SELECT s.id, s.share_number, s.school, s.major, s.grade, s.title, s.content, s.tags,
+    s.author_nickname, s.upload_time, s.status, s.usefulness_ratio, s.like_count AS db_like_count,
+    (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count
+    FROM student_shares s WHERE s.status = 'approved'
     AND (s.delete_after IS NULL OR s.delete_after > NOW())
     AND (
       s.upload_time >= DATE_SUB(NOW(), INTERVAL ${SHARE_GRACE_MINUTES} MINUTE)
@@ -1694,7 +1538,7 @@ app.get('/api/student-shares', async (req, res) => {
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
 
-  sql += ` ORDER BY s.upload_time DESC`;
+  sql += ` ORDER BY s.upload_time DESC LIMIT 50`;
 
   db.all(sql, params, async (err, rows) => {
     if (err) {
@@ -1717,7 +1561,25 @@ app.get('/api/student-shares', async (req, res) => {
   } else {
     rows.forEach((r) => { r.user_has_liked = false; });
   }
+  // 前端只看前 SHOW_COUNT=10 条，images 在用户点开单帖时再单独请求
   res.send({ code: 200, data: rows });
+  });
+});
+
+// 按 ID 批量获取 images 字段（供前端渲染列表时补充图片，不阻塞列表加载）
+app.get('/api/student-shares/images', (req, res) => {
+  const idsParam = (req.query.ids || '').trim();
+  if (!idsParam) return res.send({ code: 200, data: [] });
+  const ids = idsParam.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n > 0);
+  if (ids.length === 0) return res.send({ code: 200, data: [] });
+  if (ids.length > 100) ids.length = 100; // 安全上限
+  const placeholders = ids.map(() => '?').join(',');
+  db.all(`SELECT id, images FROM student_shares WHERE id IN (${placeholders})`, ids, (err, rows) => {
+    if (err) return res.send({ code: 500, msg: '查询失败' });
+    const map = {};
+    (rows || []).forEach((r) => { map[r.id] = r.images || ''; });
+    const result = ids.map((id) => ({ id, images: map[id] || '' }));
+    res.send({ code: 200, data: result });
   });
 });
 
@@ -1800,12 +1662,13 @@ async function getSchoolFromEmailSuffix(emailSuffix) {
   return EMAIL_SUFFIX_TO_SCHOOL[suffixLower] || '未知';
 }
 
-// GET 后端配置检查（不暴露密钥）：用于确认当前请求是否到达正确后端及 SMTP/百炼 是否已配置
+// GET 后端配置检查（不暴露密钥）：用于确认当前请求是否到达正确后端及 SMTP/百炼/Stepfun 是否已配置
 app.get('/api/auth/backend-config', (req, res) => {
   res.send({
     code: 200,
     smtpConfigured: !!transporter,
     bailianConfigured: !!BAILIAN_API_KEY,
+    stepfunConfigured: !!process.env.STEPFUN_API_KEY,
     msg: 'OK'
   });
 });
@@ -3275,7 +3138,9 @@ if (process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ 服务已启动！地址：http://0.0.0.0:${PORT}`);
     console.log(`📊 数据目录: ${DATA_DIR}`);
-    console.log(`🤖 智能查询（百炼应用）: ${BAILIAN_API_KEY && BAILIAN_APP_ID ? '已配置' : '未配置'}`);
+    console.log(`🤖 智能查询（Stepfun）: ${process.env.STEPFUN_API_KEY ? '已配置' : '未配置'}`);
+    console.log(`🤖 百炼（学生证/审核）: ${BAILIAN_API_KEY ? '已配置' : '未配置'}`);
+    console.log(`🤖 智能查询（Stepfun）: ${process.env.STEPFUN_API_KEY ? '已配置，可用 /ai-query-step' : '未配置'}`);
     console.log(`🤖 DeepSeek（邮箱识别+数据录入）: ${DEEPSEEK_API_KEY ? '已配置' : '未配置'}`);
     // 启动时预建 MySQL 连接池，避免首个请求因懒初始化（建库建表等）而很慢
     if (MYSQL_USER && MYSQL_PASSWORD) {

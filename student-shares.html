@@ -1429,13 +1429,27 @@
         else url += '?guestId=' + encodeURIComponent(guestId);
         const res = await fetch(url);
         const data = await res.json();
-        
+
         if (data.code === 200) {
           allShares = data.data || [];
           const shuffled = shuffleArray(allShares);
           visibleShares = shuffled.slice(0, SHOW_COUNT);
           foldedShares = shuffled.slice(SHOW_COUNT);
           showFolded = false;
+          // 并行请求可见帖子的 images（不阻塞列表渲染）
+          const visibleIds = visibleShares.map((s) => s.id).join(',');
+          if (visibleIds) {
+            fetch(API_BASE + '/api/student-shares/images?ids=' + visibleIds)
+              .then(function(r) { return r.json(); })
+              .then(function(imgData) {
+                if (imgData.code === 200 && Array.isArray(imgData.data)) {
+                  const imgMap = {};
+                  (imgData.data || []).forEach(function(item) { imgMap[item.id] = item.images || ''; });
+                  visibleShares.forEach(function(s) { s.images = imgMap[s.id] || ''; });
+                }
+              })
+              .catch(function() {});
+          }
           renderShares();
         } else {
           listEl.innerHTML = '<div class="empty-state">暂无分享数据</div>';

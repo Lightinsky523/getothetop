@@ -217,6 +217,36 @@
     .toast.success { background: #38a169; }
     .toast.error { background: var(--error); }
 
+    /* 搜索配置（联网搜索、锚定 gov.cn/edu.cn） */
+    .search-config-btn {
+      padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius);
+      background: #fff; color: var(--text-soft); font-size: 13px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px;
+    }
+    .search-config-btn:hover { border-color: var(--accent); color: var(--text); }
+    .search-config-dropdown {
+      display: none; margin-bottom: 12px; padding: 14px; background: #f8f7f4; border-radius: var(--radius);
+      border: 1px solid var(--border-subtle); font-size: 13px;
+    }
+    .search-config-dropdown.show { display: block; }
+    .search-config-dropdown .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+    }
+    .search-config-dropdown label { cursor: pointer; color: var(--text); }
+    .search-config-dropdown .toggle-switch {
+      width: 40px; height: 22px; border-radius: 11px; background: var(--border-subtle);
+      position: relative; cursor: pointer; flex-shrink: 0; margin-left: 10px;
+    }
+    .search-config-dropdown .toggle-switch.on { background: var(--accent); }
+    .search-config-dropdown .toggle-switch::after {
+      content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%;
+      background: #fff; top: 2px; left: 2px; transition: transform 0.2s;
+    }
+    .search-config-dropdown .toggle-switch.on::after { transform: translateX(18px); }
+    .search-config-dropdown .anchor-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+    .search-config-dropdown .anchor-row label { display: flex; align-items: center; gap: 8px; }
+    .search-config-dropdown .knowledge-hint { margin-top: 10px; font-size: 12px; color: var(--text-soft); }
+
     .contact-bar {
       margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-subtle);
       font-size: 13px; color: var(--text-soft); text-align: center;
@@ -282,6 +312,23 @@
                   <label><input type="checkbox" name="xuanke-second" value="地理" /> 地理</label>
                 </div>
               </div>
+            </div>
+
+            <button type="button" class="search-config-btn" id="search-config-btn" onclick="toggleSearchConfig()" title="搜索设置">
+              <span>🔍</span> 搜索
+            </button>
+            <div class="search-config-dropdown" id="search-config-dropdown">
+              <div class="toggle-row">
+                <label for="toggle-internet">联网搜索</label>
+                <div class="toggle-switch on" id="toggle-internet" onclick="toggleInternetSearch()" role="button" tabindex="0" aria-label="开启/关闭互联网搜索"></div>
+              </div>
+              <div class="anchor-row">
+                <label>
+                  <input type="checkbox" id="anchor-gov-edu" checked />
+                  锚定搜索 gov.cn 和 edu.cn（仅采用政府、教育官网数据）
+                </label>
+              </div>
+              <p class="knowledge-hint">我的知识库由后端配置，若已配置将自动参与检索。</p>
             </div>
 
             <label class="field-label" for="ai-input" id="ai-input-label">
@@ -415,6 +462,15 @@
       document.getElementById('ai-input').value = chip.textContent;
     }
 
+    function toggleSearchConfig() {
+      const el = document.getElementById('search-config-dropdown');
+      if (el) el.classList.toggle('show');
+    }
+    function toggleInternetSearch() {
+      const t = document.getElementById('toggle-internet');
+      if (t) t.classList.toggle('on');
+    }
+
     async function submitQuery() {
       const content = document.getElementById('ai-input').value.trim();
       if (!content) {
@@ -427,6 +483,8 @@
 
       const profile = getProfileSummary();
       const xuankeContext = queryMode === 'xuanke' ? getXuankeContext() : null;
+      const enableWebSearch = document.getElementById('toggle-internet') && document.getElementById('toggle-internet').classList.contains('on');
+      const anchorToGovEdu = document.getElementById('anchor-gov-edu') ? document.getElementById('anchor-gov-edu').checked : false;
 
       try {
         const ctrl = new AbortController();
@@ -434,7 +492,14 @@
         const res = await fetch(API_BASE + '/ai-query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: content, profileSummary: profile, isXuanke: queryMode === 'xuanke', xuankeContext }),
+          body: JSON.stringify({
+            prompt: content,
+            profileSummary: profile,
+            isXuanke: queryMode === 'xuanke',
+            xuankeContext,
+            enableWebSearch: !!enableWebSearch,
+            anchorToGovEdu: !!anchorToGovEdu
+          }),
           signal: ctrl.signal
         });
         clearTimeout(timeoutId);
@@ -543,6 +608,15 @@
       toast.className = 'toast ' + type + ' show';
       setTimeout(() => toast.classList.remove('show'), 3000);
     }
+
+    // 点击页面其他区域关闭搜索配置下拉
+    document.addEventListener('click', function(e) {
+      const dd = document.getElementById('search-config-dropdown');
+      const btn = document.getElementById('search-config-btn');
+      if (dd && dd.classList.contains('show') && !dd.contains(e.target) && !btn.contains(e.target)) {
+        dd.classList.remove('show');
+      }
+    });
 
     // 回车搜索
     document.getElementById('ai-input').addEventListener('keypress', function(e) {
