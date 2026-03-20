@@ -2037,6 +2037,7 @@ app.post('/api/auth/student-id', async (req, res) => {
     console.log('[学生证] 百炼鉴伪结果:', aiResult);
     if (aiResult === 'pass') status = 'approved';
     else if (aiResult === 'rejected') status = 'rejected';
+    else status = 'pending_manual'; // review/未知/异常 -> 进入后台人工审核
   } catch (e) {
     console.error("[学生证] AI 鉴伪异常，转人工:", e.message);
   }
@@ -3225,6 +3226,35 @@ app.get('/api/news/:id', (req, res) => {
     }
     res.send({ code: 200, data: row });
   });
+});
+
+// ========== 全局错误处理（用于定位 request aborted / body 解析失败） ==========
+// 常见于：客户端在上传/提交请求体时中断（超时、刷新、切换页面、网络抖动等）
+app.use((err, req, res, next) => {
+  try {
+    const isAborted =
+      (err && typeof err.message === 'string' && err.message.toLowerCase().includes('request aborted')) ||
+      err?.type === 'entity.aborted';
+    if (isAborted) {
+      console.error('[BodyParser] request aborted:', {
+        method: req.method,
+        url: req.originalUrl || req.url,
+        contentLength: req.headers['content-length'],
+        contentType: req.headers['content-type'],
+        ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+        err: err && { name: err.name, message: err.message, type: err.type }
+      });
+    } else {
+      // 仅对你关心的 body 解析异常做日志；避免刷屏
+      if (err?.type || (err && err.message && err.message.length < 200)) {
+        console.error('[Error]', { method: req.method, url: req.originalUrl || req.url, type: err.type, message: err.message });
+      } else {
+        console.error('[Error]', err);
+      }
+    }
+  } catch (_) {}
+
+  res.status(400).send({ code: 400, msg: err && err.message ? err.message : 'Bad Request' });
 });
 
 // ========== 启动 HTTP 服务 / Vercel 导出 ==========
