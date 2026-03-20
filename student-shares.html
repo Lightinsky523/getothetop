@@ -601,18 +601,46 @@
 
   <script>
     // 支持通过 URL 参数指定接口地址，便于排查：?api_base=https://你的后端域名:端口
+    // 同时支持清除已存储的API地址：?clear_api=1
 
     (function () {
+      // 清除旧的 API 配置
+      if (/[?&]clear_api=1/.test(location.search)) {
+        localStorage.removeItem('api_base_override');
+      }
+      
       const m = /[?&]api_base=([^&]+)/.exec(location.search);
       if (m) {
         try {
           const base = decodeURIComponent(m[1]).replace(/\/$/, '');
           localStorage.setItem('api_base_override', base);
-        } catch (e) {}
+          console.log('已设置API地址:', base);
+        } catch (e) {
+          console.error('解析api_base失败:', e);
+        }
       }
     })();
     
-    const API_BASE = localStorage.getItem('api_base_override') || '';
+    // 尝试自动检测后端地址（同源检测）
+    function detectBackendAddress() {
+      // 如果已配置，直接使用
+      const stored = localStorage.getItem('api_base_override');
+      if (stored) return stored;
+      
+      // 检查是否通过后端服务访问（尝试获取当前页面路径）
+      const currentPath = window.location.pathname;
+      if (currentPath.includes('.html')) {
+        // 直接打开HTML文件，需要手动配置
+        return '';
+      }
+      
+      // 从当前 URL 提取基础地址
+      const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+      const protocol = window.location.protocol;
+      return protocol + '//' + window.location.hostname + (port !== '80' && port !== '443' ? ':' + port : '');
+    }
+    
+    const API_BASE = detectBackendAddress();
     let selectedImages = [];
     let allShares = [];
     let schoolsData = [];
@@ -1420,18 +1448,64 @@
     // 加载分享列表（带 token 或 guestId 时返回点赞状态）；随机选 10 条显示，其余折叠
     async function loadShares() {
       const listEl = document.getElementById('share-list');
-      listEl.innerHTML = '<div class="loading">正在加载分享...</div>';
+      
+      // 显示加载中状态，包含API地址信息
+      const apiInfo = API_BASE ? `（API: ${API_BASE}）` : '（未配置API，将使用相对路径）';
+      listEl.innerHTML = `<div class="loading">正在加载分享... ${apiInfo}</div>`;
+      
       try {
         const token = (localStorage.getItem('authToken') || authToken || '').trim();
         const guestId = getOrCreateGuestId();
+        
+        // 构建请求URL
         let url = API_BASE + '/api/student-shares';
         if (token) url += '?authToken=' + encodeURIComponent(token);
         else url += '?guestId=' + encodeURIComponent(guestId);
+        
+        console.log('正在请求分享数据，URL:', url);
+        console.log('API_BASE:', API_BASE || '(空，使用相对路径)');
+        console.log('页面来源:', window.location.href);
+        
         const res = await fetch(url);
+        
+        // 检查响应状态
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => '无法读取错误信息');
+          console.error('HTTP错误:', res.status, res.statusText);
+          let hint = '';
+          if (res.status === 404) {
+            hint = '<br/><strong>提示：</strong>API接口不存在，可能原因：<br/>' +
+                   '1. 后端服务未启动（需要运行 <code>node app.js</code>）<br/>' +
+                   '2. 后端端口配置不正确<br/>' +
+                   (API_BASE ? `当前API地址: ${API_BASE}<br/>` : '') +
+                   '请在终端运行后端服务后刷新页面';
+          } else if (res.status >= 500) {
+            hint = '<br/><strong>提示：</strong>后端服务器内部错误，请检查后端控制台日志';
+          }
+          listEl.innerHTML = '<div class="empty-state">加载失败：服务器返回 ' + res.status + ' ' + res.statusText + hint + '</div>';
+          return;
+        }
+        
+        // 检查响应类型
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text();
+          console.error('响应不是JSON格式:', contentType, '前200字符:', text.substring(0, 200));
+          listEl.innerHTML = '<div class="empty-state">服务器响应格式错误（非JSON）<br/>' + 
+            '响应内容: ' + escapeHtml(text.substring(0, 100)) + '...<br/>' +
+            (API_BASE ? '<br/>API地址: ' + API_BASE : '<br/>提示: 请检查后端API是否正确配置') + '</div>';
+          return;
+        }
+        
         const data = await res.json();
+        console.log('收到响应数据:', data);
 
         if (data.code === 200) {
           allShares = data.data || [];
+          if (allShares.length === 0) {
+            listEl.innerHTML = '<div class="empty-state">暂无分享数据<br/><small>（数据为空，不是加载失败）</small></div>';
+            return;
+          }
           const shuffled = shuffleArray(allShares);
           visibleShares = shuffled.slice(0, SHOW_COUNT);
           foldedShares = shuffled.slice(SHOW_COUNT);
@@ -1446,17 +1520,40 @@
                   const imgMap = {};
                   (imgData.data || []).forEach(function(item) { imgMap[item.id] = item.images || ''; });
                   visibleShares.forEach(function(s) { s.images = imgMap[s.id] || ''; });
+                  renderShares();
+                } else {
+                  renderShares();
                 }
               })
-              .catch(function() {});
+              .catch(function(err) {
+                console.warn('加载图片失败，但继续显示列表:', err);
+                renderShares();
+              });
+          } else {
+            renderShares();
           }
-          renderShares();
         } else {
-          listEl.innerHTML = '<div class="empty-state">暂无分享数据</div>';
+          console.error('API返回错误:', data.code, data.msg);
+          listEl.innerHTML = '<div class="empty-state">' + (data.msg || '获取数据失败') + '</div>';
         }
       } catch (err) {
         console.error('加载分享失败:', err);
-        listEl.innerHTML = '<div class="empty-state">加载失败，请稍后重试</div>';
+        const errorMsg = err.message || '未知错误';
+        let displayMsg = '加载失败：' + errorMsg;
+        let hint = '';
+        
+        if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('Network request failed')) {
+          hint = '<br/><br/><strong>可能原因：</strong><br/>' +
+                 '1. 后端服务未启动（请在终端运行 <code>node app.js</code>）<br/>' +
+                 '2. 跨域问题（CORS）<br/>' +
+                 '3. 网络连接问题<br/><br/>' +
+                 '<strong>解决方案：</strong><br/>' +
+                 '- 确保后端服务运行在端口 ' + (API_BASE ? '' : '3000') + '<br/>' +
+                 '- 通过后端服务访问页面（如 <code>http://localhost:3000/student-shares.html</code>）<br/>' +
+                 '- 或在URL中添加: <code>?api_base=http://localhost:3000</code>';
+        }
+        
+        listEl.innerHTML = '<div class="empty-state">' + displayMsg + hint + '</div>';
       }
     }
 
@@ -1937,6 +2034,14 @@
       authType = localStorage.getItem('authType') || '';
       verifiedNickname = localStorage.getItem('verifiedNickname') || '';
       window._lastStudentIdSubmissionId = window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId');
+      
+      // 检查API_BASE配置
+      if (!API_BASE) {
+        console.warn('API_BASE未配置，将使用相对路径。如果遇到跨域问题，请在URL中添加 ?api_base=你的后端地址');
+      } else {
+        console.log('使用API地址:', API_BASE);
+      }
+      
       loadShares();
       loadSchoolOptions();
       loadMajorOptions();
