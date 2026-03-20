@@ -1952,6 +1952,26 @@
       }
     }
 
+    // 刷新：清空筛选条件后重新从服务器加载首屏（random=1）
+    function refreshShares() {
+      try {
+        const keywordEl = document.getElementById('search-keyword');
+        const schoolEl = document.getElementById('search-school');
+        const majorEl = document.getElementById('search-major');
+        if (keywordEl) keywordEl.value = '';
+        if (schoolEl) schoolEl.value = '';
+        if (majorEl) majorEl.value = '';
+      } catch (_) {}
+
+      // 从编辑页/弹窗状态回到列表视图，避免用户误操作“刷新”但看不到变化
+      try {
+        if (typeof showListView === 'function') showListView();
+      } catch (_) {}
+
+      // loadShares() 默认 append=false，会触发后端 random=1 模式（首屏随机 10 条）
+      if (typeof loadShares === 'function') loadShares(false);
+    }
+
     async function loadSharesWithFilters(keyword, school, major, page) {
       const listEl = document.getElementById('share-list');
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
