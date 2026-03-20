@@ -1667,12 +1667,22 @@
         if (data.code !== 200) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
-          showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          if (data.code === 403) {
+            // 后端重启后内存中的 adminToken 会失效；需要重新登录
+            adminToken = '';
+            localStorage.removeItem('adminToken');
+            document.getElementById('loginPanel').style.display = 'block';
+            document.getElementById('adminPanel').style.display = 'none';
+            showToast('无权限：请重新登录后台', 'error');
+          } else {
+            showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          }
           return;
         }
         if (!data.data || data.data.length === 0) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
+          showToast('暂无待审记录（pending_manual=0）', 'success');
           return;
         }
         empty.style.display = 'none';
@@ -1754,12 +1764,21 @@
         if (data.code !== 200) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
-          showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          if (data.code === 403) {
+            adminToken = '';
+            localStorage.removeItem('adminToken');
+            document.getElementById('loginPanel').style.display = 'block';
+            document.getElementById('adminPanel').style.display = 'none';
+            showToast('无权限：请重新登录后台', 'error');
+          } else {
+            showToast('加载失败：' + (data.msg || ('code=' + data.code)), 'error');
+          }
           return;
         }
         if (!data.data || data.data.length === 0) {
           tbody.innerHTML = '';
           empty.style.display = 'block';
+          showToast('暂无待审分享（reported-shares=0）', 'success');
           return;
         }
         empty.style.display = 'none';
