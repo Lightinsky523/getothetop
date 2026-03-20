@@ -887,6 +887,8 @@
 
         if (data.code === 200 && data.token) {
           adminPassword = password;
+          // 同步内存变量，否则后续 GET 请求不会带上 x-admin-token
+          adminToken = data.token;
           localStorage.setItem('adminToken', data.token);
           document.getElementById('loginPanel').style.display = 'none';
           document.getElementById('adminPanel').style.display = 'block';
