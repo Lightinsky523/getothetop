@@ -806,16 +806,15 @@
               return;
             }
 
-            // 只有超过后端硬限制才阻止提交；否则仍把尽量清晰的图片发给百炼做鉴伪
-            if (finalLen > MAX_RAW_BASE64_HARD_LEN) {
-              studentIdImageBase64 = '';
-              document.getElementById('submit-student-id-btn').disabled = true;
-              showToast('图片仍过大（超过系统硬限制），请上传更小/更清晰的学生证照片。', 'error');
-              return;
+            // 不再因为“体积略大”直接拒绝用户：
+            // 后端会在无法送检百炼时自动把该请求作为 pending_manual 交给人工审核。
+            const tooLargeForAI = finalLen > MAX_RAW_BASE64_HARD_LEN;
+            if (tooLargeForAI) {
+              showToast('图片较大，可能无法送检百炼鉴伪，将提交后台人工审核。', 'success');
             }
 
-            if (finalLen > MAX_RAW_BASE64_TARGET_LEN) {
-              // 超过“目标”但没超过后端硬限制：不再阻止，减少“过度压缩导致误判”
+            if (!tooLargeForAI && finalLen > MAX_RAW_BASE64_TARGET_LEN) {
+              // 超过“目标”但仍可能送检：不再阻止，减少“过度压缩导致误判”
               showToast('已尽量保持清晰度（图片较大），将提交给智能检验。', 'success');
             }
 
