@@ -1550,8 +1550,10 @@ app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND delete_after <= NOW()`, () => {});
   const { school, major, keyword } = req.query;
   // 分页参数：默认 page=1, pageSize=10
-  const page = parseInt(req.query.page || '1', 10);
-  const pageSize = Math.min(parseInt(req.query.pageSize || '10', 10), 50);
+  const pageRaw = parseInt(req.query.page || '1', 10);
+  const page = Number.isFinite(pageRaw) ? Math.max(1, pageRaw) : 1;
+  const pageSizeRaw = parseInt(req.query.pageSize || '10', 10);
+  const pageSize = Number.isFinite(pageSizeRaw) ? Math.min(Math.max(1, pageSizeRaw), 50) : 10;
   const offset = (page - 1) * pageSize;
   
   // 只查列表需要的字段，排除 images（base64 大字段），避免全量返回拖慢接口
@@ -1592,7 +1594,9 @@ app.get('/api/student-shares', async (req, res) => {
     const total = countRow ? countRow.total : 0;
     
     sql += ` ORDER BY s.upload_time DESC LIMIT ? OFFSET ?`;
-    params.push(pageSize, offset);
+    // mysql2 在 MySQL 8.0.22+ 下 LIMIT/OFFSET 占位符可能需要字符串，
+    // 否则会触发 mysqld_stmt_execute 参数错误
+    params.push(String(pageSize), String(offset));
 
     db.all(sql, params, async (err, rows) => {
       if (err) {
