@@ -575,7 +575,7 @@
           <p style="margin: 0; font-size: 13px; color: var(--text-soft);">学生证认证存疑时在此通过或拒绝</p>
         </div>
         <div class="toolbar">
-          <button class="btn btn-secondary" onclick="loadStudentIdPending()">刷新</button>
+          <button class="btn btn-secondary" onclick="return window.loadStudentIdPending && window.loadStudentIdPending();">刷新</button>
         </div>
         <div class="table-wrapper">
           <table>
@@ -602,7 +602,7 @@
           <p style="margin: 0; font-size: 13px; color: var(--text-soft);">人工处理 AI 无法判定的帖子及举报次数过多的帖子，通过后公开展示或删除</p>
         </div>
         <div class="toolbar">
-          <button class="btn btn-secondary" onclick="loadShareReviewPending()">刷新</button>
+          <button class="btn btn-secondary" onclick="return window.loadShareReviewPending && window.loadShareReviewPending();">刷新</button>
         </div>
         <div class="table-wrapper">
           <table>
@@ -1833,6 +1833,10 @@
     document.getElementById('passwordInput').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') login();
     });
+
+    // 确保 inline onclick 能正确找到函数（部分静态部署/作用域下需要显式挂到 window）
+    window.loadStudentIdPending = window.loadStudentIdPending || loadStudentIdPending;
+    window.loadShareReviewPending = window.loadShareReviewPending || loadShareReviewPending;
   </script>
 </body>
 </html>
