@@ -582,6 +582,7 @@
             </div>
             <p id="student-id-status-msg" style="font-size: 13px; color: var(--text-soft); margin-top: 12px; display: none;"></p>
             <button type="button" class="primary-btn secondary" id="student-id-query-btn" style="margin-top: 8px; display: none;" onclick="queryStudentIdStatusOnce()">查询认证结果</button>
+            <button type="button" class="primary-btn secondary" id="student-id-retry-btn" style="margin-top: 8px; display: none;" onclick="retryStudentIdAuth()">重新认证</button>
           </div>
         </div>
       </div>
@@ -724,13 +725,16 @@
         if (data.status === 'rejected') {
           msgEl.textContent = data.msg || '未通过鉴伪，请使用真实学生证。';
           btn.disabled = false;
+          document.getElementById('student-id-query-btn').style.display = 'none';
+          document.getElementById('student-id-retry-btn').style.display = 'inline-block';
           return;
         }
-        msgEl.textContent = '已提交，等待人工审核。请稍后点击下方按钮查询，或保持本页等待自动刷新。';
+        msgEl.textContent = '待审核：已提交后台人工审核。你可以稍后查询结果，也可以点击“重新认证”重新上传。';
         pollStudentIdStatus(data.submissionId, msgEl, btn);
         window._lastStudentIdSubmissionId = data.submissionId;
         if (data.submissionId) localStorage.setItem('lastStudentIdSubmissionId', String(data.submissionId));
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
+        document.getElementById('student-id-retry-btn').style.display = 'inline-block';
       } catch (e) {
         msgEl.textContent = '网络错误';
         btn.disabled = false;
@@ -744,6 +748,7 @@
           const data = await res.json().catch(() => ({}));
           if (data.code === 200 && data.status === 'approved' && data.authToken) {
             clearInterval(t);
+            window._studentIdPollTimer = null;
             authToken = data.authToken;
             verifiedSchool = data.school || '';
             authType = 'student_id';
@@ -761,17 +766,57 @@
             updateWriteShareButtonVisibility();
             msgEl.style.display = 'none';
             document.getElementById('student-id-query-btn').style.display = 'none';
+            document.getElementById('student-id-retry-btn').style.display = 'none';
             showToast('认证已通过', 'success');
             closeAuthModal();
           }
           if (data.status === 'rejected') {
             clearInterval(t);
+            window._studentIdPollTimer = null;
             msgEl.textContent = '审核未通过。';
             btn.disabled = false;
+            document.getElementById('student-id-query-btn').style.display = 'none';
+            document.getElementById('student-id-retry-btn').style.display = 'inline-block';
           }
         } catch (e) {}
       }, 4000);
-      setTimeout(() => { clearInterval(t); btn.disabled = false; document.getElementById('student-id-query-btn').style.display = 'inline-block'; }, 5 * 60 * 1000);
+      window._studentIdPollTimer = t;
+      const timeoutId = setTimeout(() => {
+        // 如果用户已点击“重新认证”，submissionId 会被清空或不再匹配，避免把 UI 切回“查询”状态
+        if ((window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) !== String(submissionId)) {
+          return;
+        }
+        clearInterval(t);
+        window._studentIdPollTimer = null;
+        btn.disabled = false;
+        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+      }, 5 * 60 * 1000);
+      window._studentIdPollTimeout = timeoutId;
+    }
+
+    function retryStudentIdAuth() {
+      // 中断轮询，避免旧 submissionId 通过后覆盖新的认证
+      if (window._studentIdPollTimer) {
+        clearInterval(window._studentIdPollTimer);
+        window._studentIdPollTimer = null;
+      }
+      if (window._studentIdPollTimeout) {
+        clearTimeout(window._studentIdPollTimeout);
+        window._studentIdPollTimeout = null;
+      }
+      window._lastStudentIdSubmissionId = null;
+      localStorage.removeItem('lastStudentIdSubmissionId');
+
+      const msgEl = document.getElementById('student-id-status-msg');
+      msgEl.style.display = 'none';
+
+      document.getElementById('student-id-query-btn').style.display = 'none';
+      document.getElementById('student-id-retry-btn').style.display = 'none';
+
+      // 重新允许提交；若用户还没选择图片，则保持禁用
+      const btn = document.getElementById('submit-student-id-btn');
+      btn.disabled = !studentIdImageBase64;
+      showToast('已切换到重新认证模式，请上传并提交新的学生证图片。', 'success');
     }
 
     async function queryStudentIdStatusOnce() {
@@ -805,10 +850,13 @@
           updateWriteShareButtonVisibility();
           msgEl.style.display = 'none';
           queryBtn.style.display = 'none';
+          document.getElementById('student-id-retry-btn').style.display = 'none';
           showToast('认证已通过', 'success');
           closeAuthModal();
         } else if (data.code === 200 && data.status === 'rejected') {
           msgEl.textContent = '审核未通过。';
+          queryBtn.style.display = 'none';
+          document.getElementById('student-id-retry-btn').style.display = 'inline-block';
         } else {
           msgEl.textContent = data.status === 'pending_manual' ? '仍在审核中，请稍后再点「查询认证结果」。' : (data.msg || '查询失败');
         }
@@ -852,6 +900,7 @@
       });
       if (window._lastStudentIdSubmissionId || localStorage.getItem('lastStudentIdSubmissionId')) {
         document.getElementById('student-id-query-btn').style.display = 'inline-block';
+        document.getElementById('student-id-retry-btn').style.display = 'inline-block';
       }
     }
 
