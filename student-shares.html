@@ -1433,8 +1433,11 @@
 
     const SHOW_COUNT = 10;
     let visibleShares = [];
-    let foldedShares = [];
     let showFolded = false;
+    let currentPage = 1;
+    let totalPages = 1;
+    let hasMore = false;
+    let isLoadingMore = false;
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -1445,55 +1448,50 @@
       return a;
     }
 
-    // 加载分享列表（带 token 或 guestId 时返回点赞状态）；随机选 10 条显示，其余折叠
-    async function loadShares() {
+    // 加载分享列表（带分页）；首次加载随机选 SHOW_COUNT 条，后续点击"加载更多"追加
+    async function loadShares(append = false) {
       const listEl = document.getElementById('share-list');
       
-      // 显示加载中状态，包含API地址信息
-      const apiInfo = API_BASE ? `（API: ${API_BASE}）` : '（未配置API，将使用相对路径）';
-      listEl.innerHTML = `<div class="loading">正在加载分享... ${apiInfo}</div>`;
+      if (!append) {
+        currentPage = 1;
+        visibleShares = [];
+        showFolded = false;
+        const apiInfo = API_BASE ? `（API: ${API_BASE}）` : '（未配置API，将使用相对路径）';
+        listEl.innerHTML = `<div class="loading">正在加载分享... ${apiInfo}</div>`;
+      } else {
+        // 加载更多：显示加载提示
+        const loadMoreBtn = document.getElementById('btn-load-more');
+        if (loadMoreBtn) {
+          loadMoreBtn.disabled = true;
+          loadMoreBtn.textContent = '加载中...';
+        }
+        isLoadingMore = true;
+        return; // 实际加载在 fetchShares 中进行
+      }
+      
+      await fetchShares(1, append);
+    }
+
+    async function fetchShares(page, append) {
+      const listEl = document.getElementById('share-list');
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const guestId = getOrCreateGuestId();
+      
+      let url = API_BASE + '/api/student-shares?page=' + page + '&pageSize=' + SHOW_COUNT;
+      if (token) url += '&authToken=' + encodeURIComponent(token);
+      else url += '&guestId=' + encodeURIComponent(guestId);
       
       try {
-        const token = (localStorage.getItem('authToken') || authToken || '').trim();
-        const guestId = getOrCreateGuestId();
-        
-        // 构建请求URL
-        let url = API_BASE + '/api/student-shares';
-        if (token) url += '?authToken=' + encodeURIComponent(token);
-        else url += '?guestId=' + encodeURIComponent(guestId);
-        
-        console.log('正在请求分享数据，URL:', url);
-        console.log('API_BASE:', API_BASE || '(空，使用相对路径)');
-        console.log('页面来源:', window.location.href);
-        
         const res = await fetch(url);
         
-        // 检查响应状态
         if (!res.ok) {
-          const errorText = await res.text().catch(() => '无法读取错误信息');
-          console.error('HTTP错误:', res.status, res.statusText);
-          let hint = '';
-          if (res.status === 404) {
-            hint = '<br/><strong>提示：</strong>API接口不存在，可能原因：<br/>' +
-                   '1. 后端服务未启动（需要运行 <code>node app.js</code>）<br/>' +
-                   '2. 后端端口配置不正确<br/>' +
-                   (API_BASE ? `当前API地址: ${API_BASE}<br/>` : '') +
-                   '请在终端运行后端服务后刷新页面';
-          } else if (res.status >= 500) {
-            hint = '<br/><strong>提示：</strong>后端服务器内部错误，请检查后端控制台日志';
-          }
-          listEl.innerHTML = '<div class="empty-state">加载失败：服务器返回 ' + res.status + ' ' + res.statusText + hint + '</div>';
+          listEl.innerHTML = '<div class="empty-state">加载失败：服务器返回 ' + res.status + ' ' + res.statusText + '</div>';
           return;
         }
         
-        // 检查响应类型
         const contentType = res.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
-          const text = await res.text();
-          console.error('响应不是JSON格式:', contentType, '前200字符:', text.substring(0, 200));
-          listEl.innerHTML = '<div class="empty-state">服务器响应格式错误（非JSON）<br/>' + 
-            '响应内容: ' + escapeHtml(text.substring(0, 100)) + '...<br/>' +
-            (API_BASE ? '<br/>API地址: ' + API_BASE : '<br/>提示: 请检查后端API是否正确配置') + '</div>';
+          listEl.innerHTML = '<div class="empty-state">服务器响应格式错误</div>';
           return;
         }
         
@@ -1501,16 +1499,22 @@
         console.log('收到响应数据:', data);
 
         if (data.code === 200) {
-          allShares = data.data || [];
-          if (allShares.length === 0) {
+          const newShares = data.data || [];
+          totalPages = data.pagination ? data.pagination.totalPages : 1;
+          hasMore = data.pagination ? data.pagination.hasMore : false;
+          
+          if (append) {
+            visibleShares = visibleShares.concat(newShares);
+          } else {
+            visibleShares = newShares;
+          }
+          
+          if (visibleShares.length === 0 && !append) {
             listEl.innerHTML = '<div class="empty-state">暂无分享数据<br/><small>（数据为空，不是加载失败）</small></div>';
             return;
           }
-          const shuffled = shuffleArray(allShares);
-          visibleShares = shuffled.slice(0, SHOW_COUNT);
-          foldedShares = shuffled.slice(SHOW_COUNT);
-          showFolded = false;
-          // 并行请求可见帖子的 images（不阻塞列表渲染）
+          
+          // 并行请求可见帖子的 images
           const visibleIds = visibleShares.map((s) => s.id).join(',');
           if (visibleIds) {
             fetch(API_BASE + '/api/student-shares/images?ids=' + visibleIds)
@@ -1538,37 +1542,26 @@
         }
       } catch (err) {
         console.error('加载分享失败:', err);
-        const errorMsg = err.message || '未知错误';
-        let displayMsg = '加载失败：' + errorMsg;
-        let hint = '';
-        
-        if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('Network request failed')) {
-          hint = '<br/><br/><strong>可能原因：</strong><br/>' +
-                 '1. 后端服务未启动（请在终端运行 <code>node app.js</code>）<br/>' +
-                 '2. 跨域问题（CORS）<br/>' +
-                 '3. 网络连接问题<br/><br/>' +
-                 '<strong>解决方案：</strong><br/>' +
-                 '- 确保后端服务运行在端口 ' + (API_BASE ? '' : '3000') + '<br/>' +
-                 '- 通过后端服务访问页面（如 <code>http://localhost:3000/student-shares.html</code>）<br/>' +
-                 '- 或在URL中添加: <code>?api_base=http://localhost:3000</code>';
+        if (!append) {
+          listEl.innerHTML = '<div class="empty-state">加载失败：' + (err.message || '未知错误') + '</div>';
         }
-        
-        listEl.innerHTML = '<div class="empty-state">' + displayMsg + hint + '</div>';
       }
+      isLoadingMore = false;
     }
 
-    // 刷新：重新从服务器拉取列表
-    function refreshShares() {
-      loadShares();
+    // 加载更多分享
+    async function loadMoreShares() {
+      if (isLoadingMore || !hasMore) return;
+      currentPage++;
+      await fetchShares(currentPage, true);
     }
 
-    // 渲染分享列表：先显示 visibleShares，再显示折叠区（展开后显示 foldedShares）
+    // 渲染分享列表：显示 visibleShares，底部显示"加载更多"按钮
     function renderShares() {
       const list = document.getElementById('share-list');
       const shares = visibleShares;
-      const folded = foldedShares;
       
-      if (shares.length === 0 && folded.length === 0) {
+      if (shares.length === 0) {
         list.innerHTML = '<div class="empty-state">暂无符合条件的分享</div>';
         return;
       }
@@ -1642,26 +1635,25 @@
         `;
       }
       let html = shares.map(share => makeCard(share)).join('');
-      if (folded.length > 0) {
-        html += '<div class="folded-posts-wrap" style="margin-top: 16px;">';
-        html += '<button type="button" class="primary-btn secondary" id="btn-toggle-folded" onclick="toggleFolded()">展开更多帖子（共 ' + folded.length + ' 条）</button>';
-        html += '<div id="folded-posts-list" class="share-list folded-list" style="display: ' + (showFolded ? 'block' : 'none') + '; margin-top: 12px;">';
-        html += folded.map(share => makeCard(share)).join('');
-        html += '</div></div>';
+      
+      // 显示"加载更多"按钮
+      if (hasMore) {
+        html += `<div style="text-align: center; margin-top: 20px;">
+          <button type="button" class="primary-btn" id="btn-load-more" onclick="loadMoreShares()">
+            显示更多分享（还有 ${totalPages - currentPage} 页）
+          </button>
+        </div>`;
+      } else if (visibleShares.length > 0) {
+        html += `<div style="text-align: center; margin-top: 20px; color: var(--text-soft); font-size: 13px;">
+          已显示全部 ${visibleShares.length} 条分享
+        </div>`;
       }
+      
       list.innerHTML = html;
       list.querySelectorAll('.share-image').forEach(div => {
         const src = div.getAttribute('data-src');
         if (src) div.querySelector('img').src = src;
       });
-    }
-
-    function toggleFolded() {
-      showFolded = !showFolded;
-      const el = document.getElementById('folded-posts-list');
-      const btn = document.getElementById('btn-toggle-folded');
-      if (el) el.style.display = showFolded ? 'block' : 'none';
-      if (btn) btn.textContent = showFolded ? '收起更多帖子' : '展开更多帖子（共 ' + foldedShares.length + ' 条）';
     }
 
     function toggleShareContent(btn) {
@@ -1911,35 +1903,86 @@
       }
     }
 
-    // 搜索分享：筛选后同样随机取 10 条显示，其余折叠
+    // 搜索分享（暂时使用前端筛选，分页后续扩展）
     function searchShares() {
       const keyword = document.getElementById('search-keyword').value.trim().toLowerCase();
       const school = document.getElementById('search-school').value;
       const major = document.getElementById('search-major').value;
       
-      let filtered = allShares;
-      
-      if (keyword) {
-        filtered = filtered.filter(s => 
-          (s.title && s.title.toLowerCase().includes(keyword)) ||
-          (s.content && s.content.toLowerCase().includes(keyword)) ||
-          (s.tags && s.tags.toLowerCase().includes(keyword))
-        );
+      // 如果有关键词或筛选条件，使用前端筛选
+      if (keyword || school || major) {
+        // 重新加载第一页，带筛选参数
+        loadSharesWithFilters(keyword, school, major, 1);
+      } else {
+        // 无筛选条件，加载全部
+        loadShares();
       }
+    }
+
+    async function loadSharesWithFilters(keyword, school, major, page) {
+      const listEl = document.getElementById('share-list');
+      const token = (localStorage.getItem('authToken') || authToken || '').trim();
+      const guestId = getOrCreateGuestId();
       
-      if (school) {
-        filtered = filtered.filter(s => s.school === school);
+      let url = API_BASE + '/api/student-shares?page=' + page + '&pageSize=' + SHOW_COUNT;
+      if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
+      if (school) url += '&school=' + encodeURIComponent(school);
+      if (major) url += '&major=' + encodeURIComponent(major);
+      if (token) url += '&authToken=' + encodeURIComponent(token);
+      else url += '&guestId=' + encodeURIComponent(guestId);
+      
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          listEl.innerHTML = '<div class="empty-state">加载失败：服务器返回 ' + res.status + '</div>';
+          return;
+        }
+        
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          listEl.innerHTML = '<div class="empty-state">服务器响应格式错误</div>';
+          return;
+        }
+        
+        const data = await res.json();
+        
+        if (data.code === 200) {
+          visibleShares = data.data || [];
+          totalPages = data.pagination ? data.pagination.totalPages : 1;
+          hasMore = data.pagination ? data.pagination.hasMore : false;
+          currentPage = page;
+          
+          if (visibleShares.length === 0) {
+            listEl.innerHTML = '<div class="empty-state">未找到符合条件的分享</div>';
+            return;
+          }
+          
+          // 加载图片
+          const visibleIds = visibleShares.map((s) => s.id).join(',');
+          if (visibleIds) {
+            fetch(API_BASE + '/api/student-shares/images?ids=' + visibleIds)
+              .then(function(r) { return r.json(); })
+              .then(function(imgData) {
+                if (imgData.code === 200 && Array.isArray(imgData.data)) {
+                  const imgMap = {};
+                  (imgData.data || []).forEach(function(item) { imgMap[item.id] = item.images || ''; });
+                  visibleShares.forEach(function(s) { s.images = imgMap[s.id] || ''; });
+                  renderShares();
+                } else {
+                  renderShares();
+                }
+              })
+              .catch(function() { renderShares(); });
+          } else {
+            renderShares();
+          }
+        } else {
+          listEl.innerHTML = '<div class="empty-state">' + (data.msg || '获取数据失败') + '</div>';
+        }
+      } catch (err) {
+        console.error('搜索失败:', err);
+        listEl.innerHTML = '<div class="empty-state">加载失败：' + (err.message || '未知错误') + '</div>';
       }
-      
-      if (major) {
-        filtered = filtered.filter(s => s.major === major);
-      }
-      
-      const shuffled = shuffleArray(filtered);
-      visibleShares = shuffled.slice(0, SHOW_COUNT);
-      foldedShares = shuffled.slice(SHOW_COUNT);
-      showFolded = false;
-      renderShares();
     }
 
     // 显示图片模态框（传入被点击的元素，从 data-src 取图）

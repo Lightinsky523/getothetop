@@ -1519,7 +1519,8 @@ app.get('/api/debug/shares-all', async (req, res) => {
     
     // 查询所有分享（不应用过滤条件）
     const [allShares] = await mysqlPool.query(
-      `SELECT id, school, major, title, status, upload_time, usefulness_ratio, is_emotional, delete_after 
+      `SELECT id, share_number, school, major, title, content, tags, images, author_nickname, 
+              upload_time, status, usefulness_ratio, like_count 
        FROM student_shares ORDER BY id DESC LIMIT 100`
     );
     
@@ -1548,6 +1549,11 @@ app.get('/api/debug/shares-all', async (req, res) => {
 app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND delete_after <= NOW()`, () => {});
   const { school, major, keyword } = req.query;
+  // 分页参数：默认 page=1, pageSize=10
+  const page = parseInt(req.query.page || '1', 10);
+  const pageSize = Math.min(parseInt(req.query.pageSize || '10', 10), 50);
+  const offset = (page - 1) * pageSize;
+  
   // 只查列表需要的字段，排除 images（base64 大字段），避免全量返回拖慢接口
   let sql = `SELECT s.id, s.share_number, s.school, s.major, s.grade, s.title, s.content, s.tags,
     s.author_nickname, s.upload_time, s.status, s.usefulness_ratio,
@@ -1575,42 +1581,61 @@ app.get('/api/student-shares', async (req, res) => {
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
 
-  sql += ` ORDER BY s.upload_time DESC LIMIT 50`;
+  // 获取总数
+  const countSql = sql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
+  const countParams = [...params];
+  
+  db.get(countSql, countParams, (countErr, countRow) => {
+    if (countErr) {
+      console.error("获取分享总数失败:", countErr);
+    }
+    const total = countRow ? countRow.total : 0;
+    
+    sql += ` ORDER BY s.upload_time DESC LIMIT ? OFFSET ?`;
+    params.push(pageSize, offset);
 
-  db.all(sql, params, async (err, rows) => {
-    if (err) {
-      console.error("获取学生分享失败:", err);
-      res.send({ code: 500, msg: "获取失败: " + err.message });
-      return;
-    }
-    
-    // 调试日志：记录查询结果
-    console.log('[DEBUG] /api/student-shares 查询结果:');
-    console.log('  - SQL条件: status=approved, grace=' + SHARE_GRACE_MINUTES + 'min, usefulness>=' + SHARE_USEFULNESS_THRESHOLD);
-    console.log('  - 查询参数:', params);
-    console.log('  - 返回行数:', rows ? rows.length : 0);
-    if (rows && rows.length > 0) {
-      console.log('  - 前3条数据:', JSON.stringify(rows.slice(0, 3), null, 2));
-    }
-    
-    const token = getTokenFromRequest(req);
-    const verified = await parseAuthToken(token || null);
-    const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
-    let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
-    if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
-    if (userEmail && rows && rows.length > 0) {
-      const ids = rows.map((r) => r.id);
-      const placeholders = ids.map(() => '?').join(',');
-      const liked = await new Promise((resolve) => {
-        db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
+    db.all(sql, params, async (err, rows) => {
+      if (err) {
+        console.error("获取学生分享失败:", err);
+        res.send({ code: 500, msg: "获取失败: " + err.message });
+        return;
+      }
+      
+      // 调试日志
+      console.log('[DEBUG] /api/student-shares 查询结果:');
+      console.log('  - 页码:', page, '每页:', pageSize, '偏移:', offset);
+      console.log('  - SQL条件: status=approved, grace=' + SHARE_GRACE_MINUTES + 'min, usefulness>=' + SHARE_USEFULNESS_THRESHOLD);
+      console.log('  - 返回行数:', rows ? rows.length : 0, '/ 总数:', total);
+      
+      const token = getTokenFromRequest(req);
+      const verified = await parseAuthToken(token || null);
+      const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
+      let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+      if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
+      if (userEmail && rows && rows.length > 0) {
+        const ids = rows.map((r) => r.id);
+        const placeholders = ids.map(() => '?').join(',');
+        const liked = await new Promise((resolve) => {
+          db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
+        });
+        rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
+      } else {
+        rows.forEach((r) => { r.user_has_liked = false; });
+      }
+      
+      console.log('[DEBUG] 最终返回给前端:', rows ? rows.length : 0, '条数据');
+      res.send({ 
+        code: 200, 
+        data: rows,
+        pagination: {
+          page: page,
+          pageSize: pageSize,
+          total: total,
+          totalPages: Math.ceil(total / pageSize),
+          hasMore: offset + rows.length < total
+        }
       });
-      rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
-    } else {
-      rows.forEach((r) => { r.user_has_liked = false; });
-    }
-    // 前端只看前 SHOW_COUNT=10 条，images 在用户点开单帖时再单独请求
-    console.log('[DEBUG] 最终返回给前端:', rows ? rows.length : 0, '条数据');
-    res.send({ code: 200, data: rows });
+    });
   });
 });
 
