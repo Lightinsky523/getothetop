@@ -457,6 +457,8 @@
           <button type="button" class="primary-btn secondary" id="quick-auth-btn" style="margin-left: 6px;" onclick="openAuthModal()">立即认证</button>
           <span id="guest-badge" style="font-size: 12px; color: var(--text-soft); margin-left: 8px;">游客</span>
           <span id="auth-badge" style="display: none; font-size: 12px; color: var(--text-soft); margin-left: 8px;">已认证：<strong id="auth-school"></strong></span>
+          <span id="student-id-pending-badge" style="display: none; font-size: 12px; color: var(--warning); margin-left: 8px;">待认证：学生证审核中</span>
+          <button type="button" class="primary-btn secondary" id="student-id-retry-btn-page" style="display: none; margin-left: 6px;" onclick="retryStudentIdAuth()">重新认证</button>
           <button id="exit-auth-btn" type="button" class="primary-btn secondary" style="display: none; margin-left: 6px;" onclick="exitVerification()">退出认证</button>
         </div>
 
@@ -659,6 +661,45 @@
       });
     }
 
+    function estimateRawBase64Len(dataUrl) {
+      if (!dataUrl || typeof dataUrl !== 'string') return 0;
+      const parts = dataUrl.split(',');
+      // dataUrl: data:image/jpeg;base64,XXXX
+      return (parts[1] || '').length;
+    }
+
+    async function compressImageDataUrlToJpeg(dataUrl, options) {
+      const { maxSide = 1000, quality = 0.62 } = options || {};
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const w = img.naturalWidth || img.width;
+            const h = img.naturalHeight || img.height;
+            if (!w || !h) return reject(new Error('图片尺寸异常'));
+
+            const scale = Math.min(1, maxSide / Math.max(w, h));
+            const outW = Math.max(1, Math.round(w * scale));
+            const outH = Math.max(1, Math.round(h * scale));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = outW;
+            canvas.height = outH;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            if (!ctx) return reject(new Error('Canvas 不可用'));
+
+            ctx.drawImage(img, 0, 0, outW, outH);
+            const out = canvas.toDataURL('image/jpeg', quality);
+            resolve(out);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = () => reject(new Error('图片解码失败'));
+        img.src = dataUrl;
+      });
+    }
+
     function onStudentIdImageChange(e) {
       const file = e.target.files && e.target.files[0];
       studentIdImageBase64 = '';
@@ -667,9 +708,49 @@
       if (!file || !file.type.startsWith('image/')) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        studentIdImageBase64 = ev.target.result;
-        document.getElementById('student-id-preview').innerHTML = '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
-        document.getElementById('submit-student-id-btn').disabled = false;
+        (async () => {
+          try {
+            const rawDataUrl = ev.target.result;
+            // 由于不同网关/代理对 body 大小可能限制很严，这里更保守：1MB
+            const MAX_RAW_BASE64_LEN = 1 * 1024 * 1024;
+
+            // 先压缩，尽量降低不同设备差异
+            const compressed = await compressImageDataUrlToJpeg(rawDataUrl, {
+              maxSide: 1000,
+              quality: 0.62
+            });
+
+            const rawLen = estimateRawBase64Len(compressed);
+            if (!rawLen || rawLen > MAX_RAW_BASE64_LEN) {
+              studentIdImageBase64 = '';
+              document.getElementById('student-id-preview').innerHTML =
+                '<div class="image-preview"><img src="' + compressed + '" alt="学生证" /></div>';
+              document.getElementById('submit-student-id-btn').disabled = true;
+              showToast('图片太大：请换更小/更低分辨率的学生证照片（建议 base64 raw < 1MB）', 'error');
+              return;
+            }
+
+            studentIdImageBase64 = compressed;
+            document.getElementById('student-id-preview').innerHTML =
+              '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
+            document.getElementById('submit-student-id-btn').disabled = false;
+          } catch (err) {
+            // 压缩失败：降级使用原图，但仍要校验长度
+            const rawDataUrl = ev.target.result;
+            const MAX_RAW_BASE64_LEN = 1 * 1024 * 1024;
+            const rawLen = estimateRawBase64Len(rawDataUrl);
+            if (rawLen && rawLen <= MAX_RAW_BASE64_LEN) {
+              studentIdImageBase64 = rawDataUrl;
+              document.getElementById('student-id-preview').innerHTML =
+                '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
+              document.getElementById('submit-student-id-btn').disabled = false;
+            } else {
+              studentIdImageBase64 = '';
+              document.getElementById('submit-student-id-btn').disabled = true;
+              showToast('图片处理失败或过大，请换一张更小的学生证照片（建议 base64 raw < 1MB）', 'error');
+            }
+          }
+        })();
       };
       reader.readAsDataURL(file);
     }
@@ -729,12 +810,16 @@
           document.getElementById('student-id-retry-btn').style.display = 'inline-block';
           return;
         }
-        msgEl.textContent = '待审核：已提交后台人工审核。你可以稍后查询结果，也可以点击“重新认证”重新上传。';
+        msgEl.textContent = '待审核：已提交后台人工审核。';
+        // 存疑时：离开弹窗，在页面展示“待认证”
+        closeAuthModal();
+        document.getElementById('student-id-query-btn').style.display = 'none';
+        document.getElementById('student-id-retry-btn').style.display = 'none';
+        document.getElementById('student-id-pending-badge').style.display = 'inline';
+        document.getElementById('student-id-retry-btn-page').style.display = 'inline-block';
         pollStudentIdStatus(data.submissionId, msgEl, btn);
         window._lastStudentIdSubmissionId = data.submissionId;
         if (data.submissionId) localStorage.setItem('lastStudentIdSubmissionId', String(data.submissionId));
-        document.getElementById('student-id-query-btn').style.display = 'inline-block';
-        document.getElementById('student-id-retry-btn').style.display = 'inline-block';
       } catch (e) {
         msgEl.textContent = '网络错误';
         btn.disabled = false;
@@ -764,19 +849,23 @@
             document.getElementById('exit-auth-btn').style.display = 'inline-block';
             var quickAuth = document.getElementById('quick-auth-btn'); if (quickAuth) quickAuth.style.display = 'none';
             updateWriteShareButtonVisibility();
-            msgEl.style.display = 'none';
+            msgEl && (msgEl.style.display = 'none');
             document.getElementById('student-id-query-btn').style.display = 'none';
             document.getElementById('student-id-retry-btn').style.display = 'none';
+            document.getElementById('student-id-pending-badge').style.display = 'none';
+            document.getElementById('student-id-retry-btn-page').style.display = 'none';
             showToast('认证已通过', 'success');
             closeAuthModal();
           }
           if (data.status === 'rejected') {
             clearInterval(t);
             window._studentIdPollTimer = null;
-            msgEl.textContent = '审核未通过。';
+            msgEl && (msgEl.textContent = '审核未通过。');
             btn.disabled = false;
             document.getElementById('student-id-query-btn').style.display = 'none';
-            document.getElementById('student-id-retry-btn').style.display = 'inline-block';
+            document.getElementById('student-id-retry-btn').style.display = 'none';
+            document.getElementById('student-id-pending-badge').style.display = 'none';
+            document.getElementById('student-id-retry-btn-page').style.display = 'inline-block';
           }
         } catch (e) {}
       }, 4000);
@@ -789,7 +878,11 @@
         clearInterval(t);
         window._studentIdPollTimer = null;
         btn.disabled = false;
-        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+        // 超时仍未通过：继续保持页面“待认证”，并让用户可“重新认证”
+        document.getElementById('student-id-query-btn').style.display = 'none';
+        document.getElementById('student-id-retry-btn').style.display = 'none';
+        document.getElementById('student-id-pending-badge').style.display = 'inline';
+        document.getElementById('student-id-retry-btn-page').style.display = 'inline-block';
       }, 5 * 60 * 1000);
       window._studentIdPollTimeout = timeoutId;
     }
@@ -807,15 +900,28 @@
       window._lastStudentIdSubmissionId = null;
       localStorage.removeItem('lastStudentIdSubmissionId');
 
-      const msgEl = document.getElementById('student-id-status-msg');
-      msgEl.style.display = 'none';
+      // 隐藏页面待认证 UI
+      document.getElementById('student-id-pending-badge').style.display = 'none';
+      document.getElementById('student-id-retry-btn-page').style.display = 'none';
 
+      // 清理弹窗内状态，重新允许提交
+      const msgEl = document.getElementById('student-id-status-msg');
+      msgEl && (msgEl.style.display = 'none');
       document.getElementById('student-id-query-btn').style.display = 'none';
       document.getElementById('student-id-retry-btn').style.display = 'none';
 
-      // 重新允许提交；若用户还没选择图片，则保持禁用
+      studentIdImageBase64 = '';
+      const previewEl = document.getElementById('student-id-preview');
+      if (previewEl) previewEl.innerHTML = '';
+      const fileInput = document.getElementById('student-id-image');
+      if (fileInput) fileInput.value = '';
+
       const btn = document.getElementById('submit-student-id-btn');
       btn.disabled = !studentIdImageBase64;
+
+      // 返回认证弹窗，切到学生证模式
+      openAuthModal();
+      switchAuthMode('student');
       showToast('已切换到重新认证模式，请上传并提交新的学生证图片。', 'success');
     }
 
@@ -1814,7 +1920,16 @@
       closeAuthModal();
       showListView();
       if (!authToken && window._lastStudentIdSubmissionId) {
-        document.getElementById('student-id-query-btn').style.display = 'inline-block';
+        // 存疑：不在弹窗展示，直接在页面标识“待认证”，并后台轮询直至通过
+        document.getElementById('student-id-pending-badge').style.display = 'inline';
+        document.getElementById('student-id-retry-btn-page').style.display = 'inline-block';
+        document.getElementById('guest-badge').style.display = 'inline';
+        document.getElementById('auth-badge').style.display = 'none';
+        closeAuthModal();
+        const msgEl = document.getElementById('student-id-status-msg');
+        const btn = document.getElementById('submit-student-id-btn');
+        btn && (btn.disabled = true);
+        pollStudentIdStatus(String(window._lastStudentIdSubmissionId), msgEl, btn);
       }
       updateWriteShareButtonVisibility();
       restoreAuthIfNeeded();
