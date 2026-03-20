@@ -1550,7 +1550,7 @@ app.get('/api/student-shares', async (req, res) => {
   const { school, major, keyword } = req.query;
   // 只查列表需要的字段，排除 images（base64 大字段），避免全量返回拖慢接口
   let sql = `SELECT s.id, s.share_number, s.school, s.major, s.grade, s.title, s.content, s.tags,
-    s.author_nickname, s.upload_time, s.status, s.usefulness_ratio, s.like_count AS db_like_count,
+    s.author_nickname, s.upload_time, s.status, s.usefulness_ratio,
     (SELECT COUNT(*) FROM share_likes sl WHERE sl.share_id = s.id) AS like_count
     FROM student_shares s WHERE s.status = 'approved'
     AND (s.delete_after IS NULL OR s.delete_after > NOW())
