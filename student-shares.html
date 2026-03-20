@@ -738,25 +738,38 @@
     }
 
     async function convertToJpegUnderLimit(rawDataUrl, maxRawLen) {
-      // 尽量保清晰度：先用高质量尝试，仍超限才逐步降低
-      const attempts = [
-        { maxSide: 2200, quality: 0.92 },
-        { maxSide: 2000, quality: 0.88 },
-        { maxSide: 1800, quality: 0.86 },
-        { maxSide: 1600, quality: 0.82 },
-        { maxSide: 1400, quality: 0.78 },
-        { maxSide: 1200, quality: 0.74 },
-        { maxSide: 1000, quality: 0.68 },
-        { maxSide: 850, quality: 0.62 }
-      ];
+      // 尽量保清晰度：优先在合适分辨率下，用二分搜索找到“仍满足体积限制”的最大质量
+      const maxSides = [2200, 2000, 1800, 1600, 1400, 1200, 1000, 850];
+      const minQuality = 0.55;
+      const maxQuality = 0.94;
+      const tryBinarySteps = 8;
 
       let last = null;
-      for (const a of attempts) {
-        last = await compressImageDataUrlToJpeg(rawDataUrl, a);
-        const len = estimateRawBase64Len(last);
+      for (const maxSide of maxSides) {
+        // 先试最大质量：快速判断能否直接满足
+        last = await compressImageDataUrlToJpeg(rawDataUrl, { maxSide, quality: maxQuality });
+        let len = estimateRawBase64Len(last);
         if (len && len <= maxRawLen) return last;
+
+        // 超限则二分质量：保持分辨率尽量不降，提升“清晰度命中率”
+        let lo = minQuality;
+        let hi = maxQuality;
+        let best = null;
+        for (let i = 0; i < tryBinarySteps; i++) {
+          const mid = (lo + hi) / 2;
+          const candidate = await compressImageDataUrlToJpeg(rawDataUrl, { maxSide, quality: mid });
+          const clen = estimateRawBase64Len(candidate);
+          if (clen && clen <= maxRawLen) {
+            best = candidate;
+            lo = mid; // 尽量提高质量
+          } else {
+            hi = mid;
+          }
+        }
+        if (best) return best;
       }
-      return last; // 兜底：可能仍大于 maxRawLen，外层再决定是否允许提交
+
+      return last; // 兜底：可能仍大于 maxRawLen，外层决定是否允许提交
     }
 
     function onStudentIdImageChange(e) {
@@ -770,24 +783,40 @@
         (async () => {
           try {
             const rawDataUrl = ev.target.result;
-            // 结合你朋友之前的 request aborted（约 1.84MB）经验，这里取更稳的 1.6MB
-            const MAX_RAW_BASE64_LEN = 1.6 * 1024 * 1024;
+            // base64 raw 长度限制：
+            // - 前端用该值作为“尽量压到的目标”，避免过度压缩导致信息丢失
+            // - 后端硬拒绝阈值在 app.js 里约 4MB rawBase64，这里留余量
+            const MAX_RAW_BASE64_TARGET_LEN = 3.9 * 1024 * 1024;
+            const MAX_RAW_BASE64_HARD_LEN = 4.0 * 1024 * 1024;
 
             const rawLen = estimateRawBase64Len(rawDataUrl);
             const mime = getMimeTypeFromDataUrl(rawDataUrl);
 
             // 体积足够小且本身就是 JPEG：尽量原样保清晰度
             let finalDataUrl = rawDataUrl;
-            if (!rawLen || rawLen > MAX_RAW_BASE64_LEN || !isJpegMime(mime)) {
-              finalDataUrl = await convertToJpegUnderLimit(rawDataUrl, MAX_RAW_BASE64_LEN);
+            if (!rawLen || rawLen > MAX_RAW_BASE64_TARGET_LEN || !isJpegMime(mime)) {
+              finalDataUrl = await convertToJpegUnderLimit(rawDataUrl, MAX_RAW_BASE64_TARGET_LEN);
             }
 
             const finalLen = estimateRawBase64Len(finalDataUrl);
-            if (!finalLen || finalLen > MAX_RAW_BASE64_LEN) {
+            if (!finalLen) {
               studentIdImageBase64 = '';
               document.getElementById('submit-student-id-btn').disabled = true;
-              showToast('图片太大或处理后仍过大，请上传更小/更清晰的学生证照片（建议 base64 raw < 1.6MB）', 'error');
+              showToast('图片处理失败，请换一张更清晰的学生证照片再试。', 'error');
               return;
+            }
+
+            // 只有超过后端硬限制才阻止提交；否则仍把尽量清晰的图片发给百炼做鉴伪
+            if (finalLen > MAX_RAW_BASE64_HARD_LEN) {
+              studentIdImageBase64 = '';
+              document.getElementById('submit-student-id-btn').disabled = true;
+              showToast('图片仍过大（超过系统硬限制），请上传更小/更清晰的学生证照片。', 'error');
+              return;
+            }
+
+            if (finalLen > MAX_RAW_BASE64_TARGET_LEN) {
+              // 超过“目标”但没超过后端硬限制：不再阻止，减少“过度压缩导致误判”
+              showToast('已尽量保持清晰度（图片较大），将提交给智能检验。', 'success');
             }
 
             studentIdImageBase64 = finalDataUrl;
@@ -1477,7 +1506,11 @@
       const token = (localStorage.getItem('authToken') || authToken || '').trim();
       const guestId = getOrCreateGuestId();
       
-      let url = API_BASE + '/api/student-shares?page=' + page + '&pageSize=' + SHOW_COUNT;
+      // 首次刷新/打开：随机展示固定 10 条，避免分页计算与首屏变慢
+      // 加载更多：保留分页逻辑
+      let url = API_BASE + '/api/student-shares';
+      if (!append) url += '?random=1&pageSize=' + SHOW_COUNT;
+      else url += '?page=' + page + '&pageSize=' + SHOW_COUNT;
       if (token) url += '&authToken=' + encodeURIComponent(token);
       else url += '&guestId=' + encodeURIComponent(guestId);
       
