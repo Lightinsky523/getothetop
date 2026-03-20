@@ -1549,6 +1549,7 @@ app.get('/api/debug/shares-all', async (req, res) => {
 app.get('/api/student-shares', async (req, res) => {
   db.run(`UPDATE student_shares SET status = 'deleted' WHERE delete_after IS NOT NULL AND delete_after <= NOW()`, () => {});
   const { school, major, keyword } = req.query;
+  const random = req.query && (req.query.random === '1' || req.query.random === 'true');
   // 分页参数：默认 page=1, pageSize=10
   const pageRaw = parseInt(req.query.page || '1', 10);
   const page = Number.isFinite(pageRaw) ? Math.max(1, pageRaw) : 1;
@@ -1581,6 +1582,50 @@ app.get('/api/student-shares', async (req, res) => {
   if (keyword) {
     sql += ` AND (s.title LIKE ? OR s.content LIKE ? OR s.tags LIKE ?)`;
     params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+  }
+
+  // 刷新时只随机返回 10 条（不做总数统计、不做 OFFSET），以提升首屏速度
+  if (random) {
+    const randomLimit = String(Math.min(pageSize, 10));
+    const randomSql = `${sql} ORDER BY RAND() LIMIT ?`;
+    db.all(randomSql, [...params, randomLimit], async (err, rows) => {
+      if (err) {
+        console.error("获取学生分享失败(随机):", err);
+        res.send({ code: 500, msg: "获取失败: " + err.message });
+        return;
+      }
+
+      // 点赞状态补全
+      const token = getTokenFromRequest(req);
+      const verified = await parseAuthToken(token || null);
+      const guestId = (req.query && req.query.guestId != null) ? String(req.query.guestId).trim() : '';
+      let userEmail = verified ? verified.email : (guestId ? 'guest_' + guestId : null);
+      if (!userEmail && token) userEmail = 'token_' + require('crypto').createHash('sha256').update(String(token)).digest('hex').slice(0, 32);
+
+      if (userEmail && rows && rows.length > 0) {
+        const ids = rows.map((r) => r.id);
+        const placeholders = ids.map(() => '?').join(',');
+        const liked = await new Promise((resolve) => {
+          db.all(`SELECT share_id FROM share_likes WHERE share_id IN (${placeholders}) AND user_email = ?`, [...ids, userEmail], (e, r) => resolve(e ? [] : (r || []).map((x) => x.share_id)));
+        });
+        rows.forEach((r) => { r.user_has_liked = liked.indexOf(r.id) !== -1; });
+      } else {
+        rows.forEach((r) => { r.user_has_liked = false; });
+      }
+
+      res.send({
+        code: 200,
+        data: rows || [],
+        pagination: {
+          page: 1,
+          pageSize: Number(randomLimit),
+          total: rows ? rows.length : 0,
+          totalPages: 1,
+          hasMore: false
+        }
+      });
+    });
+    return;
   }
 
   // 获取总数
