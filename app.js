@@ -1951,8 +1951,9 @@ async function callBailianVisionStudentId(imageBase64) {
     if (/^是|真实|有效|学生证|确认为?真/.test(text) && !/否|不真实|假|非学生证/.test(text)) return 'pass';
     if (/是/.test(text) && !/否|不真实|假|非学生证/.test(text)) return 'pass';
     if (/yes|true|real/.test(text.toLowerCase()) && !/no|false|假|非学生证|不真实/.test(text)) return 'pass';
-    if (/^否|不真实|假|非学生证/.test(text)) return 'rejected';
-    if (/否|不真实|假|非学生证|no|false/.test(text)) return 'rejected';
+    // 识别为“否/不真实”也不直接拒绝用户：统一返回 review 给人工审核
+    if (/^否|不真实|假|非学生证/.test(text)) return 'review';
+    if (/否|不真实|假|非学生证|no|false/.test(text)) return 'review';
     console.warn('[学生证鉴伪] 模型输出无法判定，转人工:', JSON.stringify(text).slice(0, 100));
   } catch (e) {
     console.error('[学生证鉴伪] 请求异常:', e.message);
@@ -2020,21 +2021,27 @@ app.post('/api/auth/student-id', async (req, res) => {
     return;
   }
   const rawBase64 = (imageBase64 || '').replace(/^data:image\/\w+;base64,/, '');
-  if (!rawBase64 || rawBase64.length > 4 * 1024 * 1024) {
-    res.send({ code: 400, msg: "请上传学生证图片（不超过约 3MB）" });
+  if (!rawBase64) {
+    res.send({ code: 400, msg: "请上传学生证图片" });
     return;
   }
 
+  // 百炼视觉鉴伪使用 base64 上传，单张图片过大时可能无法送检；
+  // 此类情况不能直接拒绝用户，应保存并进入后台人工审核。
+  const MAX_RAW_BASE64_FOR_AI = 4 * 1024 * 1024;
+  const manualDueToSize = rawBase64.length > MAX_RAW_BASE64_FOR_AI;
+
   let status = 'pending_manual';
   // 1) 学生证图片发给 AI（百炼千问视觉）鉴伪
-  try {
-    const aiResult = await callBailianVisionStudentId(rawBase64);
-    console.log('[学生证] 百炼鉴伪结果:', aiResult);
-    if (aiResult === 'pass') status = 'approved';
-    else if (aiResult === 'rejected') status = 'rejected';
-    else status = 'pending_manual'; // review/未知/异常 -> 进入后台人工审核
-  } catch (e) {
-    console.error("[学生证] AI 鉴伪异常，转人工:", e.message);
+  if (!manualDueToSize) {
+    try {
+      const aiResult = await callBailianVisionStudentId(rawBase64);
+      console.log('[学生证] 百炼鉴伪结果:', aiResult);
+      if (aiResult === 'pass') status = 'approved';
+      else status = 'pending_manual'; // review/不确定 -> 人工审核
+    } catch (e) {
+      console.error("[学生证] AI 鉴伪异常，转人工:", e.message);
+    }
   }
   // 2) 阿里云内容安全 /green/image/scan 仅支持「图片 URL」传图，不支持 base64（imageBytes 会报 400）。
   //    当前学生证为 base64 上传，故此处不调用阿里云，仅依赖百炼鉴伪；若需使用阿里云，需先将图片上传至 OSS 再传 URL。
@@ -2069,10 +2076,11 @@ app.post('/api/auth/student-id', async (req, res) => {
             );
           }
         );
-      } else if (status === 'rejected') {
-        res.send({ code: 200, submissionId: id, status: 'rejected', msg: "图片未通过鉴伪，请使用真实学生证照片" });
       } else {
-        res.send({ code: 200, submissionId: id, status: 'pending_manual', msg: "已提交，等待人工审核" });
+        const msg = manualDueToSize
+          ? "图片过大，无法送检百炼鉴伪，将提交后台人工审核。"
+          : "已提交，等待人工审核";
+        res.send({ code: 200, submissionId: id, status: 'pending_manual', msg });
       }
     }
   );
