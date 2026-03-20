@@ -669,7 +669,7 @@
     }
 
     async function compressImageDataUrlToJpeg(dataUrl, options) {
-      const { maxSide = 1000, quality = 0.62 } = options || {};
+      const { maxSide = 1800, quality = 0.85 } = options || {};
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
@@ -700,6 +700,37 @@
       });
     }
 
+    function getMimeTypeFromDataUrl(dataUrl) {
+      const m = /^data:image\/([^;]+);base64,/.exec(dataUrl || '');
+      return m ? String(m[1]).toLowerCase() : '';
+    }
+
+    function isJpegMime(mime) {
+      return mime === 'jpeg' || mime === 'jpg' || mime === 'pjpeg';
+    }
+
+    async function convertToJpegUnderLimit(rawDataUrl, maxRawLen) {
+      // 尽量保清晰度：先用高质量尝试，仍超限才逐步降低
+      const attempts = [
+        { maxSide: 2200, quality: 0.92 },
+        { maxSide: 2000, quality: 0.88 },
+        { maxSide: 1800, quality: 0.86 },
+        { maxSide: 1600, quality: 0.82 },
+        { maxSide: 1400, quality: 0.78 },
+        { maxSide: 1200, quality: 0.74 },
+        { maxSide: 1000, quality: 0.68 },
+        { maxSide: 850, quality: 0.62 }
+      ];
+
+      let last = null;
+      for (const a of attempts) {
+        last = await compressImageDataUrlToJpeg(rawDataUrl, a);
+        const len = estimateRawBase64Len(last);
+        if (len && len <= maxRawLen) return last;
+      }
+      return last; // 兜底：可能仍大于 maxRawLen，外层再决定是否允许提交
+    }
+
     function onStudentIdImageChange(e) {
       const file = e.target.files && e.target.files[0];
       studentIdImageBase64 = '';
@@ -711,44 +742,34 @@
         (async () => {
           try {
             const rawDataUrl = ev.target.result;
-            // 由于不同网关/代理对 body 大小可能限制很严，这里更保守：1MB
-            const MAX_RAW_BASE64_LEN = 1 * 1024 * 1024;
+            // 结合你朋友之前的 request aborted（约 1.84MB）经验，这里取更稳的 1.6MB
+            const MAX_RAW_BASE64_LEN = 1.6 * 1024 * 1024;
 
-            // 先压缩，尽量降低不同设备差异
-            const compressed = await compressImageDataUrlToJpeg(rawDataUrl, {
-              maxSide: 1000,
-              quality: 0.62
-            });
+            const rawLen = estimateRawBase64Len(rawDataUrl);
+            const mime = getMimeTypeFromDataUrl(rawDataUrl);
 
-            const rawLen = estimateRawBase64Len(compressed);
-            if (!rawLen || rawLen > MAX_RAW_BASE64_LEN) {
+            // 体积足够小且本身就是 JPEG：尽量原样保清晰度
+            let finalDataUrl = rawDataUrl;
+            if (!rawLen || rawLen > MAX_RAW_BASE64_LEN || !isJpegMime(mime)) {
+              finalDataUrl = await convertToJpegUnderLimit(rawDataUrl, MAX_RAW_BASE64_LEN);
+            }
+
+            const finalLen = estimateRawBase64Len(finalDataUrl);
+            if (!finalLen || finalLen > MAX_RAW_BASE64_LEN) {
               studentIdImageBase64 = '';
-              document.getElementById('student-id-preview').innerHTML =
-                '<div class="image-preview"><img src="' + compressed + '" alt="学生证" /></div>';
               document.getElementById('submit-student-id-btn').disabled = true;
-              showToast('图片太大：请换更小/更低分辨率的学生证照片（建议 base64 raw < 1MB）', 'error');
+              showToast('图片太大或处理后仍过大，请上传更小/更清晰的学生证照片（建议 base64 raw < 1.6MB）', 'error');
               return;
             }
 
-            studentIdImageBase64 = compressed;
+            studentIdImageBase64 = finalDataUrl;
             document.getElementById('student-id-preview').innerHTML =
               '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
             document.getElementById('submit-student-id-btn').disabled = false;
           } catch (err) {
-            // 压缩失败：降级使用原图，但仍要校验长度
-            const rawDataUrl = ev.target.result;
-            const MAX_RAW_BASE64_LEN = 1 * 1024 * 1024;
-            const rawLen = estimateRawBase64Len(rawDataUrl);
-            if (rawLen && rawLen <= MAX_RAW_BASE64_LEN) {
-              studentIdImageBase64 = rawDataUrl;
-              document.getElementById('student-id-preview').innerHTML =
-                '<div class="image-preview"><img src="' + studentIdImageBase64 + '" alt="学生证" /></div>';
-              document.getElementById('submit-student-id-btn').disabled = false;
-            } else {
-              studentIdImageBase64 = '';
-              document.getElementById('submit-student-id-btn').disabled = true;
-              showToast('图片处理失败或过大，请换一张更小的学生证照片（建议 base64 raw < 1MB）', 'error');
-            }
+            studentIdImageBase64 = '';
+            document.getElementById('submit-student-id-btn').disabled = true;
+            showToast('图片处理失败，请换一张更清晰的学生证照片再试。', 'error');
           }
         })();
       };
