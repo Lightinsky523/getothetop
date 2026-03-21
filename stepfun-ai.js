@@ -277,7 +277,7 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
         const payload = {
           model: STEPFUN_MODEL,
           messages,
-          max_tokens: 4096,
+          max_tokens: 8192,
           stream: false
         };
         if (tools.length > 0) {

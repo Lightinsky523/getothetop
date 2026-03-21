@@ -568,24 +568,49 @@
     }
 
     /**
-     * 渲染主回答 + 可选思考过程（与 data 重复时去重，避免答两遍）
+     * 渲染主回答 + 可选思考过程
+     * 过滤逻辑：reasoning 中包含大量「我需要先」「策略：」等内部思维标记时，
+     * 视为内部推理 monologue，仅提取「根据您的问题」之后的正式回答部分。
      */
     function buildAiAnswerHtml(body, reasoning) {
       const b = body == null ? '' : String(body);
       const r = reasoning || '';
       if (!r) return formatResponse(b);
+
+      // 尝试从 reasoning 中提取最终正式回答（阶跃把内部思维全放进 reasoning，content 为空）
+      const finalAnswerStart = r.indexOf('根据您的问题');
+      const hasInternalMonologue =
+        r.includes('我需要先') ||
+        r.includes('【信息优先级') ||
+        r.includes('策略：') ||
+        r.includes('第一步，') ||
+        r.includes('第二步，') ||
+        r.includes('第三步，') ||
+        r.includes('第四步，') ||
+        r.includes('第五步，') ||
+        r.includes('第六步，');
+
+      // 有正式结尾 → 取最后那段作为展示内容，提示含思考过程
+      if (finalAnswerStart !== -1 && hasInternalMonologue) {
+        const formalPart = r.slice(finalAnswerStart);
+        const shortIntro =
+          '<details class="ai-reasoning-box"><summary>含思考过程（点击展开）</summary>' +
+          '<div class="ai-reasoning-inner" style="font-size:12px;line-height:1.5;max-height:160px;overflow-y:auto;">' +
+          formatResponse(r.slice(0, finalAnswerStart)) +
+          '</div></details>';
+        return shortIntro + '<div style="margin-top:10px;">' + formatResponse(formalPart) + '</div>';
+      }
+
+      // reasoning 本身很短，或已是正式回答 → 直接渲染
       if (r === b.trim()) {
-        return (
-          '<details open class="ai-reasoning-box"><summary>模型推理与回答</summary><div class="ai-reasoning-inner">' +
-          formatResponse(r) +
-          '</div></details>'
-        );
+        return formatResponse(b);
       }
       if (b.includes(r)) {
         return formatResponse(b);
       }
+      // 短的 reasoning 显示在折叠区
       return (
-        '<details open class="ai-reasoning-box"><summary>思考过程</summary><div class="ai-reasoning-inner">' +
+        '<details class="ai-reasoning-box"><summary>思考过程</summary><div class="ai-reasoning-inner">' +
         formatResponse(r) +
         '</div></details><div class="ai-main-answer" style="margin-top:12px;">' +
         formatResponse(b) +
