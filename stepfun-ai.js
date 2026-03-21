@@ -22,7 +22,7 @@ const MAX_SUMMARY_SNIPPET = 350;
 function sanitizeUserText(text) {
   if (text == null || typeof text !== 'string') return '';
   let s = text;
-  const patterns = [8
+  const patterns = [
     /\[SYSTEM.*?\]/gis,
     /SYSTEM\s+OVERRIDE/gi,
     /忽略[\s\S]*?指令/g,
