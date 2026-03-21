@@ -471,6 +471,42 @@
       if (t) t.classList.toggle('on');
     }
 
+    /** 解析 /ai-query 响应：兼容 BOM、识别网关返回的 HTML 错误页 */
+    function parseAiQueryResponse(res, rawText) {
+      const text = (rawText || '').replace(/^\uFEFF/, '').trim();
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (!text) {
+        return {
+          code: res.ok ? 500 : (res.status || 500),
+          msg: res.ok
+            ? '服务返回空内容'
+            : `请求失败（HTTP ${res.status}），响应正文为空。请确认 ECS 上 Node 已监听 3000 端口，且 Vercel 代理能访问该地址。`
+        };
+      }
+      const looksHtml =
+        ct.includes('text/html') ||
+        /^<\s*!?doctype/i.test(text) ||
+        /^<\s*html/i.test(text) ||
+        (text.startsWith('<') && /<\s*body|<\s*head|<\s*div/i.test(text.slice(0, 500)));
+      if (looksHtml) {
+        return {
+          code: res.status >= 400 ? res.status : 502,
+          msg:
+            `网关返回了网页而非 JSON（HTTP ${res.status}）。常见原因：Vercel 连不上 ECS（502/504）、CDN/防火墙拦截、或源站 Node 未启动。请核对 vercel.json 里的代理地址、安全组与 3000 端口。`
+        };
+      }
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.error('[ai-query] 非 JSON 响应', res.status, text.slice(0, 400));
+        const head = text.slice(0, 72).replace(/\s+/g, ' ');
+        return {
+          code: 500,
+          msg: `接口正文不是合法 JSON（HTTP ${res.status}）。开头：${head}${text.length > 72 ? '…' : ''}`
+        };
+      }
+    }
+
     async function submitQuery() {
       const content = document.getElementById('ai-input').value.trim();
       if (!content) {
@@ -503,15 +539,11 @@
           signal: ctrl.signal
         });
         clearTimeout(timeoutId);
-        let data = {};
-        try {
-          const text = await res.text();
-          if (text) data = JSON.parse(text);
-        } catch (_) {
-          data = { code: 500, msg: '服务返回格式异常' };
-        }
+        const text = await res.text();
+        const data = parseAiQueryResponse(res, text);
         if (data.code === 200) {
-          output.innerHTML = formatResponse(data.data);
+          const body = data.data != null ? String(data.data) : (data.msg || '');
+          output.innerHTML = formatResponse(body);
         } else {
           output.innerHTML = '<div style="color: var(--error);">查询失败：' + (data.msg || '未知错误') + '</div>';
         }

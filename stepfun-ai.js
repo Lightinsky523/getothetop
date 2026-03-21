@@ -78,7 +78,7 @@ function getSystemPrompt(anchorToGovEdu = false) {
   - 历史类 → 普通历史列
   - 体育类物理 → 体育物理列
   - 体育类历史 → 体育历史列
-- 若知识库和联网搜索均无法获取该省一分一段表，则提示"请直接提供位次"
+- 若知识库和联网搜索均无法获取该省一分一段表，则提示"查询失败：AI 未返回有效内容请直接提供位次"
 
 【年份适配与数据定位逻辑】
 1. 确定参考年份：通过联网搜索查询该省份已公布的最新完整《本科批平行志愿投档线》年份。提取最近完整数据年份，记为参考年份。
@@ -291,13 +291,20 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
       if (!res.ok) {
         const raw = await res.text();
         console.error('[Stepfun] API 错误:', res.status, raw.slice(0, 400));
-        return { success: false, error: `API 错误 (${res.status})` };
+        let errMsg = `API 错误 (${res.status})`;
+        try {
+          const parsed = JSON.parse(raw);
+          errMsg += ': ' + (parsed.error?.message || parsed.error?.msg || JSON.stringify(parsed.error));
+        } catch (_) { /* ignore */ }
+        return { success: false, error: errMsg };
       }
 
       const result = await res.json();
       const msg = result.choices?.[0]?.message;
       const content = (msg?.content || '').trim();
       const toolCalls = msg?.tool_calls || [];
+
+      console.log('[Stepfun] 响应结构 keys:', Object.keys(result), '| msg keys:', msg ? Object.keys(msg) : [], '| content length:', content.length, '| toolCalls:', toolCalls.length);
 
       if (content) {
         return { success: true, content, toolCalls: [] };
@@ -306,8 +313,12 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
       if (!toolCalls.length) {
         const alt =
           (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()) ||
-          (typeof result.choices?.[0]?.text === 'string' && result.choices[0].text.trim());
+          (typeof result.choices?.[0]?.text === 'string' && result.choices[0].text.trim()) ||
+          (typeof result.choices?.[0]?.message?.text === 'string' && result.choices[0].message.text.trim()) ||
+          (Array.isArray(result.choices?.[0]?.message?.content) && result.choices[0].message.content.map ? result.choices[0].message.content.map(c => typeof c === 'object' ? c.text || c.content : c).join('') : '') ||
+          (typeof result.text === 'string' && result.text.trim());
         if (alt) {
+          console.log('[Stepfun] content 为空，尝试备用字段，长度:', alt.length);
           return { success: true, content: alt, toolCalls: [] };
         }
         console.warn('[Stepfun] 无正文且无 tool_calls，原始 message 键:', msg && Object.keys(msg));
