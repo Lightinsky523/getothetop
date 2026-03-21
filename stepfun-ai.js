@@ -323,6 +323,8 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
       }
 
       if (!toolCalls.length) {
+        const rawStr = JSON.stringify(result).slice(0, 800);
+        console.warn('[Stepfun] 无正文且无 tool_calls，完整响应片段:', rawStr);
         const alt =
           (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()) ||
           (typeof result.choices?.[0]?.text === 'string' && result.choices[0].text.trim()) ||
@@ -332,7 +334,6 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
           console.log('[Stepfun] content 为空，尝试备用字段，长度:', alt.length);
           return { success: true, content: alt, toolCalls: [] };
         }
-        console.warn('[Stepfun] 无正文且无 tool_calls，原始 message 键:', msg && Object.keys(msg));
         return { success: true, content: '', toolCalls: [] };
       }
 
