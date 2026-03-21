@@ -162,6 +162,7 @@ ${dataSourceRule}
 承诺：数据源优先来自本地知识库，其次来自各省教育考试院官网，阳光高考网等权威渠道，旧高考数据绝不采用。"
 
 【其他规则】
+- 用户在本轮「用户问题」文本中写明的省份、年份、选科、分数、位次等，优先于界面侧边栏「我的信息」；二者冲突时必须以问题中的表述为准，不得仍按侧边栏档案推断
 - 学生分享总结仅供参考，综合回答中不要大段复述该总结，可引用关键点并给出建议
 - 表述清晰、条理分明，便于考生理解与执行
 
@@ -229,8 +230,12 @@ async function stepfunSummarize(postsText, summaryPrompt, maxTextLen = 28000) {
     clearTimeout(timeout);
     if (!res.ok) return '';
     const result = await res.json();
-    const content = result.choices?.[0]?.message?.content;
-    return typeof content === 'string' ? content.trim() : '';
+    const m = result.choices?.[0]?.message;
+    let out = '';
+    if (typeof m?.content === 'string') out = m.content.trim();
+    if (!out && typeof m?.reasoning_content === 'string') out = m.reasoning_content.trim();
+    if (!out && typeof m?.reasoning === 'string') out = m.reasoning.trim();
+    return out;
   } catch (e) {
     clearTimeout(timeout);
     console.warn('[Stepfun] 学生分享总结失败:', e.message);
@@ -305,36 +310,37 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
 
       const result = await res.json();
       const msg = result.choices?.[0]?.message;
-      const rawMc = msg?.content;
-      let content = '';
-      if (typeof rawMc === 'string') content = rawMc.trim();
-      else if (Array.isArray(rawMc)) {
-        content = rawMc
-          .map((c) => (typeof c === 'object' && c ? (c.text || c.content || '') : String(c || '')))
-          .join('')
-          .trim();
-      }
+      const { main, reasoningText, display } = extractStepfunMessageParts(msg);
+      const content = display;
       const toolCalls = msg?.tool_calls || [];
 
-      console.log('[Stepfun] 响应结构 keys:', Object.keys(result), '| msg keys:', msg ? Object.keys(msg) : [], '| content length:', content.length, '| toolCalls:', toolCalls.length);
+      console.log(
+        '[Stepfun] 响应 keys:',
+        Object.keys(result),
+        '| mainLen:',
+        main.length,
+        '| reasoningLen:',
+        reasoningText.length,
+        '| toolCalls:',
+        toolCalls.length
+      );
 
       if (content) {
-        return { success: true, content, toolCalls: [] };
+        const outReasoning = reasoningText || undefined;
+        return { success: true, content, reasoning: outReasoning, toolCalls: [] };
       }
 
       if (!toolCalls.length) {
-        const rawStr = JSON.stringify(result).slice(0, 800);
-        console.warn('[Stepfun] 无正文且无 tool_calls，完整响应片段:', rawStr);
         const alt =
-          (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()) ||
           (typeof result.choices?.[0]?.text === 'string' && result.choices[0].text.trim()) ||
           (typeof result.choices?.[0]?.message?.text === 'string' && result.choices[0].message.text.trim()) ||
           (typeof result.text === 'string' && result.text.trim());
         if (alt) {
-          console.log('[Stepfun] content 为空，尝试备用字段，长度:', alt.length);
-          return { success: true, content: alt, toolCalls: [] };
+          console.log('[Stepfun] 使用 choices 备用 text 字段，长度:', alt.length);
+          return { success: true, content: alt, reasoning: undefined, toolCalls: [] };
         }
-        return { success: true, content: '', toolCalls: [] };
+        console.warn('[Stepfun] 仍无可用正文，message 键:', msg && Object.keys(msg));
+        return { success: true, content: '', reasoning: undefined, toolCalls: [] };
       }
 
       messages.push({
@@ -360,6 +366,28 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
     console.error('[Stepfun] 请求异常:', e.message);
     return { success: false, error: e.message || '网络异常' };
   }
+}
+
+/**
+ * 从阶跃 message 拆出：正式正文 main、推理过程 reasoning、用于展示的 display（main 优先，否则 reasoning）
+ */
+function extractStepfunMessageParts(msg) {
+  const rawMc = msg?.content;
+  let main = '';
+  if (typeof rawMc === 'string') main = rawMc.trim();
+  else if (Array.isArray(rawMc)) {
+    main = rawMc
+      .map((c) => (typeof c === 'object' && c ? (c.text || c.content || '') : String(c || '')))
+      .join('')
+      .trim();
+  }
+  let reasoningText = '';
+  if (typeof msg?.reasoning === 'string' && msg.reasoning.trim()) reasoningText = msg.reasoning.trim();
+  else if (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()) {
+    reasoningText = msg.reasoning_content.trim();
+  }
+  const display = main || reasoningText;
+  return { main, reasoningText, display };
 }
 
 /**
@@ -424,6 +452,9 @@ async function handleStepfunAiQuery(req, res, helpers = {}) {
   }
 
   const referenceParts = [];
+  referenceParts.push(
+    '【信息优先级（必须遵守）】用户输入框内的「用户问题」若写明了省份、年份、选科方向、高考分数或位次等，一律以问题中的表述为准；右侧「我的信息」仅为默认参考。二者冲突时禁止沿用「我的信息」中的省份/分数/位次，必须以问题为准完成分析与推荐。'
+  );
   referenceParts.push('请严格根据下方「参考信息」回答「用户问题」，结合用户填写的我的信息与选科给出专业报考建议；学生分享总结供参考。勿编造参考中未出现的内容。');
   referenceParts.push('重要：系统会在回答前单独展示「学生分享总结」。因此在你的「综合回答」中不要复述/抄写总结段落，只需在需要时引用其中的关键点并给出可执行的建议。');
   referenceParts.push('\n【参考信息】');
@@ -455,11 +486,14 @@ async function handleStepfunAiQuery(req, res, helpers = {}) {
     return;
   }
   const aiText = String(result.content || '').trim();
+  const reasoningOut = String(result.reasoning || '').trim();
   if (aiText) {
     const finalData = shareSummary
       ? `【基于学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
       : aiText;
-    res.send({ code: 200, data: finalData });
+    const payload = { code: 200, data: finalData };
+    if (reasoningOut) payload.reasoning = reasoningOut;
+    res.send(payload);
   } else if (shareSummary) {
     res.send({
       code: 200,

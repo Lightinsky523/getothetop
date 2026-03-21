@@ -177,6 +177,10 @@
     }
 
     .ai-output-empty { color: var(--text-soft); font-size: 13px; }
+    .ai-reasoning-box { margin: 12px 0; padding: 10px 12px; background: #fff; border: 1px dashed var(--border-subtle); border-radius: var(--radius); font-size: 13px; }
+    .ai-reasoning-box > summary { cursor: pointer; font-weight: 600; color: var(--text-soft); margin-bottom: 8px; }
+    .ai-reasoning-box .ai-reasoning-inner { color: var(--text-main); line-height: 1.55; }
+    .profile-hint { font-size: 12px; color: var(--text-soft); margin-top: 8px; line-height: 1.4; }
 
     .subgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
     @media (max-width: 500px) { .subgrid { grid-template-columns: 1fr; } }
@@ -544,7 +548,8 @@
         if (data.code == 200) {
           const snapshot = buildProfileSnapshotBlock();
           const body = data.data != null ? String(data.data) : (data.msg || '');
-          output.innerHTML = snapshot + formatResponse(body);
+          const reasoning = data.reasoning != null ? String(data.reasoning).trim() : '';
+          output.innerHTML = snapshot + buildAiAnswerHtml(body, reasoning);
         } else {
           output.innerHTML = '<div style="color: var(--error);">查询失败：' + (data.msg || '未知错误') + '</div>';
         }
@@ -560,6 +565,32 @@
     function formatResponse(text) {
       const s = text == null ? '' : String(text);
       return s.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    }
+
+    /**
+     * 渲染主回答 + 可选思考过程（与 data 重复时去重，避免答两遍）
+     */
+    function buildAiAnswerHtml(body, reasoning) {
+      const b = body == null ? '' : String(body);
+      const r = reasoning || '';
+      if (!r) return formatResponse(b);
+      if (r === b.trim()) {
+        return (
+          '<details open class="ai-reasoning-box"><summary>模型推理与回答</summary><div class="ai-reasoning-inner">' +
+          formatResponse(r) +
+          '</div></details>'
+        );
+      }
+      if (b.includes(r)) {
+        return formatResponse(b);
+      }
+      return (
+        '<details open class="ai-reasoning-box"><summary>思考过程</summary><div class="ai-reasoning-inner">' +
+        formatResponse(r) +
+        '</div></details><div class="ai-main-answer" style="margin-top:12px;">' +
+        formatResponse(b) +
+        '</div>'
+      );
     }
 
     /** 与右侧「当前概要」展示一致的人类可读科类文案 */
@@ -608,9 +639,17 @@
       if (rank) bits.push(`<span class="pill">位次${rank}</span>`);
       if (city) bits.push(`<span class="pill">${city}</span>`);
       if (!bits.length) {
-        return '<div class="ai-output-meta" style="margin-bottom:12px;color:var(--text-soft);font-size:13px;">本次查询未携带「我的信息」（可在右侧填写并保存）。</div>';
+        return '<div class="ai-output-meta" style="margin-bottom:12px;color:var(--text-soft);font-size:13px;">本次查询未携带「我的信息」（可在右侧填写并保存）。<div class="profile-hint">输入框内写明的省份、分数、位次等与右侧不一致时，以<strong>输入框</strong>为准。</div></div>';
       }
-      return '<div class="ai-output-meta" style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text-soft);margin-bottom:6px;">本次查询已参考当前概要</div><div class="tag-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' + bits.join('') + '</div></div>';
+      return (
+        '<div class="ai-output-meta" style="margin-bottom:12px;">' +
+        '<div style="font-size:12px;color:var(--text-soft);margin-bottom:6px;">本次查询已参考当前概要（默认档案）</div>' +
+        '<div class="tag-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' +
+        bits.join('') +
+        '</div>' +
+        '<div class="profile-hint">若输入框里写了不同省份、分数或位次，以<strong>输入框内容</strong>为准，勿仅按右侧档案推断。</div>' +
+        '</div>'
+      );
     }
 
     function getXuankeContext() {
