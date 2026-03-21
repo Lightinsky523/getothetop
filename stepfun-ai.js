@@ -248,12 +248,13 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
   const fetch = (await import('node-fetch')).default;
   const useWebSearch = options.webSearch !== false;
   const anchorToGovEdu = !!options.anchorToGovEdu;
+  const skipTools = !!options.skipTools;
+
   const tools = [];
-  if (useWebSearch) tools.push(getWebSearchTool(anchorToGovEdu));
-  const retrievalTool = getRetrievalTool();
-  if (retrievalTool) tools.push(retrievalTool);
-  if (tools.length === 0) {
-    tools.push(getWebSearchTool(anchorToGovEdu));
+  if (!skipTools) {
+    if (useWebSearch) tools.push(getWebSearchTool(anchorToGovEdu));
+    const retrievalTool = getRetrievalTool();
+    if (retrievalTool) tools.push(retrievalTool);
   }
 
   const fullPrompt = `${referenceBlock}\n\n【用户问题】\n${(userQuestion || '').trim()}`;
@@ -268,20 +269,23 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
       const timeout = setTimeout(() => controller.abort(), STEPFUN_TIMEOUT_MS);
       let res;
       try {
+        const payload = {
+          model: STEPFUN_MODEL,
+          messages,
+          max_tokens: 4096,
+          stream: false
+        };
+        if (tools.length > 0) {
+          payload.tools = tools;
+          payload.tool_choice = 'auto';
+        }
         res = await fetch(`${STEPFUN_BASE}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${STEPFUN_API_KEY}`
           },
-          body: JSON.stringify({
-            model: STEPFUN_MODEL,
-            messages,
-            max_tokens: 4096,
-            stream: false,
-            tool_choice: 'auto',
-            tools
-          }),
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
       } finally {
@@ -301,7 +305,15 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
 
       const result = await res.json();
       const msg = result.choices?.[0]?.message;
-      const content = (msg?.content || '').trim();
+      const rawMc = msg?.content;
+      let content = '';
+      if (typeof rawMc === 'string') content = rawMc.trim();
+      else if (Array.isArray(rawMc)) {
+        content = rawMc
+          .map((c) => (typeof c === 'object' && c ? (c.text || c.content || '') : String(c || '')))
+          .join('')
+          .trim();
+      }
       const toolCalls = msg?.tool_calls || [];
 
       console.log('[Stepfun] 响应结构 keys:', Object.keys(result), '| msg keys:', msg ? Object.keys(msg) : [], '| content length:', content.length, '| toolCalls:', toolCalls.length);
@@ -315,7 +327,6 @@ async function stepfunChat(referenceBlock, userQuestion, options = {}) {
           (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()) ||
           (typeof result.choices?.[0]?.text === 'string' && result.choices[0].text.trim()) ||
           (typeof result.choices?.[0]?.message?.text === 'string' && result.choices[0].message.text.trim()) ||
-          (Array.isArray(result.choices?.[0]?.message?.content) && result.choices[0].message.content.map ? result.choices[0].message.content.map(c => typeof c === 'object' ? c.text || c.content : c).join('') : '') ||
           (typeof result.text === 'string' && result.text.trim());
         if (alt) {
           console.log('[Stepfun] content 为空，尝试备用字段，长度:', alt.length);
@@ -415,7 +426,7 @@ async function handleStepfunAiQuery(req, res, helpers = {}) {
   referenceParts.push('请严格根据下方「参考信息」回答「用户问题」，结合用户填写的我的信息与选科给出专业报考建议；学生分享总结供参考。勿编造参考中未出现的内容。');
   referenceParts.push('重要：系统会在回答前单独展示「学生分享总结」。因此在你的「综合回答」中不要复述/抄写总结段落，只需在需要时引用其中的关键点并给出可执行的建议。');
   referenceParts.push('\n【参考信息】');
-  if (safeProfile && safeProfile !== '（未填写）') {
+  if (safeProfile && !/^(（未填写）|未填写)$/.test(safeProfile.trim())) {
     referenceParts.push(`用户基本信息（我的信息）：${safeProfile}`);
   }
   if (isXuanke && xuankeContext) {
@@ -431,20 +442,35 @@ async function handleStepfunAiQuery(req, res, helpers = {}) {
   const referenceBlock = referenceParts.join('\n');
   const userQuestion = safePrompt;
 
-  const result = await stepfunChat(referenceBlock, userQuestion, { webSearch: !!enableWebSearch, anchorToGovEdu: !!anchorToGovEdu });
+  const chatOpts = { webSearch: !!enableWebSearch, anchorToGovEdu: !!anchorToGovEdu };
+  let result = await stepfunChat(referenceBlock, userQuestion, chatOpts);
+  if (result.success && !String(result.content || '').trim()) {
+    console.warn('[Stepfun] 带工具/知识库首轮无正文，改为无工具重试');
+    result = await stepfunChat(referenceBlock, userQuestion, { ...chatOpts, skipTools: true });
+  }
   if (!result.success) {
     const msg = result.error === '请求超时' ? 'AI 响应超时，请缩短问题或稍后重试' : (result.error || 'AI 服务暂时不可用');
     res.send({ code: 500, msg });
     return;
   }
-  const aiText = result.content;
+  const aiText = String(result.content || '').trim();
   if (aiText) {
     const finalData = shareSummary
       ? `【基于学生分享的总结】\n\n${shareSummary}\n\n【综合回答】\n\n${aiText}`
       : aiText;
     res.send({ code: 200, data: finalData });
+  } else if (shareSummary) {
+    res.send({
+      code: 200,
+      data:
+        `【基于学生分享的总结】\n\n${shareSummary}\n\n【说明】本次模型未生成综合回答正文，以上为分享摘要。可尝试关闭「联网搜索」后重试，或稍后再试。`
+    });
   } else {
-    res.send({ code: 500, msg: 'AI 未返回有效内容' });
+    res.send({
+      code: 200,
+      data:
+        '模型本次未返回正文。常见原因：联网搜索/知识库工具链未产出最终回复。请尝试在页面关闭「联网搜索」后重试，或缩短问题。'
+    });
   }
 }
 

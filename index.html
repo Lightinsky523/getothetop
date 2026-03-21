@@ -541,9 +541,10 @@
         clearTimeout(timeoutId);
         const text = await res.text();
         const data = parseAiQueryResponse(res, text);
-        if (data.code === 200) {
+        if (data.code == 200) {
+          const snapshot = buildProfileSnapshotBlock();
           const body = data.data != null ? String(data.data) : (data.msg || '');
-          output.innerHTML = formatResponse(body);
+          output.innerHTML = snapshot + formatResponse(body);
         } else {
           output.innerHTML = '<div style="color: var(--error);">查询失败：' + (data.msg || '未知错误') + '</div>';
         }
@@ -557,24 +558,59 @@
     }
 
     function formatResponse(text) {
-      return text.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      const s = text == null ? '' : String(text);
+      return s.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     }
 
+    /** 与右侧「当前概要」展示一致的人类可读科类文案 */
+    function getTypeLabelForProfile(type) {
+      if (type === 'science') return '理科 / 物理方向';
+      if (type === 'arts') return '文科 / 历史方向';
+      if (type === 'other') return '综合改革 / 其他';
+      return type ? String(type) : '';
+    }
+
+    /** 发给后端的档案摘要：与当前概要标签含义一致 */
     function getProfileSummary() {
       const parts = [];
-      const year = document.getElementById('year-input').value;
-      const province = document.getElementById('province-input').value;
-      const score = document.getElementById('score-input').value;
-      const rank = document.getElementById('rank-input').value;
+      const year = (document.getElementById('year-input').value || '').trim();
+      const province = (document.getElementById('province-input').value || '').trim();
+      const score = (document.getElementById('score-input').value || '').trim();
+      const rank = (document.getElementById('rank-input').value || '').trim();
       const type = document.getElementById('type-select').value;
-      const city = document.getElementById('city-input').value;
-      if (year) parts.push(`年份：${year}`);
+      const city = (document.getElementById('city-input').value || '').trim();
+      if (year) parts.push(`${year}年`);
       if (province) parts.push(`省份：${province}`);
+      const t = getTypeLabelForProfile(type);
+      if (t) parts.push(`科类：${t}`);
       if (score) parts.push(`分数：${score}`);
       if (rank) parts.push(`位次：${rank}`);
-      if (type) parts.push(`科类：${type}`);
       if (city) parts.push(`目标城市：${city}`);
-      return parts.length ? parts.join('，') : '未填写';
+      return parts.length ? parts.join('，') : '（未填写）';
+    }
+
+    /** 在结果区顶部展示本次查询携带的概要（与右侧标签同源） */
+    function buildProfileSnapshotBlock() {
+      const year = (document.getElementById('year-input').value || '').trim();
+      const province = (document.getElementById('province-input').value || '').trim();
+      const score = (document.getElementById('score-input').value || '').trim();
+      const rank = (document.getElementById('rank-input').value || '').trim();
+      const type = document.getElementById('type-select').value;
+      const city = (document.getElementById('city-input').value || '').trim();
+      const bits = [];
+      if (year) bits.push(`<span class="tag">${year}年</span>`);
+      if (province) bits.push(`<span class="tag">${province}</span>`);
+      if (type) {
+        const short = type === 'science' ? '理科' : type === 'arts' ? '文科' : '综合';
+        bits.push(`<span class="tag">${short}</span>`);
+      }
+      if (score) bits.push(`<span class="pill">${score}分</span>`);
+      if (rank) bits.push(`<span class="pill">位次${rank}</span>`);
+      if (city) bits.push(`<span class="pill">${city}</span>`);
+      if (!bits.length) {
+        return '<div class="ai-output-meta" style="margin-bottom:12px;color:var(--text-soft);font-size:13px;">本次查询未携带「我的信息」（可在右侧填写并保存）。</div>';
+      }
+      return '<div class="ai-output-meta" style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text-soft);margin-bottom:6px;">本次查询已参考当前概要</div><div class="tag-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' + bits.join('') + '</div></div>';
     }
 
     function getXuankeContext() {
