@@ -2,14 +2,30 @@ const sqlite3 = require('sqlite3').verbose();
 const mysql = require('mysql2/promise');
 const path = require('path');
 
+// 加载环境变量（优先使用 .env 文件）
+try { require('dotenv').config(); } catch (_) {}
+
+const MYSQL_HOST = process.env.MYSQL_HOST || process.env.MIGRATE_MYSQL_HOST || 'localhost';
+const MYSQL_USER = process.env.MYSQL_USER || process.env.MIGRATE_MYSQL_USER;
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MIGRATE_MYSQL_PASSWORD;
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || process.env.MIGRATE_MYSQL_DATABASE || 'ycyz_db';
+const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || process.env.MIGRATE_MYSQL_PORT || '3306', 10);
+const SQLITE_PATH = process.env.SQLITE_PATH || path.join(__dirname, 'data', 'study_experience.db');
+
+if (!MYSQL_USER || !MYSQL_PASSWORD) {
+    console.error('❌ MySQL 凭据未配置。请设置环境变量：MYSQL_USER、MYSQL_PASSWORD（或 MIGRATE_* 前缀）');
+    console.error('   提示：可从 migrate-env-sample 复制并创建 .env 文件');
+    process.exit(1);
+}
+
 const CONFIG = {
-    sqlitePath: path.join(__dirname, 'data', 'study_experience.db'),
+    sqlitePath: SQLITE_PATH,
     mysql: {
-        host: '172.17.0.1',
-        user: 'root',
-        password: '@Ycyz120',
-        database: 'ycyz_db',
-        port: 3306
+        host: MYSQL_HOST,
+        user: MYSQL_USER,
+        password: MYSQL_PASSWORD,
+        database: MYSQL_DATABASE,
+        port: MYSQL_PORT
     }
 };
 

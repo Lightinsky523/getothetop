@@ -1,1 +1,30 @@
-ms_deploy.json
+# 环境变量（含敏感信息）
+.env
+.env.migrate
+
+# 备份文件
+*.backup
+*.backup.*
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+
+# 数据目录（本地运行时自动生成）
+data/
+
+# 依赖
+node_modules/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# 本地测试
+*.test.js
+*.spec.js

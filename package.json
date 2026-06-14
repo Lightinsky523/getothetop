@@ -11,6 +11,9 @@
     "mysql2": "^3.6.5",
     "cors": "^2.8.5",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "dotenv": "^16.4.5"
   }
 }
